@@ -1,9 +1,9 @@
-# Master Product Requirement Document (PRD) — *SpecScribe AR*
+﻿# Master Product Requirement Document (PRD) â€” *SpecScribe AR*
 
 * **Document Version:** `v1.1.0` (Research-Locked Architecture & Rubric Alignment)
 * **Last Updated:** Friday, October 16, 2026
 * **Project Codename:** **SpecScribe AR** (Spatial Architecture & Decision Intelligence for Snap Spectacles)
-* **Official Hackathon:** Learn AR with SPECS (`https://learn-specs.devpost.com/` — Challenge ID `31659`)
+* **Official Hackathon:** Learn AR with SPECS (`https://learn-specs.devpost.com/` â€” Challenge ID `31659`)
 * **Hard Submission Deadline:** **Monday, November 9, 2026 at 2:00 PM PST** (**Midnight 00:00 SAST on November 10, 2026** in Pretoria)
 * **Total Engineering Budget:** $37.5\text{ Hours}$ (AI-Agent Executed; Human Role = Orchestrator, Reviewer & Tester)
 
@@ -13,8 +13,8 @@
 
 | Version | Date | Author | Summary of Changes |
 | :--- | :--- | :--- | :--- |
-| `v1.0.0` | 2026-10-16 | Gemini + Ruan | Initial architecture, Trap 1–3 solutions, calendar mapping, and stateful agent task board. |
-| `v1.1.0` | 2026-10-16 | Gemini + Ruan | Integrated `RES-01` ($25\%$ `/docs/` spec mandate, Nov 9 2:00 PM PST deadline, Lens Studio Preview rules), `RES-02` (Lens Studio 5.15 TypeScript pipeline, $1.0\text{ m}\text{--}1.3\text{ m}$ focal ergonomics, `Base64.encodeTextureAsync`), and `RES-03` (in-memory `drawio-mcp` Sugiyama engine + $60\text{ ms}$ Playwright `export3.html` daemon). Unblocked `T-10`–`T-13`. |
+| `v1.0.0` | 2026-10-16 | Gemini + Ruan | Initial architecture, Trap 1â€“3 solutions, calendar mapping, and stateful agent task board. |
+| `v1.1.0` | 2026-10-16 | Gemini + Ruan | Integrated `RES-01` ($25\%$ `/docs/` spec mandate, Nov 9 2:00 PM PST deadline, Lens Studio Preview rules), `RES-02` (Lens Studio 5.15 TypeScript pipeline, $1.0\text{ m}\text{--}1.3\text{ m}$ focal ergonomics, `Base64.encodeTextureAsync`), and `RES-03` (in-memory `drawio-mcp` Sugiyama engine + $60\text{ ms}$ Playwright `export3.html` daemon). Unblocked `T-10`â€“`T-13`. |
 
 ---
 
@@ -29,9 +29,9 @@ Technical brainstorming and system architecture sessions revolve around physical
 ### 1.2 The Solution (*SpecScribe AR*)
 **SpecScribe AR** is a multimodal spatial engineering companion built in **Snap Lens Studio 5.15+** using the **Spectacles Interaction Kit (SIK)** and a **FastAPI + `drawio-mcp` + Supabase** backend:
 1. **Hands-Free Whiteboard-to-Draw.io Spatial Overlay:** Periodically samples camera frames off the main thread, detects stroke changes via perceptual hashing, extracts graph topology deltas with Gemini 2.5 Flash Vision, auto-layouts clean `.drawio` diagrams using the Sugiyama hierarchical DAG algorithm (`drawio-mcp`), and streams a transparent, waveguide-optimized RGBA overlay ($60\text{ ms}\text{--}140\text{ ms}$ render latency) back into the user's AR view.
-2. **SIK Pinch Component Palette (Spatial Interactivity):** Anchors a peripheral 4-button SIK `PinchButton` palette (`[◇ Decision]`, `[▭ Service]`, `[🛢 Database]`, `[○ Terminal]`) at $1.15\text{ m}$ focal depth. Pinching a component and speaking its label immediately injects the node into the live Draw.io graph via `drawio-mcp`.
+2. **SIK Pinch Component Palette (Spatial Interactivity):** Anchors a peripheral 4-button SIK `PinchButton` palette (`[â—‡ Decision]`, `[â–­ Service]`, `[ðŸ›¢ Database]`, `[â—‹ Terminal]`) at $1.15\text{ m}$ focal depth. Pinching a component and speaking its label immediately injects the node into the live Draw.io graph via `drawio-mcp`.
 3. **The "Raising-Hand" Spatial AI Teammate:** An ambient 3D AI orb anchored in the top-right peripheral field of view ($1.15\text{ m}$ depth):
-   * **Proactive Critique Mode (Push):** Continuously audits the live speaker-diarized transcript + Draw.io graph state on the server. When it detects a flaw, it visually **raises its hand** with a concise floating badge (`"🚩 Auth Token Leak Risk"`, `"💡 Use Pub/Sub Queue"`). Pinching the orb expands a 3-bullet critique card and plays low-latency voice feedback.
+   * **Proactive Critique Mode (Push):** Continuously audits the live speaker-diarized transcript + Draw.io graph state on the server. When it detects a flaw, it visually **raises its hand** with a concise floating badge (`"ðŸš© Auth Token Leak Risk"`, `"ðŸ’¡ Use Pub/Sub Queue"`). Pinching the orb expands a 3-bullet critique card and plays low-latency voice feedback.
    * **On-Demand Research Mode (Pull):** The wearer pinches the orb and speaks a technical question. The orb enters a `RESEARCHING` state and **raises its hand** as soon as the synthesized answer card is ready.
 4. **Post-Meeting Temporal Decision Scrubber & RAG Hub:** A unified **Supabase (`PostgreSQL` + `pgvector` + `Storage`)** backend and **Next.js 15** web dashboard. Dragging a timeline scrubber from `00:00` to `End` dynamically replays the exact Draw.io diagram state alongside speaker-diarized transcripts, decision rationales, auto-generated Markdown technical specs, and a `pgvector` RAG Q&A agent.
 
@@ -51,7 +51,7 @@ Research report `RES-01` confirmed that **Learn AR with SPECS** (`learn-specs.de
 
 ---
 
-## 3. Research Log & Architectural Decisions (`RES-01` – `RES-03`)
+## 3. Research Log & Architectural Decisions (`RES-01` â€“ `RES-03`)
 
 ### `RES-01` Summary: Hackathon Rules & Deadlines
 * **Hard Deadline:** Monday, November 9, 2026 at 2:00 PM PST ($22:00\text{ UTC}$ / **Midnight $00:00\text{ SAST}$ on November 10, 2026**).
@@ -162,7 +162,7 @@ create table agent_interventions (
   meeting_id uuid references meetings(id) on delete cascade,
   timestamp_ms integer not null,
   category text not null,     -- 'VULNERABILITY' | 'LOGIC_FLAW' | 'ALTERNATIVE_IDEA' | 'RESEARCH'
-  short_title text not null,  -- Max 28 chars for AR pill: e.g., "🚩 Auth Token Leak Risk"
+  short_title text not null,  -- Max 28 chars for AR pill: e.g., "ðŸš© Auth Token Leak Risk"
   detailed_body text not null,
   was_pinched boolean default false
 );
@@ -349,18 +349,18 @@ class LiveGraphSession:
 * **Schedule Constraints:**
   * **Weeknights:** 3 evenings/week (Tue, Thu, Fri) @ $1.5\text{ hrs}$ = **$4.5\text{ hrs/week}$**
   * **Weekends:** Sat ($4\text{ hrs}$) + Sun ($3.5\text{ hrs}$) = **$7.5\text{ hrs/weekend}$**
-  * **Holiday Blackout:** **Oct 30 – Nov 2 ($0\text{ hours}$)**
+  * **Holiday Blackout:** **Oct 30 â€“ Nov 2 ($0\text{ hours}$)**
   * **Hard Submission Lock:** **Monday, November 9, 2026 at 2:00 PM PST** (**Midnight $00:00\text{ SAST}$ on November 10**)
 
 | Window | Dates | Available Hours | Sprint Focus |
 | :--- | :--- | :--- | :--- |
-| **Weekend 1** | Oct 17 – Oct 18 | **$7.5\text{ hrs}$** | **Spec Docs ($25\%$ Score!) + Backend Spine:** Generate `/docs/scope.md`, `/docs/prd.md`, `/docs/spec.md` (`T-03B`); stand up Supabase (`T-04`), FastAPI WebSocket hub (`T-05`), and in-memory `drawio-mcp` + Playwright `export3.html` pipeline (`T-06`). |
-| **Week 1** | Oct 19 – Oct 23 | **$4.5\text{ hrs}$** | **Diarization & Raising-Hand Brain:** Implement transcript ingestion + decision linker (`T-07`), proactive Raising-Hand agent (`T-08`), and `pgvector` spec generator (`T-09`). |
-| **Weekend 2** | Oct 24 – Oct 25 | **$7.5\text{ hrs}$** | **Lens Studio 5.15 Core:** Set up Lens Studio project with `SIK`, `PeriodicCameraCapturer.ts`, `PersistentStreamSocketClient.ts` (`T-10`), and transparent AR Whiteboard Overlay mesh (`T-11`). |
-| **Week 2** | Oct 26 – Oct 29 | **$4.5\text{ hrs}$** | **SIK Pinch Interactions:** Wire the 4-button SIK Pinch Component Palette (`T-12`) and the Raising-Hand 3D Orb + Pinch Readout Card at $1.0\text{ m}\text{--}1.3\text{ m}$ focal distance (`T-13`). |
-| **HOLIDAY** | **Oct 30 – Nov 2** | **$0.0\text{ hrs}$** | **🏝️ AWAY ON HOLIDAY — ZERO WORK SCHEDULED** |
-| **Week 3** | Nov 3 – Nov 6 | **$4.5\text{ hrs}$** | **Temporal Web Dashboard & RAG:** Build the Next.js 15 Timeline Scrubber (`T-14`), `pgvector` RAG Q&A drawer (`T-15`), and `.drawio` / `.md` export buttons (`T-16`). |
-| **Weekend 3** | Nov 7 – Nov 8 | **$7.5\text{ hrs}$** | **End-to-End Integration & Video Shoot:** Record the $150\text{-second}$ demo video showing live SIK hand tracking inside the Lens Studio Interactive Preview Panel (`T-17`, `T-18`). |
+| **Weekend 1** | Oct 17 â€“ Oct 18 | **$7.5\text{ hrs}$** | **Spec Docs ($25\%$ Score!) + Backend Spine:** Generate `/docs/scope.md`, `/docs/prd.md`, `/docs/spec.md` (`T-03B`); stand up Supabase (`T-04`), FastAPI WebSocket hub (`T-05`), and in-memory `drawio-mcp` + Playwright `export3.html` pipeline (`T-06`). |
+| **Week 1** | Oct 19 â€“ Oct 23 | **$4.5\text{ hrs}$** | **Diarization & Raising-Hand Brain:** Implement transcript ingestion + decision linker (`T-07`), proactive Raising-Hand agent (`T-08`), and `pgvector` spec generator (`T-09`). |
+| **Weekend 2** | Oct 24 â€“ Oct 25 | **$7.5\text{ hrs}$** | **Lens Studio 5.15 Core:** Set up Lens Studio project with `SIK`, `PeriodicCameraCapturer.ts`, `PersistentStreamSocketClient.ts` (`T-10`), and transparent AR Whiteboard Overlay mesh (`T-11`). |
+| **Week 2** | Oct 26 â€“ Oct 29 | **$4.5\text{ hrs}$** | **SIK Pinch Interactions:** Wire the 4-button SIK Pinch Component Palette (`T-12`) and the Raising-Hand 3D Orb + Pinch Readout Card at $1.0\text{ m}\text{--}1.3\text{ m}$ focal distance (`T-13`). |
+| **HOLIDAY** | **Oct 30 â€“ Nov 2** | **$0.0\text{ hrs}$** | **ðŸï¸ AWAY ON HOLIDAY â€” ZERO WORK SCHEDULED** |
+| **Week 3** | Nov 3 â€“ Nov 6 | **$4.5\text{ hrs}$** | **Temporal Web Dashboard & RAG:** Build the Next.js 15 Timeline Scrubber (`T-14`), `pgvector` RAG Q&A drawer (`T-15`), and `.drawio` / `.md` export buttons (`T-16`). |
+| **Weekend 3** | Nov 7 â€“ Nov 8 | **$7.5\text{ hrs}$** | **End-to-End Integration & Video Shoot:** Record the $150\text{-second}$ demo video showing live SIK hand tracking inside the Lens Studio Interactive Preview Panel (`T-17`, `T-18`). |
 | **Submission Day** | **Mon, Nov 9** | **$2.5\text{ hrs}$** | **Final Polish & Early Submit:** Complete the 5-section Devpost writeup (`T-19`) and submit by **9:00 PM SAST on Nov 9** ($3\text{ hours}$ before the $00:00\text{ SAST}$ hard lock). |
 
 ---
@@ -368,14 +368,14 @@ class LiveGraphSession:
 ## 8. Master Stateful Task Board & Copy-Paste Agent Prompts
 
 ### Status Legend
-* `[DONE]` — Completed and verified.
-* `[READY_FOR_AGENT]` — Unblocked; copy-paste the prompt below into Claude Code / Cursor.
-* `[IN_PROGRESS]` — Currently being executed or tested.
-* `[TODO]` — Scheduled for a future sprint window.
+* `[DONE]` â€” Completed and verified.
+* `[READY_FOR_AGENT]` â€” Unblocked; copy-paste the prompt below into Claude Code / Cursor.
+* `[IN_PROGRESS]` â€” Currently being executed or tested.
+* `[TODO]` â€” Scheduled for a future sprint window.
 
 ---
 
-### Epic 0: Discovery, Mandatory Spec Docs & Repo Setup (Weekend 1 — Oct 17)
+### Epic 0: Discovery, Mandatory Spec Docs & Repo Setup (Weekend 1 â€” Oct 17)
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
@@ -385,7 +385,7 @@ class LiveGraphSession:
 | `T-03B` | **CRITICAL ($25\%$ of Score):** Generate `/docs/scope.md`, `/docs/prd.md`, and `/docs/spec.md` via Devpost Learn Skill Pack | 45m | `[READY_FOR_AGENT]` | Coding Agent |
 | `T-04` | Initialize Public GitHub Monorepo & Supabase `pgvector` Schema | 30m | `[READY_FOR_AGENT]` | Coding Agent |
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-03B` (Secures $25\%$ of Judging Rubric):
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-03B` (Secures $25\%$ of Judging Rubric):
 ```text
 We are competing in the "Learn AR with SPECS" hackathon (https://learn-specs.devpost.com/), where 25% of the judging score evaluates Spec-Driven Methodology & Rigor based on three mandatory files in the `/docs` directory: `docs/scope.md`, `docs/prd.md`, and `docs/spec.md`.
 
@@ -396,7 +396,7 @@ If the Devpost Learn skill pack is installed in this environment, execute its wo
 3. `docs/spec.md`: Complete Technical Specification including component hierarchy in Lens Studio 5.15, TypeScript class interfaces (`PeriodicCameraCapturer`, `PersistentStreamSocketClient`, `SpatialInterfaceManager`, `RaisingHandAgentController`), WebSocket JSON/Binary wire protocol, FastAPI endpoints, `drawio-mcp` cell styling rules (`bg=none`, `#00FF66` phosphor green and `#00E5FF` cyan strokes for waveguide transparency), and the 5-table Supabase PostgreSQL + `pgvector` schema.
 ```
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-04`:
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-04`:
 ```text
 Create a monorepo structure for "specscribe-ar" with four directories:
 1. `/docs` (Contains `scope.md`, `prd.md`, `spec.md`)
@@ -408,7 +408,7 @@ Also create `/supabase/migrations/001_initial_schema.sql` using the exact 5-tabl
 
 ---
 
-### Epic 1: FastAPI Orchestrator, In-Memory `drawio-mcp` & Raising-Hand Agent (Oct 17 – Oct 23)
+### Epic 1: FastAPI Orchestrator, In-Memory `drawio-mcp` & Raising-Hand Agent (Oct 17 â€“ Oct 23)
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
@@ -418,7 +418,7 @@ Also create `/supabase/migrations/001_initial_schema.sql` using the exact 5-tabl
 | `T-08` | Build "Raising-Hand" Proactive Critique & Research Sub-Agent | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
 | `T-09` | Build Post-Meeting Tech Spec & `pgvector` Embedding Pipeline | 1.0h | `[READY_FOR_AGENT]` | Coding Agent |
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-05` & `T-06`:
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-05` & `T-06`:
 ```text
 In `/backend`, implement the FastAPI orchestrator (`main.py` and `graph_engine.py`) using Python 3.11+, `drawio-mcp` (yohasacura PyPI package), `playwright`, `imagehash`, and `google-genai`:
 
@@ -443,7 +443,7 @@ In `/backend`, implement the FastAPI orchestrator (`main.py` and `graph_engine.p
      - `pinchCommand`: Immediately insert the pinched node type (`decision`, `service`, `database`, `terminal`), re-layout via Sugiyama, and push the updated texture within 150ms.
 ```
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-07`, `T-08`, and `T-09`:
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-07`, `T-08`, and `T-09`:
 ```text
 In `/backend/agents/`, implement three asynchronous intelligence modules:
 
@@ -462,7 +462,7 @@ In `/backend/agents/`, implement three asynchronous intelligence modules:
 
 ---
 
-### Epic 2: Lens Studio 5.15 TypeScript & SIK Spatial Client (Oct 24 – Oct 29)
+### Epic 2: Lens Studio 5.15 TypeScript & SIK Spatial Client (Oct 24 â€“ Oct 29)
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
@@ -471,7 +471,7 @@ In `/backend/agents/`, implement three asynchronous intelligence modules:
 | `T-12` | Implement SIK Pinch Component Palette (`Decision`, `Service`, `DB`, `Terminal`) | 2.5h | `[READY_FOR_AGENT]` | Coding Agent |
 | `T-13` | Implement "Raising-Hand" 3D Agent Orb & Pinch-to-Read Card (at $1.15\text{ m}$ depth) | 2.5h | `[READY_FOR_AGENT]` | Coding Agent |
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-10`, `T-11`, `T-12`, and `T-13`:
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-10`, `T-11`, `T-12`, and `T-13`:
 ```text
 In `/spectacles-lens/Assets/Scripts/`, generate four modular, zero-warning TypeScript components for Snap Lens Studio 5.15+ targeting Spectacles (2024) and the Lens Studio Interactive Preview Panel:
 
@@ -495,14 +495,14 @@ In `/spectacles-lens/Assets/Scripts/`, generate four modular, zero-warning TypeS
 
 4. `RaisingHandAgentController.ts`:
    - Manage the peripheral AI Teammate Orb anchored at 1.15m forward depth (top-right periphery to avoid center-field occlusion).
-   - State machine: `IDLE` (subtle pulse), `RESEARCHING` (rotating ring), `HAND_RAISED` (high-contrast floating badge showing `short_title` up to 28 chars, e.g., "🚩 Auth Token Leak Risk").
+   - State machine: `IDLE` (subtle pulse), `RESEARCHING` (rotating ring), `HAND_RAISED` (high-contrast floating badge showing `short_title` up to 28 chars, e.g., "ðŸš© Auth Token Leak Risk").
    - Bind `agentOrbPinchButton.onButtonPinched`: if `HAND_RAISED`, expand the floating 3-bullet critique card and set `Audio.PlaybackMode.LowLatency`; if `IDLE`, capture the user's spoken research query and send `action: "ASK_AGENT"` to the backend.
    - Also generate `/spectacles-lens/SCENE_HIERARCHY_SETUP.md` detailing exact SceneObject transforms (anchored between 1.0m and 1.3m along Z-axis) so the developer can wire inputs in Lens Studio 5.15 in under 15 minutes.
 ```
 
 ---
 
-### Epic 3: Next.js 15 Temporal Scrubber & RAG Hub (Nov 3 – Nov 6)
+### Epic 3: Next.js 15 Temporal Scrubber & RAG Hub (Nov 3 â€“ Nov 6)
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
@@ -510,12 +510,12 @@ In `/spectacles-lens/Assets/Scripts/`, generate four modular, zero-warning TypeS
 | `T-15` | Build RAG Q&A Sidebar (`pgvector` + Clickable Timestamp Citations) | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
 | `T-16` | Add 1-Click Export (Download `.drawio`, Markdown Spec, Decision Log) | 0.5h | `[READY_FOR_AGENT]` | Coding Agent |
 
-#### 🤖 Copy-Paste Coding Agent Prompt for `T-14`, `T-15`, and `T-16`:
+#### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-14`, `T-15`, and `T-16`:
 ```text
 In `/web-dashboard`, build a dark-mode Next.js 15 App Router engineering review interface for `/meetings/[id]`:
 1. Top Bar: Meeting title, duration, speaker badges, and 1-click export buttons ("Download .drawio XML", "Export Tech Spec .md", "Export Decision Log JSON").
 2. Center Split-Pane:
-   - Left Pane (60% width): High-contrast Draw.io Diagram Canvas showing the exact diagram snapshot active at the selected scrubber timestamp, plus a floating diff pill ("03:42 — Speaker 1 added Redis Cache: Reduce DB read contention").
+   - Left Pane (60% width): High-contrast Draw.io Diagram Canvas showing the exact diagram snapshot active at the selected scrubber timestamp, plus a floating diff pill ("03:42 â€” Speaker 1 added Redis Cache: Reduce DB read contention").
    - Right Pane (40% width): Synchronized Speaker-Diarized Transcript & Decision Log, plus inline cards where the "Raising-Hand AI Agent" intervened (`VULNERABILITY`, `LOGIC_FLAW`, `ALTERNATIVE_IDEA`).
 3. Bottom Temporal Scrubber Bar: A timeline slider from `00:00` to `End` with interactive markers for every `diagram_snapshot` (cyan nodes) and `agent_intervention` (amber hand icons). Dragging the slider updates both the rendered diagram and highlights the active transcript turn in real time.
 4. Slide-Out Drawer: "Ask the Meeting" RAG Agent powered by Supabase `pgvector` (`match_knowledge_chunks` RPC) that answers questions about *why* architectural decisions were made and renders clickable timestamp pills (`[04:15]`) that jump the timeline scrubber to that exact moment.
@@ -523,7 +523,7 @@ In `/web-dashboard`, build a dark-mode Next.js 15 App Router engineering review 
 
 ---
 
-### Epic 4: Demo Video & Devpost Submission Compliance (Nov 7 – Nov 9)
+### Epic 4: Demo Video & Devpost Submission Compliance (Nov 7 â€“ Nov 9)
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
