@@ -1,0 +1,14 @@
+{
+  "name": "specscribe-spectacles-lens",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Lens Studio 5.15+ TypeScript & SIK Spatial Client for SpecScribe AR",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "test": "npm run build && node --test tests/*.test.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

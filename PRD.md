@@ -1,4 +1,4 @@
-﻿# Master Product Requirement Document (PRD) â€” *SpecScribe AR*
+# Master Product Requirement Document (PRD) â€” *SpecScribe AR*
 
 * **Document Version:** `v1.1.0` (Research-Locked Architecture & Rubric Alignment)
 * **Last Updated:** Friday, October 16, 2026
@@ -412,11 +412,11 @@ Also create `/supabase/migrations/001_initial_schema.sql` using the exact 5-tabl
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
-| `T-05` | Build FastAPI Full-Duplex WebSocket Hub (`/ws/meeting/{id}`) | 1.0h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-06` | Build In-Memory `drawio-mcp` Sugiyama Engine + Playwright `export3.html` Daemon | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-07` | Build Live Speaker Transcript Ingestion & Temporal Decision Linker | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-08` | Build "Raising-Hand" Proactive Critique & Research Sub-Agent | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-09` | Build Post-Meeting Tech Spec & `pgvector` Embedding Pipeline | 1.0h | `[READY_FOR_AGENT]` | Coding Agent |
+| `T-05` | Build FastAPI Full-Duplex WebSocket Hub (`/ws/meeting/{id}`) | 1.0h | `[COMPLETED]` | Coding Agent |
+| `T-06` | Build In-Memory `drawio-mcp` Sugiyama Engine + Playwright `export3.html` Daemon | 1.5h | `[COMPLETED]` | Coding Agent |
+| `T-07` | Build Live Speaker Transcript Ingestion & Temporal Decision Linker | 1.5h | `[COMPLETED]` | Coding Agent |
+| `T-08` | Build "Raising-Hand" Proactive Critique & Research Sub-Agent | 1.5h | `[COMPLETED]` | Coding Agent |
+| `T-09` | Build Post-Meeting Tech Spec & `pgvector` Embedding Pipeline | 1.0h | `[COMPLETED]` | Coding Agent |
 
 #### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-05` & `T-06`:
 ```text
@@ -466,10 +466,10 @@ In `/backend/agents/`, implement three asynchronous intelligence modules:
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
-| `T-10` | Implement `PeriodicCameraCapturer.ts` & `PersistentStreamSocketClient.ts` | 2.0h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-11` | Implement AR Whiteboard Overlay Plane (`Base64.decodeTextureAsync`) | 2.0h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-12` | Implement SIK Pinch Component Palette (`Decision`, `Service`, `DB`, `Terminal`) | 2.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-13` | Implement "Raising-Hand" 3D Agent Orb & Pinch-to-Read Card (at $1.15\text{ m}$ depth) | 2.5h | `[READY_FOR_AGENT]` | Coding Agent |
+| `T-10` | Implement `PeriodicCameraCapturer.ts` & `PersistentStreamSocketClient.ts` | 2.0h | `[COMPLETED]` | Coding Agent |
+| `T-11` | Implement AR Whiteboard Overlay Plane (`Base64.decodeTextureAsync`) | 2.0h | `[COMPLETED]` | Coding Agent |
+| `T-12` | Implement SIK Pinch Component Palette (`Decision`, `Service`, `DB`, `Terminal`) | 2.5h | `[COMPLETED]` | Coding Agent |
+| `T-13` | Implement "Raising-Hand" 3D Agent Orb & Pinch-to-Read Card (at $1.15\text{ m}$ depth) | 2.5h | `[COMPLETED]` | Coding Agent |
 
 #### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-10`, `T-11`, `T-12`, and `T-13`:
 ```text
@@ -506,9 +506,9 @@ In `/spectacles-lens/Assets/Scripts/`, generate four modular, zero-warning TypeS
 
 | ID | Task Name | Est. Time | Status | Assigned To |
 | :--- | :--- | :--- | :--- | :--- |
-| `T-14` | Build Temporal Scrubber Dashboard (Diagram + Diarized Transcript Sync) | 2.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-15` | Build RAG Q&A Sidebar (`pgvector` + Clickable Timestamp Citations) | 1.5h | `[READY_FOR_AGENT]` | Coding Agent |
-| `T-16` | Add 1-Click Export (Download `.drawio`, Markdown Spec, Decision Log) | 0.5h | `[READY_FOR_AGENT]` | Coding Agent |
+| `T-14` | Build Temporal Scrubber Dashboard (Diagram + Diarized Transcript Sync) | 2.5h | `[DONE]` | Coding Agent |
+| `T-15` | Build RAG Q&A Sidebar (`pgvector` + Clickable Timestamp Citations) | 1.5h | `[DONE]` | Coding Agent |
+| `T-16` | Add 1-Click Export (Download `.drawio`, Markdown Spec, Decision Log) | 0.5h | `[DONE]` | Coding Agent |
 
 #### ðŸ¤– Copy-Paste Coding Agent Prompt for `T-14`, `T-15`, and `T-16`:
 ```text

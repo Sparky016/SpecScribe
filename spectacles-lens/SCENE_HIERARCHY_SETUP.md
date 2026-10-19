@@ -1,4 +1,4 @@
-﻿# Snap Lens Studio 5.15 Scene Hierarchy Setup Guide — SpecScribe AR
+# Snap Lens Studio 5.15 Scene Hierarchy Setup Guide — SpecScribe AR
 
 This guide documents the exact SceneObject hierarchy, component configurations, and spatial transforms required to wire SpecScribe AR in Snap Lens Studio 5.15+ for the Snap Spectacles (2024) Interactive Preview Panel.
 
@@ -47,6 +47,9 @@ Scene Root
 │       ├── Transform: Position: (+38.0, 18.0, -115.0 cm) | Rotation: (0, -12, 0 deg)
 │       ├── AgentOrbMesh [Component.RenderMeshVisual + SIK PinchButton + Interactable]
 │       │   └── Material: Emissive Pulsing Shader (Cyan / Neon Green)
+│       ├── ResearchingRingMesh [SceneObject + Component.RenderMeshVisual]
+│       │   ├── Transform: Position: (0.0, 0.0, 0.0 cm) | Default: Disabled
+│       │   └── Mesh: Torus / Ring (Color: #00E5FF Emissive)
 │       ├── HandRaisedPillBadge [SceneObject]
 │       │   ├── Transform: Position: (0.0, 8.0, 0.0 cm) | Default: Disabled
 │       │   └── PillTitleText [Component.Text] (Color: #00FF66, Max chars: 28)
@@ -68,7 +71,7 @@ Scene Root
 
 ---
 
-## 3. Script Input Wiring
+## 3. Script Input Wiring in Lens Studio 5.15 Inspector
 
 1. **`PeriodicCameraCapturer.ts`:**
    * `sampleIntervalSeconds`: `3.0`
@@ -87,8 +90,31 @@ Scene Root
 4. **`RaisingHandAgentController.ts`:**
    * `socketClient`: Link to `PersistentStreamSocketClient`
    * `agentOrbPinchButton`: Link to `AgentOrbMesh` PinchButton
+   * `agentOrbMeshVisual`: Link to `AgentOrbMesh` RenderMeshVisual
+   * `researchingRingObject`: Link to `ResearchingRingMesh` SceneObject
    * `handRaisedPillObject`: Link to `HandRaisedPillBadge`
    * `pillTitleText`: Link to `PillTitleText`
    * `expandedCritiqueCard`: Link to `ExpandedCritiqueCard`
    * `critiqueBodyText`: Link to `CritiqueBodyText`
    * `agentAudioComponent`: Link to `AgentVoicePlayer`
+
+---
+
+## 4. Lens Studio Interactive Preview Testing (15-Minute Run-Through)
+
+1. **Start Backend Engine:**
+   ```bash
+   cd backend
+   python -m uvicorn main:app --reload --port 8000
+   ```
+2. **Open Lens Studio 5.15:**
+   * Open the project or import `spectacles-lens`.
+   * Enable the **Interactive Preview Panel** (`Alt + P` or Preview toggle).
+   * Verify the WebSocket connects to `ws://localhost:8000/ws/meeting/demo-session-01`.
+3. **Trigger Pinch Palette:**
+   * Use simulated hand tracking in Preview to pinch `◇ Decision`.
+   * Observe HUD toast `"Adding [DECISION]..."`.
+   * Within <150ms, the rendered Draw.io overlay appears on `WhiteboardOverlayAnchor`.
+4. **Trigger Proactive AI Teammate Critique:**
+   * When backend detects architectural issues or on diagram update, `HAND_RAISED` badge lights up at +38cm X, +18cm Y, -115cm Z.
+   * Pinch `AgentOrbMesh` to toggle the 3-bullet critique card.

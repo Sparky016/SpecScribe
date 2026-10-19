@@ -1,4 +1,4 @@
-﻿[project]
+[project]
 name = "specscribe-backend"
 version = "0.1.0"
 description = "FastAPI Orchestrator, In-Memory drawio-mcp Engine & Raising-Hand Agent for Snap Spectacles"
