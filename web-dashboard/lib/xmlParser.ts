@@ -1,4 +1,5 @@
 import { ParsedEdge, ParsedGraph, ParsedVertex } from "./types";
+import { DEFAULT_FALLBACK_COLORS, NODE_REGISTRY, NodeType } from "./nodeRegistry";
 
 /**
  * Parses Draw.io / mxGraph XML into structured vertices and edges
@@ -129,17 +130,12 @@ export function parseDrawioXml(xmlString: string): ParsedGraph {
 function detectNodeType(style: string, label: string): "service" | "decision" | "database" | "terminal" | "default" {
   const s = style.toLowerCase();
   const l = label.toLowerCase();
-  if (s.includes("shape=cylinder3") || l.includes("db") || l.includes("database") || l.includes("redis") || l.includes("postgres") || l.includes("storage")) {
-    return "database";
-  }
-  if (s.includes("rhombus") || l.includes("decision") || l.includes("condition") || l.includes("auth?") || l.includes("filter?")) {
-    return "decision";
-  }
-  if (s.includes("ellipse") || l.includes("terminal") || l.includes("client") || l.includes("alert") || l.includes("end") || l.includes("user")) {
-    return "terminal";
-  }
-  if (s.includes("rounded=1") || l.includes("service") || l.includes("api") || l.includes("gateway") || l.includes("worker") || l.includes("broker")) {
-    return "service";
+  const order: NodeType[] = ["database", "decision", "terminal", "service"];
+  for (const typeKey of order) {
+    const def = NODE_REGISTRY[typeKey];
+    if (def.styleKeywords.some((kw) => s.includes(kw)) || def.labelKeywords.some((kw) => l.includes(kw))) {
+      return typeKey;
+    }
   }
   return "service";
 }
@@ -152,20 +148,14 @@ function extractColors(style: string, type: "service" | "decision" | "database" 
     return { fillColor: fillMatch[1], strokeColor: strokeMatch[1] };
   }
 
-  // Waveguide-Optimized Styling Defaults
-  switch (type) {
-    case "service":
-      return { fillColor: "#107C41", strokeColor: "#00FF66" };
-    case "database":
-      return { fillColor: "#0D47A1", strokeColor: "#00E5FF" };
-    case "decision":
-      return { fillColor: "#004D40", strokeColor: "#00E5FF" };
-    case "terminal":
-      return { fillColor: "#311B92", strokeColor: "#00FF66" };
-    default:
-      return { fillColor: "#1F2937", strokeColor: "#38BDF8" };
+  if (type in NODE_REGISTRY) {
+    const def = NODE_REGISTRY[type as NodeType];
+    return { fillColor: def.fillColor, strokeColor: def.strokeColor };
   }
+
+  return DEFAULT_FALLBACK_COLORS;
 }
+
 
 /**
  * If coordinates are all 0 or clustered, perform an automatic topological/grid layout

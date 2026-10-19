@@ -29,31 +29,16 @@ try:
 except Exception:
     pass
 
+try:
+    from node_registry import NODE_REGISTRY
+except ImportError:
+    from backend.node_registry import NODE_REGISTRY
+
 # Waveguide-Optimized drawio-mcp Styling Matrix (Snap Spectacles 2024 additive waveguides)
-STYLE_MAP: Dict[str, str] = {
-    "service": (
-        "rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;"
-        "fontColor=#FFFFFF;strokeWidth=2;"
-    ),
-    "decision": (
-        "rhombus;whiteSpace=wrap;html=1;fillColor=#004D40;strokeColor=#00E5FF;"
-        "fontColor=#FFFFFF;strokeWidth=2;"
-    ),
-    "database": (
-        "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;"
-        "size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;"
-    ),
-    "terminal": (
-        "ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;"
-        "fontColor=#FFFFFF;strokeWidth=2;"
-    ),
-}
+STYLE_MAP: Dict[str, str] = {k: v.drawio_style for k, v in NODE_REGISTRY.items()}
 
 DEFAULT_DIMENSIONS: Dict[str, Tuple[float, float]] = {
-    "service": (140.0, 60.0),
-    "decision": (120.0, 80.0),
-    "database": (120.0, 80.0),
-    "terminal": (100.0, 60.0),
+    k: v.default_dimensions for k, v in NODE_REGISTRY.items()
 }
 
 EDGE_STYLE = (
