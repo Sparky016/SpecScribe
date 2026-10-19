@@ -168,10 +168,19 @@ declare class AudioComponent {
 
 declare interface ScriptEvent {
   bind(callback: (eventData?: any) => void): void;
+  enabled?: boolean;
+}
+
+declare interface DelayedCallbackEvent extends ScriptEvent {
+  reset(time: number): void;
+  cancel(): void;
+  getTimeLeft?(): number;
+  getDelayTime?(): number;
 }
 
 declare module 'Component/ScriptComponent' {
   export class BaseScriptComponent {
+    createEvent(eventType: 'DelayedCallbackEvent'): DelayedCallbackEvent;
     createEvent(eventType: 'OnStartEvent' | 'UpdateEvent' | 'OnDestroyEvent' | string): ScriptEvent;
     getSceneObject(): SceneObject;
     getTransform(): Transform;

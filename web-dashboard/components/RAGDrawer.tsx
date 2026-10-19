@@ -299,8 +299,16 @@ function RenderFormattedText({
   );
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 function renderMarkdownInline(raw: string): string {
-  // Quick bold replacement
-  let html = raw.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-white">$1</strong>');
-  return html;
+  const escaped = escapeHtml(raw);
+  return escaped.replace(/\*\*(.*?)\*\*/g, '<strong class="font-bold text-white">$1</strong>');
 }

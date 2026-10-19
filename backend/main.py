@@ -619,8 +619,8 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
                         )
 
                     elif action == "CONNECT_NODES":
-                        source = msg.get("source", "")
-                        target = msg.get("target", "")
+                        source = msg.get("source") or msg.get("source_id", "")
+                        target = msg.get("target") or msg.get("target_id", "")
                         edge_label = msg.get("edge_label", "")
                         edge_id = session.add_edge(source, target, edge_label)
                         if edge_id:

@@ -16,6 +16,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private latestSpokenPhrase: string = 'New Component';
   private isDestroyed: boolean = false;
   private reconnectAttempt: number = 0;
+  private reconnectEvent: DelayedCallbackEvent | null = null;
 
   public onDiagramUpdated: (imageB64: string, diffSummary: string) => void = () => {};
   public onHandRaised: (payload: any) => void = () => {};
@@ -70,6 +71,13 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       this.activeSocket.onopen = () => {
         print(`[PersistentStreamSocketClient] Connected to ${this.websocketUrl}`);
         this.reconnectAttempt = 0;
+        if (this.reconnectEvent) {
+          try {
+            this.reconnectEvent.cancel();
+          } catch (e) {
+            // Ignored
+          }
+        }
         this.sendJson({
           eventType: 'handshake',
           device: 'Spectacles-2024',
@@ -102,15 +110,20 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     if (this.isDestroyed) {
       return;
     }
-    const delayMs = Math.min(10000, 2000 * Math.pow(1.5, this.reconnectAttempt));
+    const delaySec = Math.min(10.0, 2.0 * Math.pow(1.5, this.reconnectAttempt));
     this.reconnectAttempt++;
-    if (typeof setTimeout !== 'undefined') {
-      setTimeout(() => {
+    print(`[PersistentStreamSocketClient] Scheduling reconnect in ${delaySec.toFixed(1)}s (attempt ${this.reconnectAttempt})...`);
+
+    if (!this.reconnectEvent) {
+      this.reconnectEvent = this.createEvent('DelayedCallbackEvent');
+      this.reconnectEvent.bind(() => {
         if (!this.isConnected() && !this.isDestroyed) {
+          print('[PersistentStreamSocketClient] Attempting WebSocket reconnect via DelayedCallbackEvent...');
           this.initializeWebSocket();
         }
-      }, delayMs);
+      });
     }
+    this.reconnectEvent.reset(delaySec);
   }
 
   private routeInboundJson(rawJson: string): void {
@@ -192,6 +205,13 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   private cleanup(): void {
     this.isDestroyed = true;
+    if (this.reconnectEvent) {
+      try {
+        this.reconnectEvent.cancel();
+      } catch (e) {
+        // Ignored
+      }
+    }
     try {
       this.asrModule.stopTranscribing();
     } catch (e) {

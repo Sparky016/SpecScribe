@@ -4,8 +4,8 @@
 **Hackathon:** Learn AR with SPECS ([https://learn-specs.devpost.com/](https://learn-specs.devpost.com/) — Challenge ID `31659`)  
 **Scope:** Full Repository (`/docs`, `/backend`, `/spectacles-lens`, `/supabase`, `/web-dashboard`)  
 **Files Reviewed:** 22 core source files  
-**Automated Verification:** 28/28 backend pytest tests passing (including non-blocking concurrency test suite and socket resilience tests), 15/15 Lens Studio TypeScript tests passing, Next.js 15 production build passing (`next build` 0 errors).  
-**Findings:** 15 (0 Critical, 2 High, 6 Medium, 4 Low — 3 Resolved: #1, #2, #5)
+**Automated Verification:** 28/28 backend pytest tests passing, 16/16 Lens Studio TypeScript tests passing, Next.js 15 production build passing (`next build` 0 errors), 100% passing end-to-end hand-test verification driver.  
+**Findings:** 15 (0 Critical, 1 High, 5 Medium, 4 Low — 5 Resolved: #1, #2, #3, #5, #6)
 
 ---
 
@@ -29,10 +29,10 @@
 |---|----------|----------|----------|-------------|
 | 1 | ~~**Critical**~~ **[RESOLVED]** | Concurrency / Perf | [`backend/main.py:506`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/main.py#L506) | **[RESOLVED]** Converted all Gemini API calls (vision diffing, rationale synthesis, proactive critique, research pull, Q&A) to non-blocking `client.aio` SDK coroutines. |
 | 2 | ~~**High**~~ **[RESOLVED]** | Resilience / Error | [`backend/main.py:484-680`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/main.py#L484-L680) | **[RESOLVED]** Wrapped `pinchCommand` and ASR message processing in localized `try...except` boundaries, dispatching `COMMAND_ERROR` to prevent WebSocket drops. |
-| 3 | **High** | Security: XSS | [`web-dashboard/components/RAGDrawer.tsx:295`](file:///c:/Users/ruanc/source/repos/SpecScribe/web-dashboard/components/RAGDrawer.tsx#L295) | Unsanitized `dangerouslySetInnerHTML` on RAG answer text allows potential script injection. |
+| 3 | ~~**High**~~ **[RESOLVED]** | Security: XSS | [`web-dashboard/components/RAGDrawer.tsx:295-315`](file:///c:/Users/ruanc/source/repos/SpecScribe/web-dashboard/components/RAGDrawer.tsx#L295-L315) | **[RESOLVED]** Sanitized raw HTML entities in `renderMarkdownInline` using `escapeHtml` prior to bold regex substitution. |
 | 4 | **High** | SOLID: DIP | [`backend/main.py:42-85`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/main.py#L42-L85) | High-level orchestrator and sub-agents couple directly to ambient global in-memory state. |
 | 5 | ~~**High**~~ **[RESOLVED]** | Performance | [`backend/agents/spec_generator.py:408-460`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/agents/spec_generator.py#L408-L460) | **[RESOLVED]** Replaced sequential embedding loop with non-blocking async batch embedding (`generate_text_embeddings_batch_async`) and single round-trip thread persistence. |
-| 6 | **Medium** | Correctness: Engine | [`spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts:107-113`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts#L107-L113) | Reconnect logic checks `setTimeout` which is undefined on Spectacles OS, preventing reconnection. |
+| 6 | ~~**Medium**~~ **[RESOLVED]** | Correctness: Engine | [`spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts:101-125`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts#L101-L125) | **[RESOLVED]** Replaced browser `setTimeout` with Snap Lens Studio's native `DelayedCallbackEvent` with exponential backoff. |
 | 7 | **Medium** | SOLID: SRP | [`backend/main.py:421-675`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/main.py#L421-L675) | God-function `meeting_websocket_hub` handles protocol, diffing, AI vision, layout, and database I/O. |
 | 8 | **Medium** | Security: CORS | [`backend/main.py:206-212`](file:///c:/Users/ruanc/source/repos/SpecScribe/backend/main.py#L206-L212) | Wildcard origin `allow_origins=["*"]` combined with `allow_credentials=True` violates spec and risks CSRF. |
 | 9 | **Medium** | Security: AuthZ | [`supabase/migrations/001_initial_schema.sql:1-96`](file:///c:/Users/ruanc/source/repos/SpecScribe/supabase/migrations/001_initial_schema.sql#L1-L96) | All 5 Supabase tables lack Row-Level Security (RLS) policies, allowing anonymous manipulation. |
@@ -84,15 +84,19 @@
 
 ---
 
-### #3 — [High] Security: Unsanitized `dangerouslySetInnerHTML` in Web Dashboard
-* **Location:** [`web-dashboard/components/RAGDrawer.tsx:295`](file:///c:/Users/ruanc/source/repos/SpecScribe/web-dashboard/components/RAGDrawer.tsx#L295)
-* **What:** Inline markdown rendering injects raw text into the DOM via `dangerouslySetInnerHTML`:
+### #3 — [RESOLVED] [High] Security: Unsanitized `dangerouslySetInnerHTML` in Web Dashboard
+* **Location:** [`web-dashboard/components/RAGDrawer.tsx:295-315`](file:///c:/Users/ruanc/source/repos/SpecScribe/web-dashboard/components/RAGDrawer.tsx#L295-L315)
+* **What:** Inline markdown rendering previously injected raw text into the DOM via `dangerouslySetInnerHTML`:
   ```tsx
   <span key={idx} dangerouslySetInnerHTML={{ __html: renderMarkdownInline(part) }} />
   ```
-  where `renderMarkdownInline` only replaces `**text**` without HTML escaping or sanitizing.
-* **Why:** If a meeting transcript, spoken label, or synthesized RAG output contains HTML/XSS payloads (e.g., `<img src=x onerror=alert(1)>`), the script executes in the user's browser session.
-* **Fix:** Escape HTML entities before markdown regex substitution or use a secure markdown renderer (such as `react-markdown` with `rehype-sanitize`).
+  where `renderMarkdownInline` only replaced `**text**` without HTML escaping or sanitizing.
+* **Why:** If a meeting transcript, spoken label, or synthesized RAG output contained HTML/XSS payloads (e.g., `<img src=x onerror=alert(1)>`), the script would execute in the user's browser session.
+* **Resolution [RESOLVED]:**
+  1. Implemented a zero-dependency `escapeHtml` function sanitizing `&`, `<`, `>`, `"`, and `'` characters.
+  2. Applied `escapeHtml(raw)` prior to regex substitution for `**bold**` tokens, ensuring any raw HTML tags are converted to safe entity equivalents while preserving formatting.
+  3. Verified via automated Node.js test suite across `<script>`, `<img>`, and nested bold malicious vectors.
+  4. Verified in end-to-end hand test driver through live grounded RAG question/answer flow.
 
 ---
 
@@ -120,20 +124,16 @@
 
 ---
 
-### #6 — [Medium] Correctness: `PersistentStreamSocketClient.ts` Reconnect Relies on Browser `setTimeout`
-* **Location:** [`spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts:107-113`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts#L107-L113)
-* **What:** The reconnection schedule guards on `typeof setTimeout !== 'undefined'`.
-* **Why:** In Snap Lens Studio / SnapScript runtime, `setTimeout` is not provided globally (Lens Studio uses `DelayedCallbackEvent`). As a result, the reconnect logic is silently skipped on physical hardware or the simulation runtime when the socket drops.
-* **Fix:** Implement reconnect scheduling using Lens Studio's `DelayedCallbackEvent`:
-  ```typescript
-  const delayEvent = this.createEvent('DelayedCallbackEvent');
-  delayEvent.bind(() => {
-    if (!this.isConnected() && !this.isDestroyed) {
-      this.initializeWebSocket();
-    }
-  });
-  delayEvent.reset(delayMs / 1000);
-  ```
+### #6 — [RESOLVED] [Medium] Correctness: `PersistentStreamSocketClient.ts` Reconnect Relies on Browser `setTimeout`
+* **Location:** [`spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts:101-125`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts#L101-L125), [`spectacles-lens/types/LensStudio.d.ts:171-182`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/types/LensStudio.d.ts#L171-L182)
+* **What:** The reconnection schedule previously guarded on `typeof setTimeout !== 'undefined'`.
+* **Why:** In Snap Lens Studio / SnapScript runtime on Spectacles OS, `setTimeout` is not provided globally (Lens Studio uses `DelayedCallbackEvent`). As a result, the reconnect logic was silently skipped on physical hardware or the simulation runtime when Wi-Fi dropped.
+* **Resolution [RESOLVED]:**
+  1. Replaced `setTimeout` with Snap Lens Studio's native `DelayedCallbackEvent` created via `this.createEvent('DelayedCallbackEvent')`.
+  2. Implemented exponential backoff with a 10s ceiling (`Math.min(10.0, 2.0 * Math.pow(1.5, this.reconnectAttempt))`) calling `reconnectEvent.reset(delaySec)`.
+  3. Added cancellation on successful `onopen` and `cleanup()`.
+  4. Added `DelayedCallbackEvent` typings in [`types/LensStudio.d.ts`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/types/LensStudio.d.ts).
+  5. Added unit test `schedules reconnect via DelayedCallbackEvent on socket close` in [`tests/components.test.mjs`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/tests/components.test.mjs) asserting automated reconnection on disconnect.
 
 ---
 
@@ -230,18 +230,22 @@
 
 ```text
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-CODE AUDIT & APPLICATION REVIEW — FINDINGS: 15 (0 Critical, 2 High, 6 Medium, 4 Low — 3 Resolved)
-STATUS: EVENT-LOOP & WEBSOCKET RESILIENCE HARDENED (ALL TEST SUITES PASSING)
+CODE AUDIT & APPLICATION REVIEW — FINDINGS: 15 (0 Critical, 1 High, 5 Medium, 4 Low — 5 Resolved)
+STATUS: EVENT-LOOP, WEBSOCKET RESILIENCE, RECONNECT & XSS HARDENED (ALL SUITES PASSING)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Hardening Completed:
 - Finding #1 (Critical): Migrated all Gemini vision extraction, decision rationale,
   proactive audits, and spec compilation to non-blocking client.aio SDK.
 - Finding #2 (High): Wrapped pinchCommand and ASR processing in localized try/except
   blocks with COMMAND_ERROR dispatching, preventing WebSocket disconnects.
+- Finding #3 (High): Sanitized HTML entities in RAGDrawer.tsx before bold substitution,
+  neutralizing XSS vectors in synthesized meeting transcripts.
 - Finding #5 (High): Migrated serial chunk embedding to single-roundtrip batch
   async embeddings and background thread database persistence.
+- Finding #6 (Medium): Replaced undefined browser setTimeout with Snap Lens Studio
+  DelayedCallbackEvent with exponential backoff for hardware reconnects.
 Remaining Priority Actions:
-1. Sanitize RAGDrawer.tsx innerHTML rendering against XSS payloads (#3).
-2. Refactor global state coupling in orchestrator using dependency injection (#4).
+1. Refactor global state coupling in orchestrator using dependency injection (#4).
+2. Decompose god-function meeting_websocket_hub using EnvelopeRouter (#7).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 ```

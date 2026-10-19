@@ -267,6 +267,37 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(decisionEvent.snapshot_id, 'snap-456');
       assert.equal(decisionEvent.decision_rationale, 'Mitigates DB contention under high concurrency');
     });
+
+    test('schedules reconnect via DelayedCallbackEvent on socket close', () => {
+      let socketCreationCount = 0;
+      global._mockSocketFactory = (url) => {
+        socketCreationCount++;
+        return new MockWebSocket(url);
+      };
+
+      const client = createComponentInstance(PersistentStreamSocketClient);
+      client.onAwake();
+      client._testEvents.OnStartEvent.trigger();
+      assert.equal(socketCreationCount, 1, 'Initial WebSocket should be created on start');
+
+      // Simulate connection open then disconnect
+      client.activeSocket.onopen();
+      client.activeSocket.close();
+
+      // Verify that DelayedCallbackEvent was created and reset with backoff delay
+      assert.ok(client._testEvents.DelayedCallbackEvent, 'DelayedCallbackEvent should be registered');
+      assert.ok(client._testEvents.DelayedCallbackEvent.delayTime >= 2.0, 'Backoff delay should be at least 2.0s');
+      assert.equal(client._testEvents.DelayedCallbackEvent.enabled, true);
+
+      // Trigger the DelayedCallbackEvent to simulate delay expiry
+      client._testEvents.DelayedCallbackEvent.trigger();
+
+      // Verify that a second connection attempt occurred
+      assert.equal(socketCreationCount, 2, 'Second WebSocket should be created after DelayedCallbackEvent fires');
+
+      // Clean up factory
+      global._mockSocketFactory = null;
+    });
   });
 
   describe('T-11 & T-12: SpatialInterfaceManager', () => {

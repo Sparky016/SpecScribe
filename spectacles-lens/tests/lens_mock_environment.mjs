@@ -149,11 +149,21 @@ export class MockWebSocket {
 export class MockScriptEvent {
   constructor() {
     this.callbacks = [];
+    this.delayTime = 0;
+    this.enabled = true;
   }
   bind(cb) {
     this.callbacks.push(cb);
   }
+  reset(seconds) {
+    this.delayTime = seconds;
+    this.enabled = true;
+  }
+  cancel() {
+    this.enabled = false;
+  }
   trigger(eventData) {
+    if (!this.enabled) return;
     for (const cb of this.callbacks) {
       cb(eventData);
     }
@@ -240,7 +250,10 @@ export function setupLensGlobalMocks() {
     }
     if (request === 'LensStudio:InternetModule') {
       return {
-        createWebSocket: (url) => global._mockSocket || new MockWebSocket(url)
+        createWebSocket: (url) => {
+          if (global._mockSocketFactory) return global._mockSocketFactory(url);
+          return global._mockSocket || new MockWebSocket(url);
+        }
       };
     }
     if (request === 'LensStudio:AsrModule') {
