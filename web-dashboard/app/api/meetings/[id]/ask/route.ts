@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { askMeetingRAG } from "../../../../../lib/api";
 import { DEMO_TIMELINE } from "../../../../../lib/demoData";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -12,9 +10,19 @@ export async function POST(
   const body = await request.json();
   const question = body.question || "";
 
+  // Bound internal service URL injected by Vercel Services, with fallbacks for local dev
+  const backendBase =
+    process.env.BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+
   // Try FastAPI backend first
   try {
-    const res = await fetch(`${API_BASE_URL}/api/meetings/${id}/ask`, {
+    const targetUrl = new URL(
+      `api/meetings/${id}/ask`,
+      backendBase.endsWith("/") ? backendBase : `${backendBase}/`
+    );
+    const res = await fetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
@@ -32,3 +40,4 @@ export async function POST(
   const localRAG = await askMeetingRAG(id, question, DEMO_TIMELINE);
   return NextResponse.json(localRAG);
 }
+

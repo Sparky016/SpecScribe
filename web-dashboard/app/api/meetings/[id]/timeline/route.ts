@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "../../../../../lib/demoData";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -13,8 +11,18 @@ export async function GET(
     return NextResponse.json(DEMO_TIMELINE);
   }
 
+  // Bound internal service URL injected by Vercel Services, with fallbacks for local dev
+  const backendBase =
+    process.env.BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+
   try {
-    const res = await fetch(`${API_BASE_URL}/api/meetings/${id}/timeline`, {
+    const targetUrl = new URL(
+      `api/meetings/${id}/timeline`,
+      backendBase.endsWith("/") ? backendBase : `${backendBase}/`
+    );
+    const res = await fetch(targetUrl, {
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
     });
@@ -36,3 +44,4 @@ export async function GET(
     },
   });
 }
+

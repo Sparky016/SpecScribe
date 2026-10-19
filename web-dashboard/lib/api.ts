@@ -1,7 +1,26 @@
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "./demoData";
 import { RAGResponse, TimelineData } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+function getTargetApiUrl(path: string): string {
+  const cleanPath = path.startsWith("/") ? path.slice(1) : path;
+  if (typeof window !== "undefined") {
+    // In browser: call same-origin Next.js route handler (proxying to BACKEND_URL)
+    // unless an explicit external NEXT_PUBLIC_API_URL is configured
+    const publicUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (publicUrl && !publicUrl.includes("localhost:8000")) {
+      const base = publicUrl.endsWith("/") ? publicUrl : `${publicUrl}/`;
+      return new URL(cleanPath, base).toString();
+    }
+    return `/${cleanPath}`;
+  }
+  // Server-side: use bound internal service URL injected by Vercel Services
+  const backendBase =
+    process.env.BACKEND_URL ||
+    process.env.NEXT_PUBLIC_API_URL ||
+    "http://localhost:8000";
+  const base = backendBase.endsWith("/") ? backendBase : `${backendBase}/`;
+  return new URL(cleanPath, base).toString();
+}
 
 export function formatTimestamp(ms: number): string {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -31,7 +50,8 @@ export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineD
 
   // Attempt to fetch from FastAPI backend
   try {
-    const res = await fetch(`${API_BASE_URL}/api/meetings/${meetingId}/timeline`, {
+    const targetUrl = getTargetApiUrl(`api/meetings/${meetingId}/timeline`);
+    const res = await fetch(targetUrl, {
       cache: "no-store",
     });
     if (res.ok) {
@@ -62,7 +82,8 @@ export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineD
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
   // 1. Try FastAPI endpoint first if available
   try {
-    const res = await fetch(`${API_BASE_URL}/api/meetings/${meetingId}/ask`, {
+    const targetUrl = getTargetApiUrl(`api/meetings/${meetingId}/ask`);
+    const res = await fetch(targetUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
