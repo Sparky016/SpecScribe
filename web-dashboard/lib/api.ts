@@ -42,7 +42,17 @@ export function parseTimestamp(label: string): number {
   return 0;
 }
 
-export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineData> {
+export interface TimelinePaginationOptions {
+  limit?: number;
+  offset?: number;
+  from_ms?: number;
+  to_ms?: number;
+}
+
+export async function getMeetingTimeline(
+  meetingId: string,
+  options?: TimelinePaginationOptions
+): Promise<TimelineData> {
   // If demo session requested, return verified rich demo dataset immediately
   if (meetingId === DEMO_MEETING_ID || meetingId === "demo" || !meetingId) {
     return DEMO_TIMELINE;
@@ -50,7 +60,15 @@ export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineD
 
   // Attempt to fetch from FastAPI backend
   try {
-    const targetUrl = getTargetApiUrl(`api/meetings/${meetingId}/timeline`);
+    const queryParams = new URLSearchParams();
+    if (options?.limit !== undefined) queryParams.set("limit", options.limit.toString());
+    if (options?.offset !== undefined) queryParams.set("offset", options.offset.toString());
+    if (options?.from_ms !== undefined) queryParams.set("from_ms", options.from_ms.toString());
+    if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
+
+    const qs = queryParams.toString();
+    const endpoint = `api/meetings/${meetingId}/timeline${qs ? `?${qs}` : ""}`;
+    const targetUrl = getTargetApiUrl(endpoint);
     const res = await fetch(targetUrl, {
       cache: "no-store",
     });
@@ -62,6 +80,7 @@ export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineD
         diagram_snapshots: data.diagram_snapshots || [],
         agent_interventions: data.agent_interventions || [],
         knowledge_chunks: data.knowledge_chunks || [],
+        pagination: data.pagination,
       };
     }
   } catch (err) {
@@ -78,6 +97,9 @@ export async function fetchMeetingTimeline(meetingId: string): Promise<TimelineD
     },
   };
 }
+
+export const fetchMeetingTimeline = getMeetingTimeline;
+
 
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
   // 1. Try FastAPI endpoint first if available

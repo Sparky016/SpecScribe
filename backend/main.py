@@ -21,7 +21,7 @@ if backend_dir not in sys.path:
 
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -150,6 +150,8 @@ app = FastAPI(
     description="Full-Duplex Spatial Architecture Hub & Autonomous Agents for Snap Spectacles",
     lifespan=lifespan,
 )
+app.state.session_manager = session_manager
+
 
 raw_origins = os.environ.get(
     "ALLOWED_ORIGINS",
@@ -219,12 +221,29 @@ async def create_meeting(
     return record
 
 
+def filter_by_window(items: List[Dict[str, Any]], from_t: Optional[int], to_t: Optional[int]) -> List[Dict[str, Any]]:
+    res = items
+    if from_t is not None:
+        res = [x for x in res if x.get("timestamp_ms", 0) >= from_t]
+    if to_t is not None:
+        res = [x for x in res if x.get("timestamp_ms", 0) <= to_t]
+    return res
+
+
 @app.get("/api/meetings/{meeting_id}/timeline")
 async def get_meeting_timeline(
     meeting_id: str,
+    limit: int = Query(default=100, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    from_ms: Optional[int] = Query(default=None, ge=0),
+    to_ms: Optional[int] = Query(default=None, ge=0),
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     meeting = session_mgr.memory_store["meetings"].get(meeting_id)
+    all_turns: List[Dict[str, Any]] = []
+    snapshots: List[Dict[str, Any]] = []
+    interventions: List[Dict[str, Any]] = []
+    knowledge_chunks: List[Dict[str, Any]] = []
 
     if session_mgr.supabase_client:
         try:
@@ -245,24 +264,21 @@ async def get_meeting_timeline(
             k_res = await asyncio.to_thread(
                 lambda: session_mgr.supabase_client.table("knowledge_chunks").select("id, meeting_id, chunk_type, timestamp_ms, content").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
-            return {
-                "meeting": meeting or {"id": meeting_id, "title": "Untitled Meeting"},
-                "transcript_turns": t_res.data if t_res.data else session_mgr.memory_store["transcript_turns"].get(meeting_id, []),
-                "diagram_snapshots": s_res.data if s_res.data else session_mgr.memory_store["diagram_snapshots"].get(meeting_id, []),
-                "agent_interventions": i_res.data if i_res.data else session_mgr.memory_store["agent_interventions"].get(meeting_id, []),
-                "knowledge_chunks": k_res.data if k_res.data else [
-                    {
-                        "id": k["id"],
-                        "meeting_id": k["meeting_id"],
-                        "chunk_type": k["chunk_type"],
-                        "timestamp_ms": k["timestamp_ms"],
-                        "content": k["content"],
-                    }
-                    for k in session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
-                ],
-            }
+            all_turns = t_res.data if t_res.data else session_mgr.memory_store["transcript_turns"].get(meeting_id, [])
+            snapshots = s_res.data if s_res.data else session_mgr.memory_store["diagram_snapshots"].get(meeting_id, [])
+            interventions = i_res.data if i_res.data else session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
+            knowledge_chunks = k_res.data if k_res.data else session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
         except Exception as e:
             logger.warning("Supabase timeline fetch fallback: %s", e)
+            all_turns = session_mgr.memory_store["transcript_turns"].get(meeting_id, [])
+            snapshots = session_mgr.memory_store["diagram_snapshots"].get(meeting_id, [])
+            interventions = session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
+            knowledge_chunks = session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
+    else:
+        all_turns = session_mgr.memory_store["transcript_turns"].get(meeting_id, [])
+        snapshots = session_mgr.memory_store["diagram_snapshots"].get(meeting_id, [])
+        interventions = session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
+        knowledge_chunks = session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
 
     if not meeting:
         # Check if requested demo session
@@ -273,25 +289,43 @@ async def get_meeting_timeline(
             "latest_drawio_xml": session_mgr.memory_store["meetings"].get(meeting_id, {}).get("latest_drawio_xml"),
         }
 
+    # Time-window filtering
+    filtered_turns = filter_by_window(all_turns, from_ms, to_ms)
+    filtered_snapshots = filter_by_window(snapshots, from_ms, to_ms) if (from_ms is not None or to_ms is not None) else snapshots
+    filtered_interventions = filter_by_window(interventions, from_ms, to_ms) if (from_ms is not None or to_ms is not None) else interventions
+    filtered_knowledge = filter_by_window(knowledge_chunks, from_ms, to_ms) if (from_ms is not None or to_ms is not None) else knowledge_chunks
+
+    # Pagination on transcript turns
+    total_turns = len(filtered_turns)
+    paginated_turns = filtered_turns[offset : offset + limit]
+    has_more = (offset + limit) < total_turns
+
     # Format in-memory knowledge chunks without exposing huge float lists by default
     safe_knowledge_chunks = [
         {
-            "id": k["id"],
-            "meeting_id": k["meeting_id"],
-            "chunk_type": k["chunk_type"],
-            "timestamp_ms": k["timestamp_ms"],
-            "content": k["content"],
+            "id": k.get("id"),
+            "meeting_id": k.get("meeting_id"),
+            "chunk_type": k.get("chunk_type"),
+            "timestamp_ms": k.get("timestamp_ms"),
+            "content": k.get("content"),
         }
-        for k in session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
+        for k in filtered_knowledge
     ]
 
     return {
         "meeting": meeting,
-        "transcript_turns": session_mgr.memory_store["transcript_turns"].get(meeting_id, []),
-        "diagram_snapshots": session_mgr.memory_store["diagram_snapshots"].get(meeting_id, []),
-        "agent_interventions": session_mgr.memory_store["agent_interventions"].get(meeting_id, []),
+        "transcript_turns": paginated_turns,
+        "diagram_snapshots": filtered_snapshots,
+        "agent_interventions": filtered_interventions,
         "knowledge_chunks": safe_knowledge_chunks,
+        "pagination": {
+            "total_turns": total_turns,
+            "limit": limit,
+            "offset": offset,
+            "has_more": has_more,
+        },
     }
+
 
 
 @app.get("/api/meetings/{meeting_id}/interventions")

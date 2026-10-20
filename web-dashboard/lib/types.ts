@@ -49,13 +49,22 @@ export interface KnowledgeChunk {
   similarity?: number;
 }
 
+export interface TimelinePaginationMetadata {
+  total_turns: number;
+  limit: number;
+  offset: number;
+  has_more: boolean;
+}
+
 export interface TimelineData {
   meeting: Meeting;
   transcript_turns: TranscriptTurn[];
   diagram_snapshots: DiagramSnapshot[];
   agent_interventions: AgentIntervention[];
   knowledge_chunks: KnowledgeChunk[];
+  pagination?: TimelinePaginationMetadata;
 }
+
 
 export interface CitationItem {
   timestamp_ms: number;

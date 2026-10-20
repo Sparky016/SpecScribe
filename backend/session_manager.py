@@ -171,9 +171,30 @@ class SessionManager:
 
 def get_session_manager(request: Request) -> SessionManager:
     """FastAPI Request dependency to inject SessionManager."""
-    return request.app.state.session_manager
+    if hasattr(request.app.state, "session_manager"):
+        return request.app.state.session_manager
+    try:
+        from main import session_manager
+        return session_manager
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from backend.main import session_manager
+            return session_manager
+        except Exception:
+            return SessionManager()
 
 
 def get_ws_session_manager(websocket: WebSocket) -> SessionManager:
     """FastAPI WebSocket dependency/helper to inject SessionManager."""
-    return websocket.app.state.session_manager
+    if hasattr(websocket.app.state, "session_manager"):
+        return websocket.app.state.session_manager
+    try:
+        from main import session_manager
+        return session_manager
+    except (ImportError, ModuleNotFoundError):
+        try:
+            from backend.main import session_manager
+            return session_manager
+        except Exception:
+            return SessionManager()
+
