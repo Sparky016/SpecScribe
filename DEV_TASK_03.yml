@@ -1,0 +1,113 @@
+id: "03"
+title: "Create Centralized NodeRegistry Specification Across Stacks"
+phase: 1
+severity: medium
+complexity: medium
+model: sonnet
+effort: medium
+eval_model: sonnet
+eval_effort: low
+depends_on: []
+status: PENDING
+source: "SPEC_DOC.md §4.5 (Finding #10)"
+
+objective: |
+  Create a single declarative NodeRegistry specification for diagram node types (service,
+  decision, database, terminal) to satisfy the Open/Closed Principle (OCP), eliminating
+  hardcoded duplicate style and dimension maps across Python backend, Lens Studio scripts,
+  and Next.js frontend.
+
+scope:
+  in:
+    - "Create backend/node_registry.py declaring NodeSpec dataclass and NODE_REGISTRY dictionary"
+    - "Refactor backend/graph_engine.py STYLE_MAP and DEFAULT_DIMENSIONS to read from NODE_REGISTRY"
+    - "Create web-dashboard/lib/nodeRegistry.ts declaring NODE_REGISTRY with colors, shapes, and dimensions"
+    - "Refactor web-dashboard/lib/xmlParser.ts detectNodeType and extractColors to use NODE_REGISTRY"
+    - "Create spectacles-lens/Assets/Scripts/NodeRegistry.ts declaring node definitions and styling"
+  out:
+    - "Do not alter the optical RGB neon styling values (#00FF66, #00E5FF, #107C41, #0D47A1)"
+    - "Do not alter pinch gesture button triggers in SpatialInterfaceManager.ts"
+
+files:
+  "backend/node_registry.py": "Create canonical Python node type registry"
+  "backend/graph_engine.py": "Import and use backend/node_registry.py"
+  "web-dashboard/lib/nodeRegistry.ts": "Create TypeScript web node registry"
+  "web-dashboard/lib/xmlParser.ts": "Update parser to leverage nodeRegistry.ts"
+  "spectacles-lens/Assets/Scripts/NodeRegistry.ts": "Create Lens Studio TypeScript registry"
+
+implementation_notes: |
+  In `backend/node_registry.py`:
+  ```python
+  from dataclasses import dataclass
+  from typing import Dict, Tuple
+
+  @dataclass(frozen=True)
+  class NodeDefinition:
+      type_name: str
+      drawio_style: str
+      default_dimensions: Tuple[float, float]
+      fill_color: str
+      stroke_color: str
+      label_prefix: str
+
+  NODE_REGISTRY: Dict[str, NodeDefinition] = {
+      "service": NodeDefinition(
+          type_name="service",
+          drawio_style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
+          default_dimensions=(140.0, 60.0),
+          fill_color="#107C41",
+          stroke_color="#00FF66",
+          label_prefix="Svc",
+      ),
+      "decision": NodeDefinition(
+          type_name="decision",
+          drawio_style="rhombus;whiteSpace=wrap;html=1;fillColor=#004D40;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;",
+          default_dimensions=(120.0, 80.0),
+          fill_color="#004D40",
+          stroke_color="#00E5FF",
+          label_prefix="Dec",
+      ),
+      "database": NodeDefinition(
+          type_name="database",
+          drawio_style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;",
+          default_dimensions=(120.0, 80.0),
+          fill_color="#0D47A1",
+          stroke_color="#00E5FF",
+          label_prefix="DB",
+      ),
+      "terminal": NodeDefinition(
+          type_name="terminal",
+          drawio_style="ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
+          default_dimensions=(100.0, 60.0),
+          fill_color="#311B92",
+          stroke_color="#00FF66",
+          label_prefix="Client",
+      ),
+  }
+  ```
+  In `backend/graph_engine.py`:
+  - `STYLE_MAP = {k: v.drawio_style for k, v in NODE_REGISTRY.items()}`
+  - `DEFAULT_DIMENSIONS = {k: v.default_dimensions for k, v in NODE_REGISTRY.items()}`
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "backend/node_registry.py exists and exports NODE_REGISTRY with service, decision, database, terminal"
+    verify: "python -c 'from backend.node_registry import NODE_REGISTRY; assert len(NODE_REGISTRY) >= 4'"
+  - id: AC2
+    behavior: "backend/graph_engine.py imports from backend.node_registry without hardcoding style strings inline"
+    verify: "grep 'from .node_registry import NODE_REGISTRY' backend/graph_engine.py || grep 'from node_registry import NODE_REGISTRY' backend/graph_engine.py"
+  - id: AC3
+    behavior: "web-dashboard/lib/nodeRegistry.ts exists and web-dashboard compiles cleanly"
+    verify: "npm --prefix web-dashboard run build"
+  - id: AC4
+    behavior: "All 28 backend tests pass"
+    verify: "pytest backend/test_orchestrator.py backend/test_agents.py"
+
+risks_vulnerabilities:
+  - risk: "Circular imports between graph_engine.py and node_registry.py"
+    mitigation: "Keep node_registry.py dependency-free (standard library dataclasses only)"
+
+knowledge_gaps: []
+
+commit_message: |
+  refactor(task-03): centralize node schemas into reusable registries

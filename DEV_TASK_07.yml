@@ -1,0 +1,74 @@
+id: "07"
+title: "Instrument RaisingHandAgent Health Telemetry"
+phase: 3
+severity: low
+complexity: low
+model: haiku
+effort: medium
+eval_model: haiku
+eval_effort: low
+depends_on: ["04"]
+status: DONE
+source: "SPEC_DOC.md §4.9 (Finding #14)"
+
+objective: |
+  Add structured health and execution telemetry to RaisingHandAgent background loops,
+  recording loop state, evaluation timestamps, and error history, and expose these metrics
+  in GET /api/health to prevent silent failures in autonomous critic loops.
+
+scope:
+  in:
+    - "Add _loop_telemetry dictionary to RaisingHandAgent in backend/agents/raising_hand_agent.py"
+    - "Record healthy evaluation ticks with last_eval_timestamp_ms"
+    - "Record loop exceptions with status='degraded', error_count, and last_error_message"
+    - "Expose raising_hand telemetry in GET /api/health endpoint in backend/main.py"
+  out:
+    - "Do not alter proactive critic LLM prompt templates or evaluation heuristics"
+    - "Do not alter loop interval frequency (default 20.0s)"
+
+files:
+  "backend/agents/raising_hand_agent.py": "Track loop health telemetry in _active_loops execution"
+  "backend/main.py": "Include agent loop telemetry in /api/health response"
+
+implementation_notes: |
+  In `backend/agents/raising_hand_agent.py`:
+  - In `__init__`: `self._loop_telemetry: Dict[str, Dict[str, Any]] = {}`
+  - In `_loop()`:
+    ```python
+    self._loop_telemetry[meeting_id] = {
+        "status": "healthy",
+        "last_eval_ms": int(datetime.now(timezone.utc).timestamp() * 1000),
+        "error_count": 0,
+        "last_error": None,
+    }
+    ```
+    On exception:
+    ```python
+    telemetry = self._loop_telemetry.setdefault(meeting_id, {})
+    telemetry["status"] = "degraded"
+    telemetry["error_count"] = telemetry.get("error_count", 0) + 1
+    telemetry["last_error"] = str(e)
+    telemetry["last_error_time"] = datetime.now(timezone.utc).isoformat()
+    ```
+  - In `backend/main.py` `/api/health`:
+    Include `session_mgr.raising_hand_agent._loop_telemetry` under `active_agents.proactive_telemetry`.
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "RaisingHandAgent initializes _loop_telemetry dict"
+    verify: "python -c 'from backend.agents.raising_hand_agent import RaisingHandAgent; a = RaisingHandAgent(); assert hasattr(a, \"_loop_telemetry\")'"
+  - id: AC2
+    behavior: "GET /api/health returns active_agents with telemetry details"
+    verify: "python -c 'from fastapi.testclient import TestClient; from backend.main import app; c = TestClient(app); h = c.get(\"/api/health\").json(); assert \"active_agents\" in h'"
+  - id: AC3
+    behavior: "Raising-Hand unit tests pass in backend/test_agents.py"
+    verify: "pytest backend/test_agents.py -k test_raising_hand"
+
+risks_vulnerabilities:
+  - risk: "Telemetry dict growing unbounded on many short meetings"
+    mitigation: "Clean up meeting telemetry in stop_proactive_loop"
+
+knowledge_gaps: []
+
+commit_message: |
+  feat(task-07): instrument raisinghandagent health telemetry in /api/health

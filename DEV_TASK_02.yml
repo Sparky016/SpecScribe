@@ -1,0 +1,68 @@
+id: "02"
+title: "Enforce Strict Environment-Driven CORS Origins"
+phase: 1
+severity: medium
+complexity: low
+model: haiku
+effort: medium
+eval_model: haiku
+eval_effort: low
+depends_on: []
+status: PENDING
+source: "SPEC_DOC.md §4.3 (Finding #8)"
+
+objective: |
+  Replace insecure wildcard CORS origins (allow_origins=["*"] with allow_credentials=True)
+  with explicit environment-driven origins in backend/main.py, preventing CSRF vulnerabilities
+  and complying with W3C Fetch credentials specifications while keeping local development seamless.
+
+scope:
+  in:
+    - "Parse ALLOWED_ORIGINS from environment in backend/main.py with default 'http://localhost:3000,http://127.0.0.1:3000,https://specscribe.vercel.app'"
+    - "Configure CORSMiddleware with explicit parsed origin list"
+    - "Update backend/.env.example with ALLOWED_ORIGINS documentation"
+  out:
+    - "Do not alter endpoint routes or authentication decorators"
+    - "Do not disable allow_credentials=True unless required by explicit wildcard"
+
+files:
+  "backend/main.py": "Replace allow_origins=['*'] with parsed ALLOWED_ORIGINS list"
+  "backend/.env.example": "Add ALLOWED_ORIGINS entry with documentation"
+
+implementation_notes: |
+  In `backend/main.py` lines 206-212:
+  ```python
+  raw_origins = os.environ.get(
+      "ALLOWED_ORIGINS",
+      "http://localhost:3000,http://127.0.0.1:3000,https://specscribe.vercel.app"
+  )
+  allowed_origins = [o.strip() for o in raw_origins.split(",") if o.strip()]
+
+  app.add_middleware(
+      CORSMiddleware,
+      allow_origins=allowed_origins,
+      allow_credentials=True,
+      allow_methods=["*"],
+      allow_headers=["*"],
+  )
+  ```
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "backend/main.py parses ALLOWED_ORIGINS and avoids literal allow_origins=['*'] when credentials are True"
+    verify: "grep -n 'ALLOWED_ORIGINS' backend/main.py"
+  - id: AC2
+    behavior: "backend/.env.example contains ALLOWED_ORIGINS description and defaults"
+    verify: "grep 'ALLOWED_ORIGINS' backend/.env.example"
+  - id: AC3
+    behavior: "Existing pytest suite backend/test_orchestrator.py passes"
+    verify: "pytest backend/test_orchestrator.py -k test_rest_api_lifecycle"
+
+risks_vulnerabilities:
+  - risk: "Web dashboard deployed on a preview URL might get blocked by CORS if not in ALLOWED_ORIGINS"
+    mitigation: "Document ALLOWED_ORIGINS override in backend/.env.example"
+
+knowledge_gaps: []
+
+commit_message: |
+  security(task-02): restrict cors allow_origins to explicit domains

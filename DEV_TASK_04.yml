@@ -1,0 +1,103 @@
+id: "04"
+title: "Encapsulate Global In-Memory State in SessionManager"
+phase: 2
+severity: high
+complexity: high
+model: opus
+effort: medium
+eval_model: sonnet
+eval_effort: medium
+depends_on: ["02", "03"]
+status: PENDING
+source: "SPEC_DOC.md §4.1 (Finding #4)"
+
+objective: |
+  Eliminate direct module-level ambient state coupling by encapsulating live sessions,
+  memory store, active connections, renderer daemon, and autonomous agent instances into an
+  injectable SessionManager container attached to FastAPI app.state, adhering to the
+  Dependency Inversion Principle (DIP).
+
+scope:
+  in:
+    - "Create backend/session_manager.py with SessionManager class"
+    - "Encapsulate live_sessions, memory_store, active_connections, renderer_daemon, decision_linker, raising_hand_agent, spec_generator"
+    - "Attach session_manager to app.state.session_manager inside FastAPI lifespan"
+    - "Provide get_session_manager(request: Request) -> SessionManager FastAPI dependency"
+    - "Provide get_ws_session_manager(websocket: WebSocket) -> SessionManager dependency helper"
+    - "Provide module-level accessor compatibility properties in backend/main.py for existing standalone scripts"
+  out:
+    - "Do not rewrite agent internal implementations (DecisionLinkerAgent, RaisingHandAgent, SpecGeneratorAgent)"
+    - "Do not remove get_or_create_session function signature"
+
+files:
+  "backend/session_manager.py": "Create SessionManager container class"
+  "backend/main.py": "Wire SessionManager via lifespan, app.state, and FastAPI Depends()"
+
+implementation_notes: |
+  In `backend/session_manager.py`:
+  ```python
+  from collections import defaultdict
+  from typing import Dict, Set, Any, Optional
+  from fastapi import WebSocket
+  from .graph_engine import HeadlessDrawioDaemon, LiveGraphSession
+  from .agents.decision_linker import DecisionLinkerAgent
+  from .agents.raising_hand_agent import RaisingHandAgent
+  from .agents.spec_generator import SpecGeneratorAgent
+
+  class SessionManager:
+      def __init__(self, supabase_client: Optional[Any] = None):
+          self.supabase_client = supabase_client
+          self.live_sessions: Dict[str, LiveGraphSession] = {}
+          self.active_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
+          self.memory_store: Dict[str, Dict[str, Any]] = {
+              "meetings": {},
+              "transcript_turns": defaultdict(list),
+              "diagram_snapshots": defaultdict(list),
+              "agent_interventions": defaultdict(list),
+              "knowledge_chunks": defaultdict(list),
+          }
+          self.renderer_daemon = HeadlessDrawioDaemon()
+          self.decision_linker = DecisionLinkerAgent(supabase_client, self.memory_store)
+          self.raising_hand_agent = RaisingHandAgent(supabase_client, self.memory_store)
+          self.spec_generator = SpecGeneratorAgent(supabase_client, self.memory_store)
+
+      def get_or_create_session(self, meeting_id: str) -> LiveGraphSession:
+          if meeting_id not in self.live_sessions:
+              self.live_sessions[meeting_id] = LiveGraphSession(meeting_id)
+              if meeting_id not in self.memory_store["meetings"]:
+                  self.memory_store["meetings"][meeting_id] = {
+                      "id": meeting_id,
+                      "title": f"Meeting {meeting_id[:8]}",
+                      "created_at": datetime.now(timezone.utc).isoformat(),
+                      "latest_drawio_xml": self.live_sessions[meeting_id].get_xml(),
+                  }
+          return self.live_sessions[meeting_id]
+  ```
+  In `backend/main.py`:
+  - `def get_session_manager(request: Request) -> SessionManager: return request.app.state.session_manager`
+  - Update REST routes (`/api/meetings`, `/api/health`, `/api/meetings/{id}/timeline`, `/api/meetings/{id}/ask`, `/api/meetings/{id}/finalize`) to inject `session_mgr: SessionManager = Depends(get_session_manager)`.
+  - For backward compatibility with existing tests:
+    `session_manager = SessionManager(supabase_client)` at module level so `from backend.main import live_sessions, memory_store` continues working via aliases.
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "backend/session_manager.py exists and encapsulates live_sessions, memory_store, and agents"
+    verify: "python -c 'from backend.session_manager import SessionManager; mgr = SessionManager(); assert hasattr(mgr, \"live_sessions\")'"
+  - id: AC2
+    behavior: "FastAPI REST routes use Depends(get_session_manager) to retrieve manager instance"
+    verify: "grep 'Depends(get_session_manager)' backend/main.py"
+  - id: AC3
+    behavior: "app.state.session_manager is initialized in lifespan"
+    verify: "grep 'app.state.session_manager' backend/main.py"
+  - id: AC4
+    behavior: "All 28 backend pytest tests pass without regression"
+    verify: "pytest backend/test_orchestrator.py backend/test_agents.py backend/test_spec_generator.py"
+
+risks_vulnerabilities:
+  - risk: "Standalone integration tests or seed scripts importing live_sessions directly from main.py break"
+    mitigation: "Expose live_sessions = session_manager.live_sessions at module scope in main.py as aliases"
+
+knowledge_gaps: []
+
+commit_message: |
+  refactor(task-04): encapsulate global state in injectable sessionmanager

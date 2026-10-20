@@ -1,0 +1,63 @@
+id: "10"
+title: "Implement Hermetic Headless Renderer Tests with Route Mocking"
+phase: 4
+severity: low
+complexity: low
+model: haiku
+effort: medium
+eval_model: haiku
+eval_effort: low
+depends_on: ["05"]
+status: DONE
+source: "SPEC_DOC.md §4.10 (Finding #15)"
+
+objective: |
+  Decouple backend unit tests from external public internet access (viewer.diagrams.net)
+  by implementing a hermetic route-mocked test for HeadlessDrawioDaemon and applying
+  pytest markers (@pytest.mark.integration) to live internet benchmarks.
+
+scope:
+  in:
+    - "Add @pytest.mark.integration to test_headless_daemon_rendering_latency in backend/test_orchestrator.py"
+    - "Add test_headless_daemon_mocked_render in backend/test_orchestrator.py using Playwright page.route mocking"
+    - "Ensure standard command pytest -m 'not integration' runs 100% offline"
+  out:
+    - "Do not disable actual Playwright Chromium browser startup in production or daemon logic"
+
+files:
+  "backend/test_orchestrator.py": "Add integration marker and mocked offline Playwright test"
+
+implementation_notes: |
+  In `backend/test_orchestrator.py`:
+  ```python
+  @pytest.mark.integration
+  @pytest.mark.asyncio
+  async def test_headless_daemon_rendering_latency():
+      # Live external benchmark...
+      pass
+
+  @pytest.mark.asyncio
+  async def test_headless_daemon_mocked_render():
+      """Hermetic test validating rendering daemon lifecycle with intercepted network route."""
+      daemon = HeadlessDrawioDaemon()
+      # In testing, route export3.html to a local lightweight mockup:
+      # If Playwright is running, route page requests or verify daemon initialization
+      assert daemon is not None
+  ```
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "backend/test_orchestrator.py marks live network test with @pytest.mark.integration"
+    verify: "grep -B 1 'def test_headless_daemon_rendering_latency' backend/test_orchestrator.py | grep 'pytest.mark.integration'"
+  - id: AC2
+    behavior: "Hermetic offline test suite executes cleanly with pytest -m 'not integration'"
+    verify: "pytest -m 'not integration' backend/test_orchestrator.py"
+
+risks_vulnerabilities:
+  - risk: "Pytest warning about unregistered integration marker"
+    mitigation: "Ensure pytest.ini or pyproject.toml registers the integration marker"
+
+knowledge_gaps: []
+
+commit_message: |
+  test(task-10): isolate live network rendering tests with integration marker

@@ -1,0 +1,85 @@
+id: "06"
+title: "Add Timeline Pagination and Time-Window Querying"
+phase: 3
+severity: medium
+complexity: medium
+model: sonnet
+effort: medium
+eval_model: sonnet
+eval_effort: low
+depends_on: ["04"]
+status: PENDING
+source: "SPEC_DOC.md §4.6 (Finding #11)"
+
+objective: |
+  Add pagination (limit, offset) and temporal windowing (from_ms, to_ms) query parameters
+  to `GET /api/meetings/{id}/timeline` in backend/main.py and update the web dashboard API client
+  in web-dashboard/lib/api.ts, preventing multi-megabyte payload blowups during long sessions.
+
+scope:
+  in:
+    - "Add limit (default 100, max 500), offset (default 0), from_ms, and to_ms parameters to GET /api/meetings/{id}/timeline"
+    - "Apply pagination and time slicing to transcript_turns, diagram_snapshots, agent_interventions, and knowledge_chunks"
+    - "Return pagination metadata object: {total_turns, limit, offset, has_more}"
+    - "Update web-dashboard/lib/api.ts getMeetingTimeline function to support pagination query options"
+  out:
+    - "Do not break existing calls that omit pagination parameters (maintain default full/reasonable response)"
+
+files:
+  "backend/main.py": "Add pagination query params and slicing in get_meeting_timeline"
+  "web-dashboard/lib/api.ts": "Add pagination parameters to getMeetingTimeline"
+
+implementation_notes: |
+  In `backend/main.py`:
+  ```python
+  @app.get("/api/meetings/{meeting_id}/timeline")
+  async def get_meeting_timeline(
+      meeting_id: str,
+      limit: int = Query(default=100, ge=1, le=500),
+      offset: int = Query(default=0, ge=0),
+      from_ms: Optional[int] = Query(default=None, ge=0),
+      to_ms: Optional[int] = Query(default=None, ge=0),
+      session_mgr: SessionManager = Depends(get_session_manager),
+  ):
+  ```
+  Filter helper:
+  ```python
+  def filter_by_window(items, from_t, to_t):
+      res = items
+      if from_t is not None:
+          res = [x for x in res if x.get("timestamp_ms", 0) >= from_t]
+      if to_t is not None:
+          res = [x for x in res if x.get("timestamp_ms", 0) <= to_t]
+      return res
+  ```
+  Paginate turns:
+  ```python
+  filtered_turns = filter_by_window(all_turns, from_ms, to_ms)
+  total_turns = len(filtered_turns)
+  paginated_turns = filtered_turns[offset : offset + limit]
+  has_more = (offset + limit) < total_turns
+  ```
+  Include `"pagination": {"total_turns": total_turns, "limit": limit, "offset": offset, "has_more": has_more}` in response.
+
+acceptance_criteria:
+  - id: AC1
+    behavior: "GET /api/meetings/{id}/timeline responds with pagination metadata"
+    verify: "python -c 'from fastapi.testclient import TestClient; from backend.main import app; c = TestClient(app); m = c.post(\"/api/meetings\", json={\"title\": \"Test\"}).json(); r = c.get(f\"/api/meetings/{m[\"id\"]}/timeline\").json(); assert \"pagination\" in r'"
+  - id: AC2
+    behavior: "Timeline query params limit and offset correctly restrict returned turn arrays"
+    verify: "pytest backend/test_orchestrator.py -k test_rest_api_lifecycle"
+  - id: AC3
+    behavior: "web-dashboard/lib/api.ts exports getMeetingTimeline accepting optional query options"
+    verify: "grep 'limit' web-dashboard/lib/api.ts"
+  - id: AC4
+    behavior: "web-dashboard builds without TypeScript errors"
+    verify: "npm --prefix web-dashboard run build"
+
+risks_vulnerabilities:
+  - risk: "Client temporal scrubber expecting all snapshots may not render markers outside window"
+    mitigation: "Only slice transcript turns by default; return all diagram snapshots unless explicit time-window is supplied"
+
+knowledge_gaps: []
+
+commit_message: |
+  feat(task-06): add timeline pagination and time-windowing filters
