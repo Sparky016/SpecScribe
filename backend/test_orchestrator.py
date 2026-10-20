@@ -121,6 +121,7 @@ def test_perceptual_hash_diff_gate():
     assert hamming3 >= 6
 
 
+@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_headless_daemon_rendering_latency():
     """Verify pre-warmed Chromium renders transparent Base64 PNG in <140ms."""
@@ -145,6 +146,67 @@ async def test_headless_daemon_rendering_latency():
     # Verify valid PNG header
     raw_png = base64.b64decode(b64_png)
     assert raw_png.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+@pytest.mark.asyncio
+async def test_headless_daemon_mocked_render():
+    """Hermetic test validating rendering daemon lifecycle with intercepted network route."""
+    from playwright.async_api import async_playwright
+
+    daemon = HeadlessDrawioDaemon()
+    assert daemon is not None
+    assert daemon._is_ready is False
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-gpu", "--disable-dev-shm-usage"],
+        )
+        page = await browser.new_page()
+
+        # Intercept external network request to viewer.diagrams.net/export3.html
+        async def handle_route(route):
+            html = """
+            <!DOCTYPE html>
+            <html>
+            <head><title>Mock Export3</title></head>
+            <body>
+                <svg id="canvas" width="100" height="100">
+                    <rect width="100" height="100" fill="#00E5FF"/>
+                </svg>
+                <script>
+                    window.render = function(opts) {
+                        return true;
+                    };
+                </script>
+            </body>
+            </html>
+            """
+            await route.fulfill(
+                status=200,
+                content_type="text/html",
+                body=html,
+            )
+
+        await page.route("**/export3.html*", handle_route)
+        await page.goto("https://viewer.diagrams.net/export3.html", wait_until="networkidle")
+
+        # Inject intercepted page into daemon
+        daemon.browser = browser
+        daemon.page = page
+        daemon._is_ready = True
+
+        # Test render_b64_png offline
+        test_xml = "<mxfile><diagram><mxGraphModel><root/></mxGraphModel></diagram></mxfile>"
+        b64_png = await daemon.render_b64_png(test_xml)
+
+        assert b64_png is not None
+        assert len(b64_png) > 0
+        raw_png = base64.b64decode(b64_png)
+        assert raw_png.startswith(b"\x89PNG\r\n\x1a\n")
+
+        await browser.close()
+
 
 
 def test_rest_api_lifecycle():
