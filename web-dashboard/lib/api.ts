@@ -22,25 +22,8 @@ function getTargetApiUrl(path: string): string {
   return new URL(cleanPath, base).toString();
 }
 
-export function formatTimestamp(ms: number): string {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-}
-
-export function parseTimestamp(label: string): number {
-  const clean = label.replace(/[\[\]]/g, "").trim();
-  const parts = clean.split(":");
-  if (parts.length === 2) {
-    const mins = parseInt(parts[0], 10);
-    const secs = parseInt(parts[1], 10);
-    if (!isNaN(mins) && !isNaN(secs)) {
-      return (mins * 60 + secs) * 1000;
-    }
-  }
-  return 0;
-}
+import { formatTimestamp, parseTimestamp } from "./formatters";
+export { formatTimestamp, parseTimestamp };
 
 export interface TimelinePaginationOptions {
   limit?: number;

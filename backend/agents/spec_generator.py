@@ -26,7 +26,7 @@ logger = logging.getLogger("specscribe.spec_generator")
 
 
 def format_timestamp_ms(ms: int) -> str:
-    """Formats millisecond offset into [MM:SS] timeline display label."""
+    """Internal helper: Formats millisecond offset into [MM:SS] exclusively for static Markdown tech-spec compilation and LLM citation prompts. All wire network payloads use raw integer milliseconds."""
     total_seconds = max(0, int(ms) // 1000)
     minutes = total_seconds // 60
     seconds = total_seconds % 60
