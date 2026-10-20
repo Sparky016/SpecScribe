@@ -59,6 +59,8 @@ class RaisingHandAgent:
         self._last_intervention_time: Dict[str, int] = {}
         # Active background tasks: meeting_id -> asyncio.Task
         self._active_loops: Dict[str, asyncio.Task] = {}
+        # Structured health telemetry: meeting_id -> telemetry dict
+        self._loop_telemetry: Dict[str, Dict[str, Any]] = {}
 
         if self.api_key:
             try:
@@ -607,6 +609,13 @@ class RaisingHandAgent:
                     xml = get_diagram_fn(meeting_id) if get_diagram_fn else ""
                     ts = get_timestamp_fn(meeting_id) if get_timestamp_fn else int(datetime.now(timezone.utc).timestamp() * 1000)
 
+                    self._loop_telemetry[meeting_id] = {
+                        "status": "healthy",
+                        "last_eval_ms": ts,
+                        "error_count": self._loop_telemetry.get(meeting_id, {}).get("error_count", 0),
+                        "last_error": self._loop_telemetry.get(meeting_id, {}).get("last_error"),
+                    }
+
                     evaluation = await self.evaluate_proactive_async(
                         meeting_id=meeting_id,
                         timestamp_ms=ts,
@@ -624,6 +633,11 @@ class RaisingHandAgent:
                 logger.info("RaisingHand proactive loop cancelled for meeting %s", meeting_id)
             except Exception as e:
                 logger.error("Unexpected error in RaisingHand proactive loop: %s", e)
+                telemetry = self._loop_telemetry.setdefault(meeting_id, {})
+                telemetry["status"] = "degraded"
+                telemetry["error_count"] = telemetry.get("error_count", 0) + 1
+                telemetry["last_error"] = str(e)
+                telemetry["last_error_time"] = datetime.now(timezone.utc).isoformat()
 
         task = asyncio.create_task(_loop())
         self._active_loops[meeting_id] = task
@@ -634,6 +648,8 @@ class RaisingHandAgent:
         task = self._active_loops.pop(meeting_id, None)
         if task and not task.done():
             task.cancel()
+        self._loop_telemetry.pop(meeting_id, None)
+
 
     def stop_all(self) -> None:
         """Stops all active proactive loops."""

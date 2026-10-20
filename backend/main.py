@@ -189,6 +189,7 @@ async def health_check(session_mgr: SessionManager = Depends(get_session_manager
             "raising_hand_agent": True,
             "spec_generator": True,
             "proactive_loops": len(session_mgr.raising_hand_agent._active_loops),
+            "proactive_telemetry": session_mgr.raising_hand_agent._loop_telemetry,
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
