@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,19 @@ from graph_engine import (
 from agents.decision_linker import DecisionLinkerAgent
 from agents.raising_hand_agent import RaisingHandAgent
 from agents.spec_generator import SpecGeneratorAgent
+
+try:
+    from session_manager import (
+        SessionManager,
+        get_session_manager,
+        get_ws_session_manager,
+    )
+except ImportError:
+    from backend.session_manager import (
+        SessionManager,
+        get_session_manager,
+        get_ws_session_manager,
+    )
 
 # Load environment variables from .env if present
 load_dotenv()
@@ -54,87 +67,30 @@ except Exception as e:
     logger.warning("Supabase initialization skipped: %s", e)
 
 
-# Global Headless Renderer Daemon
-renderer_daemon = HeadlessDrawioDaemon()
+# Encapsulated In-Memory Session & State Manager (DIP)
+session_manager = SessionManager(supabase_client=supabase_client)
 
-# In-Memory Session & Connection Registry
-live_sessions: Dict[str, LiveGraphSession] = {}
-active_connections: Dict[str, Set[WebSocket]] = defaultdict(set)
-
-# In-Memory Persistence Store (mirrors Supabase when running offline/local)
-memory_store: Dict[str, Dict[str, Any]] = {
-    "meetings": {},
-    "transcript_turns": defaultdict(list),
-    "diagram_snapshots": defaultdict(list),
-    "agent_interventions": defaultdict(list),
-    "knowledge_chunks": defaultdict(list),
-}
-
-# Sub-Agents Initialization (T-07, T-08, T-09)
-decision_linker = DecisionLinkerAgent(
-    supabase_client=supabase_client,
-    memory_store=memory_store,
-)
-raising_hand_agent = RaisingHandAgent(
-    supabase_client=supabase_client,
-    memory_store=memory_store,
-)
-spec_generator = SpecGeneratorAgent(
-    supabase_client=supabase_client,
-    memory_store=memory_store,
-)
+# Module-Level Backward-Compatibility Aliases
+renderer_daemon = session_manager.renderer_daemon
+live_sessions: Dict[str, LiveGraphSession] = session_manager.live_sessions
+active_connections: Dict[str, Set[WebSocket]] = session_manager.active_connections
+memory_store: Dict[str, Dict[str, Any]] = session_manager.memory_store
+decision_linker = session_manager.decision_linker
+raising_hand_agent = session_manager.raising_hand_agent
+spec_generator = session_manager.spec_generator
 
 
 def get_or_create_session(meeting_id: str) -> LiveGraphSession:
-    if meeting_id not in live_sessions:
-        session = LiveGraphSession(meeting_id)
-        live_sessions[meeting_id] = session
-        if meeting_id not in memory_store["meetings"]:
-            memory_store["meetings"][meeting_id] = {
-                "id": meeting_id,
-                "title": f"Meeting {meeting_id[:8]}",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "latest_drawio_xml": session.get_xml(),
-                "generated_spec_md": None,
-            }
-    return live_sessions[meeting_id]
+    return session_manager.get_or_create_session(meeting_id)
 
 
 async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any], exclude: Optional[WebSocket] = None):
-    sockets = active_connections.get(meeting_id, set()).copy()
-    payload = json.dumps(message)
-    for ws in sockets:
-        if ws != exclude:
-            try:
-                await ws.send_text(payload)
-            except Exception as e:
-                logger.warning("Failed to send WebSocket message to client: %s", e)
+    await session_manager.broadcast_to_meeting(meeting_id, message, exclude=exclude)
 
 
-# Database Persistence Helpers
+# Database Persistence Helpers (backward compatibility wrappers)
 async def db_save_transcript_turn(meeting_id: str, speaker_label: str, transcript_text: str, timestamp_ms: int) -> str:
-    turn_id = str(uuid.uuid4())
-    record = {
-        "id": turn_id,
-        "meeting_id": meeting_id,
-        "speaker_label": speaker_label,
-        "transcript_text": transcript_text,
-        "timestamp_ms": timestamp_ms,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    memory_store["transcript_turns"][meeting_id].append(record)
-
-    if supabase_client:
-        try:
-            res = await asyncio.to_thread(
-                lambda: supabase_client.table("transcript_turns").insert(record).execute()
-            )
-            if res.data:
-                return res.data[0]["id"]
-        except Exception as e:
-            logger.warning("Supabase transcript_turns insert error: %s", e)
-
-    return turn_id
+    return await session_manager.db_save_transcript_turn(meeting_id, speaker_label, transcript_text, timestamp_ms)
 
 
 async def db_save_diagram_snapshot(
@@ -146,54 +102,36 @@ async def db_save_diagram_snapshot(
     triggered_by: str,
     overlay_image_url: Optional[str] = None,
 ) -> str:
-    snapshot_id = str(uuid.uuid4())
-    record = {
-        "id": snapshot_id,
-        "meeting_id": meeting_id,
-        "timestamp_ms": timestamp_ms,
-        "drawio_xml": drawio_xml,
-        "overlay_image_url": overlay_image_url or f"/snapshots/{snapshot_id}.png",
-        "diff_summary": diff_summary,
-        "decision_rationale": decision_rationale,
-        "triggered_by": triggered_by,
-    }
-    memory_store["diagram_snapshots"][meeting_id].append(record)
-
-    # Also update meeting's latest_drawio_xml
-    if meeting_id in memory_store["meetings"]:
-        memory_store["meetings"][meeting_id]["latest_drawio_xml"] = drawio_xml
-
-    if supabase_client:
-        try:
-            await asyncio.to_thread(
-                lambda: supabase_client.table("diagram_snapshots").insert(record).execute()
-            )
-            await asyncio.to_thread(
-                lambda: supabase_client.table("meetings").update({"latest_drawio_xml": drawio_xml}).eq("id", meeting_id).execute()
-            )
-        except Exception as e:
-            logger.warning("Supabase diagram_snapshots insert error: %s", e)
-
-    return snapshot_id
+    return await session_manager.db_save_diagram_snapshot(
+        meeting_id=meeting_id,
+        timestamp_ms=timestamp_ms,
+        drawio_xml=drawio_xml,
+        diff_summary=diff_summary,
+        decision_rationale=decision_rationale,
+        triggered_by=triggered_by,
+        overlay_image_url=overlay_image_url,
+    )
 
 
 # FastAPI Lifespan Handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Initializing SpecScribe FastAPI Orchestrator lifespan...")
+    app.state.session_manager = session_manager
     try:
-        await renderer_daemon.start()
+        await session_manager.renderer_daemon.start()
     except Exception as e:
         logger.error("Failed to pre-warm HeadlessDrawioDaemon: %s", e)
 
     yield
 
     logger.info("Shutting down SpecScribe FastAPI Orchestrator...")
-    raising_hand_agent.stop_all()
+    session_manager.raising_hand_agent.stop_all()
     try:
-        await renderer_daemon.stop()
+        await session_manager.renderer_daemon.stop()
     except Exception as e:
         logger.warning("Error stopping renderer daemon: %s", e)
+
 
 
 app = FastAPI(
@@ -229,25 +167,28 @@ class AskQuestionRequest(BaseModel):
 
 # REST Endpoints
 @app.get("/api/health")
-async def health_check():
+async def health_check(session_mgr: SessionManager = Depends(get_session_manager)):
     return {
         "status": "online",
-        "renderer_ready": renderer_daemon._is_ready,
-        "active_sessions": len(live_sessions),
+        "renderer_ready": session_mgr.renderer_daemon._is_ready,
+        "active_sessions": len(session_mgr.live_sessions),
         "active_agents": {
             "decision_linker": True,
             "raising_hand_agent": True,
             "spec_generator": True,
-            "proactive_loops": len(raising_hand_agent._active_loops),
+            "proactive_loops": len(session_mgr.raising_hand_agent._active_loops),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.post("/api/meetings")
-async def create_meeting(request: CreateMeetingRequest):
+async def create_meeting(
+    request: CreateMeetingRequest,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
     meeting_id = str(uuid.uuid4())
-    session = get_or_create_session(meeting_id)
+    session = session_mgr.get_or_create_session(meeting_id)
     record = {
         "id": meeting_id,
         "title": request.title,
@@ -255,12 +196,12 @@ async def create_meeting(request: CreateMeetingRequest):
         "latest_drawio_xml": session.get_xml(),
         "generated_spec_md": None,
     }
-    memory_store["meetings"][meeting_id] = record
+    session_mgr.memory_store["meetings"][meeting_id] = record
 
-    if supabase_client:
+    if session_mgr.supabase_client:
         try:
             await asyncio.to_thread(
-                lambda: supabase_client.table("meetings").insert(record).execute()
+                lambda: session_mgr.supabase_client.table("meetings").insert(record).execute()
             )
         except Exception as e:
             logger.warning("Supabase create meeting error: %s", e)
@@ -269,33 +210,36 @@ async def create_meeting(request: CreateMeetingRequest):
 
 
 @app.get("/api/meetings/{meeting_id}/timeline")
-async def get_meeting_timeline(meeting_id: str):
-    meeting = memory_store["meetings"].get(meeting_id)
+async def get_meeting_timeline(
+    meeting_id: str,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
+    meeting = session_mgr.memory_store["meetings"].get(meeting_id)
 
-    if supabase_client:
+    if session_mgr.supabase_client:
         try:
             m_res = await asyncio.to_thread(
-                lambda: supabase_client.table("meetings").select("*").eq("id", meeting_id).execute()
+                lambda: session_mgr.supabase_client.table("meetings").select("*").eq("id", meeting_id).execute()
             )
             if m_res.data:
                 meeting = m_res.data[0]
             t_res = await asyncio.to_thread(
-                lambda: supabase_client.table("transcript_turns").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("transcript_turns").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             s_res = await asyncio.to_thread(
-                lambda: supabase_client.table("diagram_snapshots").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("diagram_snapshots").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             i_res = await asyncio.to_thread(
-                lambda: supabase_client.table("agent_interventions").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("agent_interventions").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             k_res = await asyncio.to_thread(
-                lambda: supabase_client.table("knowledge_chunks").select("id, meeting_id, chunk_type, timestamp_ms, content").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("knowledge_chunks").select("id, meeting_id, chunk_type, timestamp_ms, content").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             return {
                 "meeting": meeting or {"id": meeting_id, "title": "Untitled Meeting"},
-                "transcript_turns": t_res.data if t_res.data else memory_store["transcript_turns"].get(meeting_id, []),
-                "diagram_snapshots": s_res.data if s_res.data else memory_store["diagram_snapshots"].get(meeting_id, []),
-                "agent_interventions": i_res.data if i_res.data else memory_store["agent_interventions"].get(meeting_id, []),
+                "transcript_turns": t_res.data if t_res.data else session_mgr.memory_store["transcript_turns"].get(meeting_id, []),
+                "diagram_snapshots": s_res.data if s_res.data else session_mgr.memory_store["diagram_snapshots"].get(meeting_id, []),
+                "agent_interventions": i_res.data if i_res.data else session_mgr.memory_store["agent_interventions"].get(meeting_id, []),
                 "knowledge_chunks": k_res.data if k_res.data else [
                     {
                         "id": k["id"],
@@ -304,7 +248,7 @@ async def get_meeting_timeline(meeting_id: str):
                         "timestamp_ms": k["timestamp_ms"],
                         "content": k["content"],
                     }
-                    for k in memory_store["knowledge_chunks"].get(meeting_id, [])
+                    for k in session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
                 ],
             }
         except Exception as e:
@@ -316,7 +260,7 @@ async def get_meeting_timeline(meeting_id: str):
             "id": meeting_id,
             "title": "Core Architecture Brainstorming: Auth & Real-Time Ingestion",
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "latest_drawio_xml": memory_store["meetings"].get(meeting_id, {}).get("latest_drawio_xml"),
+            "latest_drawio_xml": session_mgr.memory_store["meetings"].get(meeting_id, {}).get("latest_drawio_xml"),
         }
 
     # Format in-memory knowledge chunks without exposing huge float lists by default
@@ -328,41 +272,47 @@ async def get_meeting_timeline(meeting_id: str):
             "timestamp_ms": k["timestamp_ms"],
             "content": k["content"],
         }
-        for k in memory_store["knowledge_chunks"].get(meeting_id, [])
+        for k in session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
     ]
 
     return {
         "meeting": meeting,
-        "transcript_turns": memory_store["transcript_turns"].get(meeting_id, []),
-        "diagram_snapshots": memory_store["diagram_snapshots"].get(meeting_id, []),
-        "agent_interventions": memory_store["agent_interventions"].get(meeting_id, []),
+        "transcript_turns": session_mgr.memory_store["transcript_turns"].get(meeting_id, []),
+        "diagram_snapshots": session_mgr.memory_store["diagram_snapshots"].get(meeting_id, []),
+        "agent_interventions": session_mgr.memory_store["agent_interventions"].get(meeting_id, []),
         "knowledge_chunks": safe_knowledge_chunks,
     }
 
 
 @app.get("/api/meetings/{meeting_id}/interventions")
-async def get_meeting_interventions(meeting_id: str):
+async def get_meeting_interventions(
+    meeting_id: str,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
     """Returns all Raising-Hand agent interventions for the specified meeting."""
-    if supabase_client:
+    if session_mgr.supabase_client:
         try:
             res = await asyncio.to_thread(
-                lambda: supabase_client.table("agent_interventions").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("agent_interventions").select("*").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             if res.data:
                 return res.data
         except Exception as e:
             logger.warning("Supabase interventions fetch fallback: %s", e)
 
-    return memory_store["agent_interventions"].get(meeting_id, [])
+    return session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
 
 
 @app.get("/api/meetings/{meeting_id}/knowledge")
-async def get_meeting_knowledge_chunks(meeting_id: str):
+async def get_meeting_knowledge_chunks(
+    meeting_id: str,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
     """Returns all synthesized decision and knowledge chunks for the specified meeting."""
-    if supabase_client:
+    if session_mgr.supabase_client:
         try:
             res = await asyncio.to_thread(
-                lambda: supabase_client.table("knowledge_chunks").select("id, meeting_id, chunk_type, timestamp_ms, content").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
+                lambda: session_mgr.supabase_client.table("knowledge_chunks").select("id, meeting_id, chunk_type, timestamp_ms, content").eq("meeting_id", meeting_id).order("timestamp_ms").execute()
             )
             if res.data:
                 return res.data
@@ -377,30 +327,33 @@ async def get_meeting_knowledge_chunks(meeting_id: str):
             "timestamp_ms": k["timestamp_ms"],
             "content": k["content"],
         }
-        for k in memory_store["knowledge_chunks"].get(meeting_id, [])
+        for k in session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
     ]
 
 
 @app.post("/api/meetings/{meeting_id}/proactive-critique")
-async def trigger_proactive_critique(meeting_id: str):
+async def trigger_proactive_critique(
+    meeting_id: str,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
     """Triggers an immediate Raising-Hand proactive evaluation for the meeting."""
-    session = get_or_create_session(meeting_id)
+    session = session_mgr.get_or_create_session(meeting_id)
     xml = session.get_xml()
     ts = int(datetime.now(timezone.utc).timestamp() * 1000)
 
-    evaluation = await raising_hand_agent.evaluate_proactive_async(
+    evaluation = await session_mgr.raising_hand_agent.evaluate_proactive_async(
         meeting_id=meeting_id,
         timestamp_ms=ts,
         drawio_xml=xml,
     )
     result = None
     if evaluation.trigger:
-        result = await raising_hand_agent.persist_and_broadcast(
+        result = await session_mgr.raising_hand_agent.persist_and_broadcast(
             meeting_id=meeting_id,
             evaluation=evaluation,
             timestamp_ms=ts,
             was_pinched=False,
-            broadcast_fn=broadcast_to_meeting,
+            broadcast_fn=session_mgr.broadcast_to_meeting,
         )
     return {
         "trigger": evaluation.trigger,
@@ -410,13 +363,16 @@ async def trigger_proactive_critique(meeting_id: str):
 
 
 @app.post("/api/meetings/{meeting_id}/finalize")
-async def finalize_meeting(meeting_id: str):
-    session = get_or_create_session(meeting_id)
+async def finalize_meeting(
+    meeting_id: str,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
+    session = session_mgr.get_or_create_session(meeting_id)
     final_xml = session.compile_layout_xml()
-    meeting_meta = memory_store["meetings"].get(meeting_id, {})
+    meeting_meta = session_mgr.memory_store["meetings"].get(meeting_id, {})
     title = meeting_meta.get("title")
 
-    result = await spec_generator.finalize_meeting(
+    result = await session_mgr.spec_generator.finalize_meeting(
         meeting_id=meeting_id,
         drawio_xml=final_xml,
         title=title,
@@ -425,8 +381,12 @@ async def finalize_meeting(meeting_id: str):
 
 
 @app.post("/api/meetings/{meeting_id}/ask")
-async def ask_meeting_rag(meeting_id: str, request: AskQuestionRequest):
-    return await spec_generator.answer_question(
+async def ask_meeting_rag(
+    meeting_id: str,
+    request: AskQuestionRequest,
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
+    return await session_mgr.spec_generator.answer_question(
         meeting_id=meeting_id,
         question=request.question,
     )
