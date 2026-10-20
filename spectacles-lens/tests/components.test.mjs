@@ -9,7 +9,8 @@ import {
   MockPinchButton,
   MockWebSocket,
   MockScriptEvent,
-  MockTexture
+  MockTexture,
+  MockVec3
 } from './lens_mock_environment.mjs';
 
 // Setup Lens Studio global environment
@@ -533,20 +534,23 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       });
     });
 
-    test('onUpdate executes subtle pulse in IDLE and spins ring in RESEARCHING', () => {
+    test('onUpdate executes subtle pulse in IDLE relative to initial inspector transform scale and spins ring in RESEARCHING', () => {
       const controller = createComponentInstance(RaisingHandAgentController);
       const orbVisual = new MockRenderMeshVisual();
       const ringObj = new MockSceneObject('ResearchingRing');
+
+      // Set custom artist/inspector initial scale
+      orbVisual.getSceneObject().getTransform().setLocalScale(new MockVec3(2.0, 2.0, 2.0));
 
       controller.agentOrbMeshVisual = orbVisual;
       controller.researchingRingObject = ringObj;
       controller.onAwake();
       controller._testEvents.OnStartEvent.trigger();
 
-      // State is IDLE -> onUpdate should adjust scale
+      // State is IDLE -> onUpdate should adjust scale relative to initial scale (2.0)
       controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.016 });
       const scale = orbVisual.getSceneObject().getTransform().getLocalScale();
-      assert.ok(scale.x !== 0);
+      assert.ok(scale.x > 1.8 && scale.x < 2.2, `Scale ${scale.x} should modulate relative to 2.0`);
 
       // Transition to RESEARCHING
       controller.setVisualState(AgentState.RESEARCHING, 'Researching', '');

@@ -42,9 +42,11 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private latestCritiqueBody: string = '';
   private isCardExpanded: boolean = false;
   private animTime: number = 0;
+  private initialScale: vec3 = new vec3(1.0, 1.0, 1.0);
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
+      this.initScale();
       this.configureAudioLowLatency();
       this.setVisualState(AgentState.IDLE, '', '');
       this.bindInteractions();
@@ -53,6 +55,15 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     this.createEvent('UpdateEvent').bind((eventData) => {
       this.onUpdate(eventData.getDeltaTime());
     });
+  }
+
+  private initScale(): void {
+    if (this.agentOrbMeshVisual) {
+      const obj = this.agentOrbMeshVisual.getSceneObject();
+      if (obj) {
+        this.initialScale = obj.getTransform().getLocalScale();
+      }
+    }
   }
 
   private configureAudioLowLatency(): void {
@@ -143,9 +154,12 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     if (this.currentState === AgentState.IDLE && this.agentOrbMeshVisual) {
       const obj = this.agentOrbMeshVisual.getSceneObject();
       if (obj) {
-        const baseScale = 1.0;
         const pulse = 1.0 + 0.05 * Math.sin(this.animTime * 2.5);
-        obj.getTransform().setLocalScale(new vec3(pulse, pulse, pulse));
+        obj.getTransform().setLocalScale(new vec3(
+          this.initialScale.x * pulse,
+          this.initialScale.y * pulse,
+          this.initialScale.z * pulse
+        ));
       }
     }
 
