@@ -8,11 +8,17 @@ import base64
 import json
 import logging
 import os
+import sys
 import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Set
+
+backend_dir = os.path.dirname(os.path.abspath(__file__))
+if backend_dir not in sys.path:
+    sys.path.insert(0, backend_dir)
+
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -34,12 +40,15 @@ try:
         get_session_manager,
         get_ws_session_manager,
     )
+    from envelope_router import EnvelopeRouter
 except ImportError:
     from backend.session_manager import (
         SessionManager,
         get_session_manager,
         get_ws_session_manager,
     )
+    from backend.envelope_router import EnvelopeRouter
+
 
 # Load environment variables from .env if present
 load_dotenv()
@@ -69,6 +78,7 @@ except Exception as e:
 
 # Encapsulated In-Memory Session & State Manager (DIP)
 session_manager = SessionManager(supabase_client=supabase_client)
+envelope_router = EnvelopeRouter()
 
 # Module-Level Backward-Compatibility Aliases
 renderer_daemon = session_manager.renderer_daemon
@@ -395,19 +405,18 @@ async def ask_meeting_rag(
 # WebSocket Full-Duplex Hub (`/ws/meeting/{meeting_id}`)
 @app.websocket("/ws/meeting/{meeting_id}")
 async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
+    session_mgr = getattr(app.state, "session_manager", session_manager)
     await websocket.accept()
-    session = get_or_create_session(meeting_id)
-    active_connections[meeting_id].add(websocket)
-    logger.info("Client connected to meeting %s (total clients: %d)", meeting_id, len(active_connections[meeting_id]))
+    session_mgr.active_connections[meeting_id].add(websocket)
+    session = session_mgr.get_or_create_session(meeting_id)
 
-    # Start Raising-Hand Agent proactive loop (Mode A: every 20s) if not already active
-    if meeting_id not in raising_hand_agent._active_loops or raising_hand_agent._active_loops[meeting_id].done():
-        raising_hand_agent.start_proactive_loop(
+    if meeting_id not in session_mgr.raising_hand_agent._active_loops or session_mgr.raising_hand_agent._active_loops[meeting_id].done():
+        session_mgr.raising_hand_agent.start_proactive_loop(
             meeting_id=meeting_id,
             interval_seconds=20.0,
-            get_diagram_fn=lambda mid: live_sessions[mid].get_xml() if mid in live_sessions else "",
+            get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
             get_timestamp_fn=lambda mid: int(datetime.now(timezone.utc).timestamp() * 1000),
-            broadcast_fn=broadcast_to_meeting,
+            broadcast_fn=session_mgr.broadcast_to_meeting,
         )
 
     try:
@@ -418,267 +427,17 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
             except Exception as e:
                 logger.warning("Malformed JSON received: %s", e)
                 continue
-
-            event_type = msg.get("eventType")
-            timestamp_ms = msg.get("timestamp_ms", 0)
-
-            # 1. Handshake Envelope
-            if event_type == "handshake":
-                logger.info("Handshake received from %s (protocol %s)", msg.get("device"), msg.get("protocolVersion"))
-                # If diagram already has nodes, send current rendered diagram immediately
-                if len(session.diagram.cells) > 2:
-                    try:
-                        drawio_xml = session.get_xml()
-                        b64_png = await renderer_daemon.render_b64_png(drawio_xml)
-                        await websocket.send_text(json.dumps({
-                            "event": "DIAGRAM_UPDATED",
-                            "snapshot_id": str(uuid.uuid4()),
-                            "timestamp_ms": timestamp_ms,
-                            "diff_summary": "Initial diagram sync",
-                            "decision_rationale": "Initial session synchronization",
-                            "image_b64": b64_png,
-                        }))
-                    except Exception as e:
-                        logger.warning("Initial render sync error: %s", e)
-                else:
-                    await websocket.send_text(json.dumps({
-                        "event": "HANDSHAKE_ACK",
-                        "status": "ready",
-                        "meeting_id": meeting_id,
-                    }))
-
-            # 2. ASR Transcription Envelope (T-07 Ingestion)
-            elif event_type == "asrTranscription":
-                speaker = msg.get("speaker_label", "Speaker 0")
-                text = msg.get("transcript_text", "")
-                if text.strip():
-                    try:
-                        turn_id = await db_save_transcript_turn(meeting_id, speaker, text, timestamp_ms)
-                        logger.info("[%s @ %dms]: %s", speaker, timestamp_ms, text)
-                        await broadcast_to_meeting(meeting_id, {
-                            "event": "TRANSCRIPT_LOGGED",
-                            "turn_id": turn_id,
-                            "speaker_label": speaker,
-                            "transcript_text": text,
-                            "timestamp_ms": timestamp_ms,
-                        }, exclude=websocket)
-                    except Exception as e:
-                        logger.error("Error processing asrTranscription in meeting %s: %s", meeting_id, e, exc_info=True)
-
-            # 3. Camera Frame Envelope (Perceptual Hash Diff Gate + Vision Extractor)
-            elif event_type == "cameraFrame":
-                img_b64 = msg.get("image_b64")
-                if not img_b64:
-                    continue
-
-                try:
-                    img_bytes = base64.b64decode(img_b64)
-                    has_diff, hamming, current_hash = session.check_image_diff(img_bytes, threshold=6)
-
-                    if not has_diff:
-                        logger.debug("Frame skipped by perceptual hash (hamming distance: %d < 6)", hamming)
-                        continue
-
-                    logger.info("Frame diff accepted (hamming: %d). Analyzing whiteboard...", hamming)
-                    existing_nodes = list(session.node_metadata.values())
-                    delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes)
-
-                    if delta.person_occluding_board:
-                        logger.info("Person occluding whiteboard; skipping diagram mutation.")
-                        continue
-
-                    if delta.has_meaningful_change:
-                        session.apply_delta(delta)
-                        drawio_xml = session.compile_layout_xml()
-                        b64_png = await renderer_daemon.render_b64_png(drawio_xml)
-
-                        snapshot_id = await db_save_diagram_snapshot(
-                            meeting_id=meeting_id,
-                            timestamp_ms=timestamp_ms,
-                            drawio_xml=drawio_xml,
-                            diff_summary=delta.diff_summary,
-                            decision_rationale="Incremental whiteboard updates detected",
-                            triggered_by="VISION_DIFF",
-                        )
-
-                        await broadcast_to_meeting(meeting_id, {
-                            "event": "DIAGRAM_UPDATED",
-                            "snapshot_id": snapshot_id,
-                            "timestamp_ms": timestamp_ms,
-                            "diff_summary": delta.diff_summary,
-                            "decision_rationale": "Incremental whiteboard updates detected",
-                            "image_b64": b64_png,
-                        })
-
-                        # Asynchronous Intelligence Sub-Agents (T-07 & T-08)
-                        asyncio.create_task(
-                            decision_linker.process_snapshot(
-                                meeting_id=meeting_id,
-                                snapshot_id=snapshot_id,
-                                timestamp_ms=timestamp_ms,
-                                diff_summary=delta.diff_summary,
-                                drawio_xml=drawio_xml,
-                                broadcast_fn=broadcast_to_meeting,
-                            )
-                        )
-                        asyncio.create_task(
-                            raising_hand_agent.evaluate_proactive_on_change(
-                                meeting_id=meeting_id,
-                                timestamp_ms=timestamp_ms,
-                                drawio_xml=drawio_xml,
-                                broadcast_fn=broadcast_to_meeting,
-                            )
-                        )
-                except Exception as e:
-                    logger.error("Error processing cameraFrame: %s", e)
-
-            # 4. SIK Pinch Command Envelope (Instant Sub-150ms Mutate & Re-layout)
-            elif event_type == "pinchCommand":
-                action = msg.get("action", "ADD_NODE")
-                try:
-                    node_type = msg.get("node_type", "service")
-                    label = msg.get("label", f"New {node_type.capitalize()}")
-
-                    if action == "ADD_NODE":
-                        node_id = session.add_node(node_type, label)
-                        drawio_xml = session.compile_layout_xml()
-                        b64_png = await renderer_daemon.render_b64_png(drawio_xml)
-
-                        diff_summary = f"+ Added [{node_type}] {label}"
-                        snapshot_id = await db_save_diagram_snapshot(
-                            meeting_id=meeting_id,
-                            timestamp_ms=timestamp_ms,
-                            drawio_xml=drawio_xml,
-                            diff_summary=diff_summary,
-                            decision_rationale=f"User pinched palette to add {node_type}: '{label}'",
-                            triggered_by="PINCH_PALETTE",
-                        )
-
-                        logger.info("Pinch ADD_NODE '%s' (%s) rendered in sub-150ms", label, node_type)
-                        await broadcast_to_meeting(meeting_id, {
-                            "event": "DIAGRAM_UPDATED",
-                            "snapshot_id": snapshot_id,
-                            "timestamp_ms": timestamp_ms,
-                            "diff_summary": diff_summary,
-                            "decision_rationale": f"User added {node_type}: '{label}'",
-                            "image_b64": b64_png,
-                        })
-
-                        # Asynchronously trigger Decision Linker & Raising-Hand Agent (T-07 & T-08)
-                        asyncio.create_task(
-                            decision_linker.process_snapshot(
-                                meeting_id=meeting_id,
-                                snapshot_id=snapshot_id,
-                                timestamp_ms=timestamp_ms,
-                                diff_summary=diff_summary,
-                                drawio_xml=drawio_xml,
-                                broadcast_fn=broadcast_to_meeting,
-                            )
-                        )
-                        asyncio.create_task(
-                            raising_hand_agent.evaluate_proactive_on_change(
-                                meeting_id=meeting_id,
-                                timestamp_ms=timestamp_ms,
-                                drawio_xml=drawio_xml,
-                                broadcast_fn=broadcast_to_meeting,
-                            )
-                        )
-
-                    elif action == "CONNECT_NODES":
-                        source = msg.get("source") or msg.get("source_id", "")
-                        target = msg.get("target") or msg.get("target_id", "")
-                        edge_label = msg.get("edge_label", "")
-                        edge_id = session.add_edge(source, target, edge_label)
-                        if edge_id:
-                            drawio_xml = session.compile_layout_xml()
-                            b64_png = await renderer_daemon.render_b64_png(drawio_xml)
-                            diff_summary = f"Connected {source} → {target}"
-                            snapshot_id = await db_save_diagram_snapshot(
-                                meeting_id=meeting_id,
-                                timestamp_ms=timestamp_ms,
-                                drawio_xml=drawio_xml,
-                                diff_summary=diff_summary,
-                                decision_rationale=f"Connected {source} to {target}",
-                                triggered_by="PINCH_PALETTE",
-                            )
-                            await broadcast_to_meeting(meeting_id, {
-                                "event": "DIAGRAM_UPDATED",
-                                "snapshot_id": snapshot_id,
-                                "timestamp_ms": timestamp_ms,
-                                "diff_summary": diff_summary,
-                                "decision_rationale": f"Connected {source} to {target}",
-                                "image_b64": b64_png,
-                            })
-
-                            asyncio.create_task(
-                                decision_linker.process_snapshot(
-                                    meeting_id=meeting_id,
-                                    snapshot_id=snapshot_id,
-                                    timestamp_ms=timestamp_ms,
-                                    diff_summary=diff_summary,
-                                    drawio_xml=drawio_xml,
-                                    broadcast_fn=broadcast_to_meeting,
-                                )
-                            )
-                            asyncio.create_task(
-                                raising_hand_agent.evaluate_proactive_on_change(
-                                    meeting_id=meeting_id,
-                                    timestamp_ms=timestamp_ms,
-                                    drawio_xml=drawio_xml,
-                                    broadcast_fn=broadcast_to_meeting,
-                                )
-                            )
-                        else:
-                            logger.warning("Failed to connect nodes '%s' → '%s' (nodes not found in session)", source, target)
-                            await websocket.send_text(json.dumps({
-                                "event": "COMMAND_ERROR",
-                                "action": "CONNECT_NODES",
-                                "message": f"Could not connect '{source}' to '{target}': one or both nodes not found in graph.",
-                                "timestamp_ms": timestamp_ms,
-                            }))
-
-                    elif action == "ASK_AGENT":
-                        query = msg.get("label", "") or msg.get("query", "Architectural feedback")
-                        logger.info("User triggered research pull: %s", query)
-                        # Mode B (On-Demand Research Pull via RaisingHandAgent)
-                        intervention = await raising_hand_agent.handle_research_pull(
-                            meeting_id=meeting_id,
-                            query=query,
-                            timestamp_ms=timestamp_ms,
-                            drawio_xml=session.get_xml(),
-                            broadcast_fn=broadcast_to_meeting,
-                        )
-
-                    else:
-                        logger.warning("Unrecognized pinchCommand action: %s", action)
-                        await websocket.send_text(json.dumps({
-                            "event": "COMMAND_ERROR",
-                            "action": action,
-                            "message": f"Unrecognized pinchCommand action: '{action}'",
-                            "timestamp_ms": timestamp_ms,
-                        }))
-
-                except Exception as e:
-                    logger.error("Error executing pinchCommand '%s': %s", action, e, exc_info=True)
-                    try:
-                        await websocket.send_text(json.dumps({
-                            "event": "COMMAND_ERROR",
-                            "action": action,
-                            "message": str(e),
-                            "timestamp_ms": timestamp_ms,
-                        }))
-                    except Exception as send_err:
-                        logger.warning("Failed to dispatch COMMAND_ERROR to client: %s", send_err)
-
+            await envelope_router.dispatch(msg, websocket, session_mgr, meeting_id)
     except WebSocketDisconnect:
         logger.info("Client disconnected from meeting %s", meeting_id)
     except Exception as e:
         logger.error("Unexpected WebSocket error in meeting %s: %s", meeting_id, e)
     finally:
-        active_connections[meeting_id].discard(websocket)
-        if not active_connections[meeting_id]:
-            active_connections.pop(meeting_id, None)
-            raising_hand_agent.stop_proactive_loop(meeting_id)
+        session_mgr.active_connections[meeting_id].discard(websocket)
+        if not session_mgr.active_connections[meeting_id]:
+            session_mgr.active_connections.pop(meeting_id, None)
+            session_mgr.raising_hand_agent.stop_proactive_loop(meeting_id)
+
 
 
 if __name__ == "__main__":
