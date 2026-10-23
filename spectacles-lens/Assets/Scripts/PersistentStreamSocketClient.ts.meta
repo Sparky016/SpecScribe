@@ -1,0 +1,49 @@
+- !<AssetImportMetadata/f4a8a3dc-133e-4a95-a7b1-d98eef4aa85f>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 5dcbadd3-971a-453c-aecd-54d435ec6268
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 5dcbadd3-971a-453c-aecd-54d435ec6268
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 0e655733-cc41-4475-8c18-3b7fa2f687af
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/0e655733-cc41-4475-8c18-3b7fa2f687af>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 3c0672c4-2af4-4242-8eb2-9c7a155f28cf
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    cameraCapturer: false
+    websocketUrl: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - websocketUrl: "ws://localhost:8000/ws/meeting/demo-session-01"
+      cameraCapturer: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - '// @input string websocketUrl = "ws://localhost:8000/ws/meeting/demo-session-01"'
+    - // @input AssignableType_1 cameraCapturer

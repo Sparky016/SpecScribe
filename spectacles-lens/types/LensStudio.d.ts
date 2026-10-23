@@ -102,7 +102,7 @@ declare namespace AsrModule {
   interface AsrTranscriptionOptions {
     mode: AsrMode;
     silenceUntilTerminationMs: number;
-    onTranscriptionUpdate: EventCallback<TranscriptionUpdateEvent>;
+    onTranscriptionUpdateEvent: EventCallback<TranscriptionUpdateEvent>;
   }
 
   namespace AsrTranscriptionOptions {

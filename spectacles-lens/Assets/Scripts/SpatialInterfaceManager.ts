@@ -1,36 +1,111 @@
-import { BaseScriptComponent } from 'Component/ScriptComponent';
-import { PinchButton } from 'SpectaclesInteractionKit.lspkg/Components/UI/PinchButton/PinchButton';
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 
 @component
 export class SpatialInterfaceManager extends BaseScriptComponent {
   @input
-  private socketClient!: PersistentStreamSocketClient;
+  @allowUndefined
+  private socketClient?: PersistentStreamSocketClient;
 
   @input
-  private btnAddDecision!: PinchButton;
+  @allowUndefined
+  private btnAddDecision?: Interactable;
 
   @input
-  private btnAddService!: PinchButton;
+  @allowUndefined
+  private btnAddService?: Interactable;
 
   @input
-  private btnAddDatabase!: PinchButton;
+  @allowUndefined
+  private btnAddDatabase?: Interactable;
 
   @input
-  private btnAddTerminal!: PinchButton;
+  @allowUndefined
+  private btnAddTerminal?: Interactable;
 
   @input
-  private diagramOverlayMesh!: RenderMeshVisual;
+  @allowUndefined
+  private diagramOverlayMesh?: RenderMeshVisual;
 
   @input
-  private diffToastText!: Text;
+  @allowUndefined
+  private diffToastText?: Text;
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
+      this.resolveReferences();
       this.bindPaletteButtons();
       this.bindSocketCallbacks();
     });
+  }
+
+  private resolveReferences(): void {
+    if (!this.socketClient) {
+      try {
+        const comps = this.getSceneObject().getComponents('Component.ScriptComponent' as any);
+        for (const c of comps) {
+          if (c !== this && (c as any).sendPinchCommand) {
+            this.socketClient = c as any;
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignored
+      }
+    }
+    if (!this.diffToastText) {
+      const obj = this.findSceneObject('DiffToastText');
+      if (obj) {
+        this.diffToastText = obj.getComponent('Component.Text' as any) as any;
+      }
+    }
+    if (!this.diagramOverlayMesh) {
+      const obj = this.findSceneObject('WhiteboardOverlayAnchor') || this.findSceneObject('WhiteboardOverlay');
+      if (obj) {
+        this.diagramOverlayMesh = obj.getComponent('Component.RenderMeshVisual' as any) as any;
+      }
+    }
+    if (!this.btnAddDecision) {
+      this.btnAddDecision = this.findInteractable('BtnAddDecision');
+    }
+    if (!this.btnAddService) {
+      this.btnAddService = this.findInteractable('BtnAddService');
+    }
+    if (!this.btnAddDatabase) {
+      this.btnAddDatabase = this.findInteractable('BtnAddDatabase');
+    }
+    if (!this.btnAddTerminal) {
+      this.btnAddTerminal = this.findInteractable('BtnAddTerminal');
+    }
+  }
+
+  private findSceneObject(name: string): SceneObject | null {
+    try {
+      if (typeof global !== 'undefined' && (global as any).scene && (global as any).scene.findObjectByName) {
+        return (global as any).scene.findObjectByName(name);
+      }
+    } catch (e) {
+      // Ignored
+    }
+    return null;
+  }
+
+  private findInteractable(name: string): Interactable | undefined {
+    const obj = this.findSceneObject(name);
+    if (!obj) {
+      return undefined;
+    }
+    try {
+      const comps = obj.getComponents('Component.ScriptComponent' as any);
+      for (const c of comps) {
+        if ((c as any).onButtonPinched || (c as any).onTriggerEnd || (c as any).isPinch) {
+          return c as any;
+        }
+      }
+    } catch (e) {
+      // Ignored
+    }
+    return undefined;
   }
 
   private bindPaletteButtons(): void {
@@ -40,13 +115,19 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.bindSingleButton(this.btnAddTerminal, 'terminal');
   }
 
-  private bindSingleButton(button: PinchButton, nodeType: string): void {
+  private bindSingleButton(button: Interactable | any, nodeType: string): void {
     if (!button) {
       return;
     }
-    button.onButtonPinched.add(() => {
-      this.triggerAddNode(nodeType);
-    });
+    if (button.onButtonPinched) {
+      button.onButtonPinched.add(() => {
+        this.triggerAddNode(nodeType);
+      });
+    } else if (button.onTriggerEnd) {
+      button.onTriggerEnd.add(() => {
+        this.triggerAddNode(nodeType);
+      });
+    }
   }
 
   public triggerAddNode(nodeType: string): void {

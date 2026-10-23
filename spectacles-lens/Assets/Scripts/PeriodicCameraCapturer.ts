@@ -1,15 +1,3 @@
-import { BaseScriptComponent } from 'Component/ScriptComponent';
-
-export enum CompressionQuality {
-  Low = 0,
-  Medium = 1,
-  High = 2
-}
-
-export enum EncodingType {
-  Png = 0,
-  Jpg = 1
-}
 
 @component
 export class PeriodicCameraCapturer extends BaseScriptComponent {
@@ -18,6 +6,10 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
 
   @input
   private frameSmallerDimension: number = 480;
+
+  @input
+  @allowUndefined
+  private simulatedTexture?: Texture;
 
   private cameraModule: CameraModule = require('LensStudio:CameraModule');
   private cameraTexture?: Texture;
@@ -38,13 +30,23 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
 
   private setupCameraPipeline(): void {
     try {
-      const request = CameraModule.createCameraRequest();
-      request.cameraId = CameraModule.CameraId.Default_Color;
-      request.imageSmallerDimension = this.frameSmallerDimension;
-      this.cameraTexture = this.cameraModule.requestCamera(request);
-      print(`[PeriodicCameraCapturer] Camera pipeline initialized at ${this.frameSmallerDimension}p.`);
+      if (typeof CameraModule !== 'undefined' && CameraModule.createCameraRequest) {
+        const request = CameraModule.createCameraRequest();
+        request.cameraId = CameraModule.CameraId.Default_Color;
+        request.imageSmallerDimension = this.frameSmallerDimension;
+        this.cameraTexture = this.cameraModule.requestCamera(request);
+        print(`[PeriodicCameraCapturer] Camera pipeline initialized at ${this.frameSmallerDimension}p.`);
+        return;
+      }
     } catch (e) {
-      print(`[PeriodicCameraCapturer] Failed to initialize camera pipeline: ${e}`);
+      print(`[PeriodicCameraCapturer] Camera pipeline unavailable (simulated runtime): ${e}`);
+    }
+
+    if (this.simulatedTexture) {
+      this.cameraTexture = this.simulatedTexture;
+      print('[PeriodicCameraCapturer] Fallback simulated texture active.');
+    } else {
+      print('[PeriodicCameraCapturer] Running in simulation without camera input; periodic capture idle.');
     }
   }
 
@@ -100,7 +102,7 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
         this.isEncodingActive = false;
         print('[PeriodicCameraCapturer] Async frame encoding failed.');
       },
-      CompressionQuality.Low,
+      CompressionQuality.LowQuality,
       EncodingType.Jpg
     );
   }

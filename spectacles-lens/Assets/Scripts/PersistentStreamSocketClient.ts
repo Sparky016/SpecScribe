@@ -1,4 +1,3 @@
-import { BaseScriptComponent } from 'Component/ScriptComponent';
 import { PeriodicCameraCapturer } from './PeriodicCameraCapturer';
 
 @component
@@ -7,7 +6,8 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private websocketUrl: string = 'ws://localhost:8000/ws/meeting/demo-session-01';
 
   @input
-  private cameraCapturer!: PeriodicCameraCapturer;
+  @allowUndefined
+  private cameraCapturer?: PeriodicCameraCapturer;
 
   private internetModule: InternetModule = require('LensStudio:InternetModule');
   private asrModule: AsrModule = require('LensStudio:AsrModule');
@@ -149,7 +149,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       asrOptions.mode = AsrModule.AsrMode.HighSpeed;
       asrOptions.silenceUntilTerminationMs = 1000;
 
-      asrOptions.onTranscriptionUpdate.add((eventArgs: AsrModule.TranscriptionUpdateEvent) => {
+      asrOptions.onTranscriptionUpdateEvent.add((eventArgs: AsrModule.TranscriptionUpdateEvent) => {
         if (eventArgs.text && eventArgs.text.trim().length > 0) {
           this.latestSpokenPhrase = eventArgs.text.trim();
         }
@@ -172,6 +172,20 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   private bindCameraCapturer(): void {
     if (!this.cameraCapturer) {
+      try {
+        const comps = this.getSceneObject().getComponents('Component.ScriptComponent' as any);
+        for (const c of comps) {
+          if (c !== this && (c as any).triggerManualCapture) {
+            this.cameraCapturer = c as any;
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignored
+      }
+    }
+    if (!this.cameraCapturer) {
+      print('[PersistentStreamSocketClient] Camera capturer not attached; camera streaming disabled.');
       return;
     }
     this.cameraCapturer.onEncodedFrameAvailable = (b64: string) => {

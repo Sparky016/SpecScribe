@@ -1,5 +1,3 @@
-import { BaseScriptComponent } from 'Component/ScriptComponent';
-import { PinchButton } from 'SpectaclesInteractionKit.lspkg/Components/UI/PinchButton/PinchButton';
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 
@@ -12,30 +10,39 @@ export enum AgentState {
 @component
 export class RaisingHandAgentController extends BaseScriptComponent {
   @input
-  private socketClient!: PersistentStreamSocketClient;
+  @allowUndefined
+  private socketClient?: PersistentStreamSocketClient;
 
   @input
-  private agentOrbPinchButton!: PinchButton;
+  @allowUndefined
+  private agentOrbPinchButton?: Interactable;
 
   @input
+  @allowUndefined
   private agentOrbMeshVisual?: RenderMeshVisual;
 
   @input
+  @allowUndefined
   private researchingRingObject?: SceneObject;
 
   @input
-  private handRaisedPillObject!: SceneObject;
+  @allowUndefined
+  private handRaisedPillObject?: SceneObject;
 
   @input
-  private pillTitleText!: Text;
+  @allowUndefined
+  private pillTitleText?: Text;
 
   @input
-  private expandedCritiqueCard!: SceneObject;
+  @allowUndefined
+  private expandedCritiqueCard?: SceneObject;
 
   @input
-  private critiqueBodyText!: Text;
+  @allowUndefined
+  private critiqueBodyText?: Text;
 
   @input
+  @allowUndefined
   private agentAudioComponent?: AudioComponent;
 
   private currentState: AgentState = AgentState.IDLE;
@@ -46,6 +53,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
+      this.resolveReferences();
       this.initScale();
       this.configureAudioLowLatency();
       this.setVisualState(AgentState.IDLE, '', '');
@@ -55,6 +63,82 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     this.createEvent('UpdateEvent').bind((eventData) => {
       this.onUpdate(eventData.getDeltaTime());
     });
+  }
+
+  private resolveReferences(): void {
+    if (!this.socketClient) {
+      try {
+        const comps = this.getSceneObject().getComponents('Component.ScriptComponent' as any);
+        for (const c of comps) {
+          if (c !== this && (c as any).sendPinchCommand) {
+            this.socketClient = c as any;
+            break;
+          }
+        }
+      } catch (e) {
+        // Ignored
+      }
+    }
+    if (!this.handRaisedPillObject) {
+      this.handRaisedPillObject = this.findSceneObject('HandRaisedPillBadge') || undefined;
+    }
+    if (!this.pillTitleText) {
+      const pill = this.handRaisedPillObject || this.findSceneObject('PillTitleText');
+      if (pill) {
+        this.pillTitleText = pill.getComponent('Component.Text' as any) as any;
+      }
+    }
+    if (!this.expandedCritiqueCard) {
+      this.expandedCritiqueCard = this.findSceneObject('ExpandedCritiqueCard') || undefined;
+    }
+    if (!this.critiqueBodyText) {
+      const card = this.expandedCritiqueCard || this.findSceneObject('CritiqueBodyText');
+      if (card) {
+        this.critiqueBodyText = card.getComponent('Component.Text' as any) as any;
+      }
+    }
+    if (!this.researchingRingObject) {
+      this.researchingRingObject = this.findSceneObject('ResearchingRingMesh') || undefined;
+    }
+    if (!this.agentOrbMeshVisual) {
+      const orbObj = this.findSceneObject('AgentOrbMesh');
+      if (orbObj) {
+        this.agentOrbMeshVisual = orbObj.getComponent('Component.RenderMeshVisual' as any) as any;
+      }
+    }
+    if (!this.agentOrbPinchButton) {
+      const orbObj = this.findSceneObject('AgentOrbMesh') || this.findSceneObject('RaisingHandAgentRoot');
+      if (orbObj) {
+        try {
+          const comps = orbObj.getComponents('Component.ScriptComponent' as any);
+          for (const c of comps) {
+            if ((c as any).onButtonPinched || (c as any).onTriggerEnd || (c as any).isPinch) {
+              this.agentOrbPinchButton = c as any;
+              break;
+            }
+          }
+        } catch (e) {
+          // Ignored
+        }
+      }
+    }
+    if (!this.agentAudioComponent) {
+      const audioObj = this.findSceneObject('AgentVoicePlayer') || this.getSceneObject();
+      if (audioObj) {
+        this.agentAudioComponent = audioObj.getComponent('Component.AudioComponent' as any) as any;
+      }
+    }
+  }
+
+  private findSceneObject(name: string): SceneObject | null {
+    try {
+      if (typeof global !== 'undefined' && (global as any).scene && (global as any).scene.findObjectByName) {
+        return (global as any).scene.findObjectByName(name);
+      }
+    } catch (e) {
+      // Ignored
+    }
+    return null;
   }
 
   private initScale(): void {
@@ -102,9 +186,15 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     }
 
     if (this.agentOrbPinchButton) {
-      this.agentOrbPinchButton.onButtonPinched.add(() => {
-        this.handleOrbPinched();
-      });
+      if ((this.agentOrbPinchButton as any).onButtonPinched) {
+        (this.agentOrbPinchButton as any).onButtonPinched.add(() => {
+          this.handleOrbPinched();
+        });
+      } else if ((this.agentOrbPinchButton as any).onTriggerEnd) {
+        (this.agentOrbPinchButton as any).onTriggerEnd.add(() => {
+          this.handleOrbPinched();
+        });
+      }
     }
   }
 
