@@ -2,6 +2,15 @@ import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interact
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 import { RaisingHandAgentController } from './RaisingHandAgentController';
 
+export enum WhiteboardState {
+  SELECT_AREA = 0,    // Area selection mode: Reticle overlay, no drawings
+  CLEAN_BOARD = 1,    // Area confirmed: Pristine clean whiteboard, zero drawings
+  DRAWING_ACTIVE = 2, // Drawing mode: Ingested marker sketch + Sugiyama DAG overlay
+  NODE_ADDED = 3,     // Injected node (Verify JWT)
+  SNAPSHOT_UPDATED = 4, // Multi-tier architecture snapshot
+  CONCLUDED = 5       // Technical spec concluded
+}
+
 @component
 export class SpatialInterfaceManager extends BaseScriptComponent {
   @input
@@ -38,6 +47,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
   @input
   @allowUndefined
+  private whiteboardInteractable?: Interactable;
+
+  @input
+  @allowUndefined
   private diagramOverlayMesh?: RenderMeshVisual;
 
   @input
@@ -51,15 +64,19 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private tapCycleIndex: number = 0;
   private readonly tapNodeTypes: string[] = ['decision', 'service', 'database', 'terminal'];
 
-  private diagramStage: number = 0; // 0: initial, 1: node added, 2: snapshot updated, 3: concluded
-  private nodeCount: number = 4;
+  private whiteboardState: WhiteboardState = WhiteboardState.SELECT_AREA;
+  private diagramStage: number = 0; // 0: initial/clean/select, 1: node added, 2: snapshot updated, 3: concluded
+  private nodeCount: number = 0;
   private meetingConcluded: boolean = false;
 
+  private texSelectArea?: Texture;
+  private texWhiteboardClean?: Texture;
+  private texWhiteboardDrawn?: Texture;
+  private texEmpty?: Texture;
   private texInitial?: Texture;
   private texNodeAdded?: Texture;
   private texSnapshotUpdated?: Texture;
   private texConcluded?: Texture;
-  private texWhiteboard?: Texture;
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
@@ -68,6 +85,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       this.applyInitialVisuals();
       this.bindPaletteButtons();
       this.bindMeetingControls();
+      this.bindWhiteboardInteraction();
       this.bindSocketCallbacks();
       this.bindTapGesture();
     });
@@ -75,25 +93,101 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
   private loadTextures(): void {
     try {
+      this.texSelectArea = requireAsset('../Textures/Whiteboard_SelectArea_1024x683.png') as Texture;
+      this.texWhiteboardClean = requireAsset('../Textures/Whiteboard_Backdrop_1024x683.png') as Texture;
+      this.texWhiteboardDrawn = requireAsset('../Textures/Whiteboard_Drawn_1024x683.png') as Texture;
+      this.texEmpty = requireAsset('../Textures/Diagram_Empty_1024x683.png') as Texture;
       this.texInitial = requireAsset('../Textures/Diagram_Initial_1024x683.png') as Texture;
       this.texNodeAdded = requireAsset('../Textures/Diagram_NodeAdded_1024x683.png') as Texture;
       this.texSnapshotUpdated = requireAsset('../Textures/Diagram_SnapshotUpdated_1024x683.png') as Texture;
       this.texConcluded = requireAsset('../Textures/Diagram_Concluded_1024x683.png') as Texture;
-      this.texWhiteboard = requireAsset('../Textures/Whiteboard_Backdrop_1024x683.png') as Texture;
     } catch (e) {
       print(`[SpatialInterfaceManager] Note: requireAsset unavailable or error: ${e}`);
     }
   }
 
   private applyInitialVisuals(): void {
+    this.whiteboardState = WhiteboardState.SELECT_AREA;
+    this.diagramStage = 0;
+    this.nodeCount = 0;
+
+    // Whiteboard starts in selection/calibration mode on wall
+    if (this.whiteboardBoardMesh && this.texSelectArea) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texSelectArea);
+    }
+    // Overlay starts 100% clean and transparent (zero drawings)
+    if (this.diagramOverlayMesh && this.texEmpty) {
+      this.setMeshTexture(this.diagramOverlayMesh, this.texEmpty);
+    }
+    if (this.diffToastText) {
+      this.diffToastText.text = 'Whiteboard Calibration: Pinch board or [ Lock Whiteboard ] to select area on wall';
+    }
+  }
+
+  public selectWhiteboardArea(): void {
+    if (this.whiteboardState !== WhiteboardState.SELECT_AREA) {
+      return;
+    }
+    this.whiteboardState = WhiteboardState.CLEAN_BOARD;
+    this.diagramStage = 0;
+    this.nodeCount = 0;
+
+    print('[SpatialInterfaceManager] Whiteboard area calibrated and locked onto wall.');
+
+    // Switch board to pristine clean whiteboard surface (NO drawings)
+    if (this.whiteboardBoardMesh && this.texWhiteboardClean) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardClean);
+    }
+    // Overlay remains completely empty/clean
+    if (this.diagramOverlayMesh && this.texEmpty) {
+      this.setMeshTexture(this.diagramOverlayMesh, this.texEmpty);
+    }
+    if (this.diffToastText) {
+      this.diffToastText.text = 'Whiteboard Area Selected (120x80cm) • Clean Whiteboard Ready';
+    }
+
+    if (this.socketClient) {
+      this.socketClient.sendPinchCommand('CALIBRATE_AREA', 'whiteboard', 'Area locked on wall');
+    }
+  }
+
+  public startDrawingAndIngestion(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      this.selectWhiteboardArea();
+    }
+    this.whiteboardState = WhiteboardState.DRAWING_ACTIVE;
+    this.diagramStage = 0;
+    this.nodeCount = 4;
+
+    print('[SpatialInterfaceManager] Drawing active: marker sketches and Sugiyama DAG ingested.');
+
+    // Switch whiteboard to drawn state (marker sketches appear)
+    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+    }
+    // Switch overlay to initial Sugiyama DAG
     if (this.diagramOverlayMesh && this.texInitial) {
       this.setMeshTexture(this.diagramOverlayMesh, this.texInitial);
     }
-    if (this.whiteboardBoardMesh && this.texWhiteboard) {
-      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboard);
-    }
     if (this.diffToastText) {
-      this.diffToastText.text = 'Standing at 1.15m: Initial Sugiyama DAG loaded (4 nodes, 3 edges)';
+      this.diffToastText.text = 'Ingested Live Whiteboard Sketch: Sugiyama DAG Active (4 nodes, 3 edges)';
+    }
+
+    if (this.socketClient) {
+      this.socketClient.sendPinchCommand('INGEST_DRAWING', 'diagram', 'Initial Sugiyama DAG loaded');
+    }
+  }
+
+  private handleWhiteboardPinch(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      print('[SpatialInterfaceManager] Whiteboard pinched in SELECT_AREA mode -> Locking area');
+      this.selectWhiteboardArea();
+    } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
+      print('[SpatialInterfaceManager] Whiteboard pinched in CLEAN_BOARD mode -> Starting drawing & ingestion');
+      this.startDrawingAndIngestion();
+    } else {
+      print('[SpatialInterfaceManager] Whiteboard pinched in DRAWING mode -> Ingesting next service node');
+      this.triggerAddNode('service');
     }
   }
 
@@ -110,10 +204,18 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private bindTapGesture(): void {
     try {
       this.createEvent('TapEvent').bind(() => {
-        const nextType = this.tapNodeTypes[this.tapCycleIndex % this.tapNodeTypes.length];
-        this.tapCycleIndex++;
-        print(`[SpatialInterfaceManager] Preview Tap detected -> Adding node [${nextType.toUpperCase()}]`);
-        this.triggerAddNode(nextType);
+        if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+          print('[SpatialInterfaceManager] Tap detected -> Selecting Whiteboard Area');
+          this.selectWhiteboardArea();
+        } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
+          print('[SpatialInterfaceManager] Tap detected on clean board -> Starting drawing & ingestion');
+          this.startDrawingAndIngestion();
+        } else {
+          const nextType = this.tapNodeTypes[this.tapCycleIndex % this.tapNodeTypes.length];
+          this.tapCycleIndex++;
+          print(`[SpatialInterfaceManager] Preview Tap detected -> Adding node [${nextType.toUpperCase()}]`);
+          this.triggerAddNode(nextType);
+        }
       });
     } catch (e) {
       // Ignored if TapEvent is unavailable
@@ -182,6 +284,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       }
     }
 
+    if (!this.whiteboardInteractable) {
+      this.whiteboardInteractable = this.findInteractable('WhiteboardBackplate') || this.findInteractable('WhiteboardOverlayAnchor');
+    }
+
     if (!this.btnAddDecision) {
       this.btnAddDecision = this.findInteractable('BtnAddDecision');
     }
@@ -248,6 +354,13 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     return undefined;
   }
 
+  private bindWhiteboardInteraction(): void {
+    if (this.whiteboardInteractable) {
+      this.bindSingleButton(this.whiteboardInteractable, () => this.handleWhiteboardPinch());
+      print('[SpatialInterfaceManager] Bound Interactable on WhiteboardBackplate');
+    }
+  }
+
   private bindPaletteButtons(): void {
     this.bindSingleButton(this.btnAddDecision, () => this.triggerAddNode('decision'));
     this.bindSingleButton(this.btnAddService, () => this.triggerAddNode('service'));
@@ -284,6 +397,18 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       return;
     }
 
+    // Auto-advance through selection and clean board if user directly adds a node
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      this.selectWhiteboardArea();
+    }
+    if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
+      this.nodeCount = 4;
+      if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+        this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+      }
+    }
+
+    this.whiteboardState = WhiteboardState.NODE_ADDED;
     this.nodeCount++;
     this.diagramStage = 1;
 
@@ -307,6 +432,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     // Switch overlay texture to node-added stage
     if (this.diagramOverlayMesh && this.texNodeAdded) {
       this.setMeshTexture(this.diagramOverlayMesh, this.texNodeAdded);
+    }
+    // Ensure whiteboard backdrop shows marker drawings
+    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
     }
 
     // Trigger AI teammate hand-raise with architectural critique
@@ -348,6 +477,12 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       return;
     }
 
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      this.selectWhiteboardArea();
+      return;
+    }
+
+    this.whiteboardState = WhiteboardState.SNAPSHOT_UPDATED;
     this.nodeCount = 6;
     this.diagramStage = 2;
 
@@ -355,6 +490,11 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     print(`[SpatialInterfaceManager] ${toastMsg}`);
     if (this.diffToastText) {
       this.diffToastText.text = toastMsg;
+    }
+
+    // Ensure whiteboard backdrop shows marker drawings
+    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
     }
 
     // Switch overlay texture to snapshot-updated stage
@@ -378,6 +518,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
   public triggerConcludeMeeting(): void {
     this.meetingConcluded = true;
+    this.whiteboardState = WhiteboardState.CONCLUDED;
     this.diagramStage = 3;
 
     const toastMsg = 'Meeting Concluded: Technical Spec Generated';
@@ -447,6 +588,18 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         print('[SpatialInterfaceManager] Failed to decode overlay PNG texture.');
       }
     );
+  }
+
+  public getWhiteboardState(): WhiteboardState {
+    return this.whiteboardState;
+  }
+
+  public isAreaSelected(): boolean {
+    return this.whiteboardState !== WhiteboardState.SELECT_AREA;
+  }
+
+  public isCleanBoard(): boolean {
+    return this.whiteboardState === WhiteboardState.CLEAN_BOARD;
   }
 
   public getDiagramStage(): number {

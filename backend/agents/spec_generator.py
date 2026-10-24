@@ -82,7 +82,7 @@ class SpecGeneratorAgent:
         supabase_client: Any = None,
         memory_store: Optional[Dict[str, Any]] = None,
     ):
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
         self._genai_client = None
@@ -226,7 +226,7 @@ The proposed design decomposes into modular components organized into a hierarch
                     f"```xml\n{drawio_xml}\n```\n"
                 )
 
-                candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
+                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
                 configured_model = os.environ.get("GEMINI_MODEL")
                 if configured_model and configured_model not in candidate_models:
                     candidate_models.insert(0, configured_model)
@@ -302,7 +302,7 @@ The proposed design decomposes into modular components organized into a hierarch
                     f"```xml\n{drawio_xml}\n```\n"
                 )
 
-                candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
+                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
                 configured_model = os.environ.get("GEMINI_MODEL")
                 if configured_model and configured_model not in candidate_models:
                     candidate_models.insert(0, configured_model)
@@ -675,7 +675,7 @@ The proposed design decomposes into modular components organized into a hierarch
                     f"Retrieved Meeting Knowledge Chunks:\n{chunks_context}\n"
                 )
 
-                candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
+                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
                 configured_model = os.environ.get("GEMINI_MODEL")
                 if configured_model and configured_model not in candidate_models:
                     candidate_models.insert(0, configured_model)

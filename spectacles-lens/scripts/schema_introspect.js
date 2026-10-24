@@ -37,26 +37,22 @@ async function main() {
   const schema = await callMcp('scene-graphql', {
     query: `
       query {
-        __type(name: "Mutation") {
+        valType: __type(name: "ValueType") {
+          enumValues { name }
+        }
+        mutationType: __type(name: "Mutation") {
           fields {
             name
             args {
               name
-              type {
-                name
-                kind
-                ofType {
-                  name
-                  kind
-                }
-              }
+              type { name kind ofType { name kind } }
             }
           }
         }
       }
     `
   });
-  console.log('Mutation fields:', JSON.stringify(schema, null, 2));
+  console.log(schema.result.content[0].text);
 }
 
 main().catch(console.error);

@@ -378,7 +378,7 @@ async def extract_graph_delta_from_gemini(
             "If a person is blocking the diagram view, set person_occluding_board=True."
         )
 
-        candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
+        candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
         configured_model = os.environ.get("GEMINI_MODEL")
         if configured_model and configured_model not in candidate_models:
             candidate_models.insert(0, configured_model)

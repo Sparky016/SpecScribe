@@ -4,8 +4,8 @@ const path = require('path');
 const outDir = path.join(__dirname, '../Assets/Textures');
 fs.mkdirSync(outDir, { recursive: true });
 
-// 1. Whiteboard Backdrop with marker sketch lines
-const whiteboardSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+// 1. Clean Whiteboard Backdrop (Pristine, empty, zero marker drawings)
+const whiteboardBackdropSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
       <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
@@ -13,19 +13,128 @@ const whiteboardSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2
     <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
       <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1"/>
     </pattern>
+    <linearGradient id="metalFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="boardSurface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
   </defs>
-  <!-- Board Frame -->
-  <rect x="10" y="10" width="1180" height="780" rx="24" fill="#0F172A" stroke="#334155" stroke-width="8" filter="url(#shadow)"/>
-  <!-- Board Surface -->
-  <rect x="24" y="24" width="1152" height="752" rx="16" fill="#F8FAFC"/>
-  <rect x="24" y="24" width="1152" height="752" rx="16" fill="url(#grid)" opacity="0.7"/>
+
+  <!-- Outer Board Frame -->
+  <rect x="10" y="10" width="1180" height="780" rx="20" fill="url(#metalFrame)" stroke="#475569" stroke-width="6" filter="url(#shadow)"/>
+  
+  <!-- Board Surface (Clean Whiteboard) -->
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#boardSurface)"/>
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#grid)" opacity="0.4"/>
   
   <!-- Board Header -->
-  <rect x="40" y="38" width="380" height="36" rx="8" fill="#E2E8F0"/>
-  <text x="54" y="62" font-family="sans-serif" font-size="16" font-weight="700" fill="#475569" letter-spacing="1.5">SPECSCRIBE WHITEBOARD // SESSION 01</text>
+  <rect x="36" y="34" width="400" height="34" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.5"/>
+  <circle cx="52" cy="51" r="5" fill="#10B981"/>
+  <text x="66" y="57" font-family="sans-serif" font-size="14" font-weight="700" fill="#334155" letter-spacing="1.2">SPECSCRIBE WHITEBOARD // SESSION 01</text>
   
-  <!-- Hand-Drawn Marker Sketches (Stand-in representation) -->
-  <g stroke="#0F172A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85">
+  <!-- Empty Board State Indicator -->
+  <g opacity="0.6">
+    <rect x="450" y="34" width="310" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="466" y="56" font-family="sans-serif" font-size="12" font-weight="600" fill="#64748B">WALL MOUNTED • CLEAN SURFACE READY</text>
+  </g>
+
+  <!-- Bottom Marker Pen Tray -->
+  <rect x="400" y="760" width="400" height="12" rx="4" fill="#334155"/>
+  <!-- Black marker in tray -->
+  <rect x="430" y="756" width="90" height="6" rx="2" fill="#0F172A"/>
+  <!-- Blue marker in tray -->
+  <rect x="540" y="756" width="90" height="6" rx="2" fill="#2563EB"/>
+  <!-- Red marker in tray -->
+  <rect x="650" y="756" width="90" height="6" rx="2" fill="#DC2626"/>
+  <!-- Eraser -->
+  <rect x="750" y="752" width="45" height="10" rx="3" fill="#1E293B"/>
+</svg>`;
+
+// 2. Whiteboard Selection Reticle Overlay (Active during whiteboard calibration / selection mode)
+const whiteboardSelectAreaSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#00E5FF" flood-opacity="0.95"/>
+    </filter>
+  </defs>
+
+  <!-- Calibration Bounding Frame -->
+  <rect x="24" y="24" width="1152" height="752" rx="16" fill="none" stroke="#00E5FF" stroke-width="4" stroke-dasharray="16,10" filter="url(#glowCyan)"/>
+
+  <!-- Corner Alignment Brackets -->
+  <g stroke="#00E5FF" stroke-width="7" fill="none" filter="url(#glowCyan)">
+    <!-- Top-Left -->
+    <path d="M 24 90 L 24 24 L 90 24"/>
+    <!-- Top-Right -->
+    <path d="M 1110 24 L 1176 24 L 1176 90"/>
+    <!-- Bottom-Left -->
+    <path d="M 24 710 L 24 776 L 90 776"/>
+    <!-- Bottom-Right -->
+    <path d="M 1110 776 L 1176 776 L 1176 710"/>
+  </g>
+
+  <!-- Center Target Reticle & Instructions -->
+  <g filter="url(#glowCyan)">
+    <!-- Target Crosshairs -->
+    <circle cx="600" cy="380" r="60" fill="none" stroke="#00E5FF" stroke-width="3" stroke-dasharray="8,6"/>
+    <circle cx="600" cy="380" r="16" fill="#00E5FF" fill-opacity="0.3" stroke="#00E5FF" stroke-width="2.5"/>
+    <line x1="500" y1="380" x2="560" y2="380" stroke="#00E5FF" stroke-width="3"/>
+    <line x1="640" y1="380" x2="700" y2="380" stroke="#00E5FF" stroke-width="3"/>
+    <line x1="600" y1="280" x2="600" y2="340" stroke="#00E5FF" stroke-width="3"/>
+    <line x1="600" y1="420" x2="600" y2="480" stroke="#00E5FF" stroke-width="3"/>
+
+    <!-- Central Banner -->
+    <rect x="320" y="470" width="560" height="52" rx="12" fill="#020617" fill-opacity="0.95" stroke="#00E5FF" stroke-width="2.5"/>
+    <text x="600" y="502" font-family="sans-serif" font-size="17" font-weight="800" fill="#00E5FF" text-anchor="middle" letter-spacing="1.5">WHITEBOARD AREA SELECTION MODE</text>
+
+    <!-- Subtitle instruction -->
+    <rect x="350" y="535" width="500" height="38" rx="8" fill="#0F172A" fill-opacity="0.9" stroke="#38BDF8" stroke-width="1.5"/>
+    <text x="600" y="560" font-family="sans-serif" font-size="14" font-weight="600" fill="#E0F2FE" text-anchor="middle">Pinch [ Confirm Whiteboard Area ] to lock onto wall</text>
+  </g>
+
+  <!-- Dimension tags -->
+  <text x="600" y="70" font-family="sans-serif" font-size="14" font-weight="700" fill="#00E5FF" text-anchor="middle" filter="url(#glowCyan)" letter-spacing="2">120 CM WIDTH</text>
+  <text x="60" y="400" font-family="sans-serif" font-size="14" font-weight="700" fill="#00E5FF" text-anchor="middle" transform="rotate(-90 60 400)" filter="url(#glowCyan)" letter-spacing="2">80 CM HEIGHT</text>
+</svg>`;
+
+// 3. Hand-Drawn Marker Sketches (When drawing is ingested / active on whiteboard)
+const whiteboardDrawnSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="metalFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="boardSurface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Board Frame -->
+  <rect x="10" y="10" width="1180" height="780" rx="20" fill="url(#metalFrame)" stroke="#475569" stroke-width="6" filter="url(#shadow)"/>
+  
+  <!-- Board Surface -->
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#boardSurface)"/>
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#grid)" opacity="0.4"/>
+  
+  <!-- Board Header -->
+  <rect x="36" y="34" width="400" height="34" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.5"/>
+  <circle cx="52" cy="51" r="5" fill="#10B981"/>
+  <text x="66" y="57" font-family="sans-serif" font-size="14" font-weight="700" fill="#334155" letter-spacing="1.2">SPECSCRIBE WHITEBOARD // SESSION 01</text>
+
+  <!-- Hand-Drawn Marker Sketches -->
+  <g stroke="#0F172A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.88">
     <!-- Client sketch -->
     <rect x="80" y="240" width="180" height="90" rx="8" stroke-dasharray="3,1"/>
     <text x="115" y="292" font-family="sans-serif" font-size="18" font-weight="600" fill="#0F172A" stroke="none">Client Web/App</text>
@@ -56,9 +165,21 @@ const whiteboardSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2
     <!-- Hand written note -->
     <text x="85" y="370" font-family="sans-serif" font-size="15" font-style="italic" fill="#64748B" stroke="none">* Note: Add token validation before dispatching to core service!</text>
   </g>
+
+  <!-- Bottom Marker Pen Tray -->
+  <rect x="400" y="760" width="400" height="12" rx="4" fill="#334155"/>
+  <rect x="430" y="756" width="90" height="6" rx="2" fill="#0F172A"/>
+  <rect x="540" y="756" width="90" height="6" rx="2" fill="#2563EB"/>
+  <rect x="650" y="756" width="90" height="6" rx="2" fill="#DC2626"/>
+  <rect x="750" y="752" width="45" height="10" rx="3" fill="#1E293B"/>
 </svg>`;
 
-// 2. Diagram Initial (Transparent background, high contrast luminous green/cyan Sugiyama DAG)
+// 4. Empty / Clean Overlay (100% transparent when board is clean)
+const diagramEmptySvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <!-- Completely empty/transparent overlay for clean board -->
+</svg>`;
+
+// 5. Initial Sugiyama DAG overlay (4 nodes, 3 directed edges)
 const diagramInitialSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
@@ -124,7 +245,7 @@ const diagramInitialSvg = `<svg width="1200" height="800" xmlns="http://www.w3.o
   </g>
 </svg>`;
 
-// 3. Diagram Node Added (Injected Decision node with high-visibility amber/cyan glow)
+// 6. Node Added (Verify JWT Decision Node injected)
 const diagramNodeAddedSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
@@ -198,7 +319,7 @@ const diagramNodeAddedSvg = `<svg width="1200" height="800" xmlns="http://www.w3
   </g>
 </svg>`;
 
-// 4. Diagram Snapshot Updated (Multi-tier Sugiyama DAG with cache + DB branches)
+// 7. Snapshot Updated (Multi-tier Sugiyama DAG)
 const diagramSnapshotSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
@@ -290,7 +411,7 @@ const diagramSnapshotSvg = `<svg width="1200" height="800" xmlns="http://www.w3.
   </g>
 </svg>`;
 
-// 5. Diagram Concluded (Finalized with Spec stamp)
+// 8. Concluded (Final Technical Specification Banner)
 const diagramConcludedSvg = `<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
@@ -298,11 +419,9 @@ const diagramConcludedSvg = `<svg width="1200" height="800" xmlns="http://www.w3
     </filter>
   </defs>
   
-  <!-- Finalized Spec Banner -->
   <g filter="url(#glowGreen)">
     <rect x="150" y="180" width="900" height="380" rx="24" fill="#030712" fill-opacity="0.95" stroke="#00FF66" stroke-width="4"/>
     
-    <!-- Seal Icon -->
     <circle cx="600" cy="270" r="45" fill="#00FF66" fill-opacity="0.15" stroke="#00FF66" stroke-width="3"/>
     <path d="M 580 270 L 595 285 L 625 255" fill="none" stroke="#00FF66" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
     
@@ -317,10 +436,13 @@ const diagramConcludedSvg = `<svg width="1200" height="800" xmlns="http://www.w3
   </g>
 </svg>`;
 
-fs.writeFileSync(path.join(outDir, 'Whiteboard_Backdrop.svg'), whiteboardSvg);
+fs.writeFileSync(path.join(outDir, 'Whiteboard_Backdrop.svg'), whiteboardBackdropSvg);
+fs.writeFileSync(path.join(outDir, 'Whiteboard_SelectArea.svg'), whiteboardSelectAreaSvg);
+fs.writeFileSync(path.join(outDir, 'Whiteboard_Drawn.svg'), whiteboardDrawnSvg);
+fs.writeFileSync(path.join(outDir, 'Diagram_Empty.svg'), diagramEmptySvg);
 fs.writeFileSync(path.join(outDir, 'Diagram_Initial.svg'), diagramInitialSvg);
 fs.writeFileSync(path.join(outDir, 'Diagram_NodeAdded.svg'), diagramNodeAddedSvg);
 fs.writeFileSync(path.join(outDir, 'Diagram_SnapshotUpdated.svg'), diagramSnapshotSvg);
 fs.writeFileSync(path.join(outDir, 'Diagram_Concluded.svg'), diagramConcludedSvg);
 
-console.log('SVGs written successfully!');
+console.log('All SVGs written successfully!');

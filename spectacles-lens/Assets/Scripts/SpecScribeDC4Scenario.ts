@@ -19,6 +19,11 @@ export class SpecScribeDC4Scenario extends Scenario {
     expect(sm).toBeTruthy();
     if (!sm) return;
 
+    if (sm.getWhiteboardState && sm.getWhiteboardState() !== 2) {
+      sm.startDrawingAndIngestion();
+      await sleep(200);
+    }
+
     const btnSnapshot = findInteractablesByName('BtnUpdateSnapshot')[0];
     expect(btnSnapshot).toBeTruthy();
 

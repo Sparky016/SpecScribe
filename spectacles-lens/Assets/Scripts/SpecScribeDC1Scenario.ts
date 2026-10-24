@@ -20,18 +20,18 @@ export class SpecScribeDC1Scenario extends Scenario {
     expect(overlayAnchor).toBeTruthy();
     expect(overlayAnchor.enabled).toBe(true);
 
-    // Verify distance from origin in world coordinates (~1.15m focal depth, z <= -100 cm)
+    // Verify distance from origin in world coordinates (wall-anchored focal depth, z <= -95 cm)
     const pos = overlayAnchor.getTransform().getWorldPosition();
     print(`[LEAF DC1] Overlay world position: x=${pos.x}, y=${pos.y}, z=${pos.z}`);
     expect(pos.z).toBeLessThan(-95);
-    expect(pos.z).toBeGreaterThan(-135);
+    expect(pos.z).toBeGreaterThan(-250);
 
-    // Verify initial diagram stage is 0 (initial drawn Sugiyama DAG)
+    // Verify initial diagram stage is 0 (initial state: area selection / clean board)
     const sm = getSpatialManager();
     expect(sm).toBeTruthy();
     if (sm) {
       expect(sm.getDiagramStage()).toBe(0);
     }
-    print('[LEAF DC1] Passed: Whiteboard and initial diagram overlay confirmed at arm-length depth (~1.15m).');
+    print('[LEAF DC1] Passed: Whiteboard and initial diagram overlay confirmed wall-anchored on room surface.');
   }
 }

@@ -59,7 +59,7 @@ def test_cosine_similarity_math():
 
 def test_compile_markdown_spec_structure(sample_meeting_id):
     """Verify Markdown Tech Spec includes all required sections, XML codeblock, and decision logs."""
-    agent = SpecGeneratorAgent()
+    agent = SpecGeneratorAgent(api_key="")
 
     test_xml = "<mxfile><diagram><mxCell id='v1' value='Ingress'/></diagram></mxfile>"
     snapshots = [
@@ -108,7 +108,7 @@ def test_compile_markdown_spec_structure(sample_meeting_id):
 
 def test_chunk_meeting_artifacts_types(sample_meeting_id):
     """Verify chunk_meeting_artifacts generates all 4 required chunk_types."""
-    agent = SpecGeneratorAgent()
+    agent = SpecGeneratorAgent(api_key="")
 
     spec_md = (
         "# Technical Specification: Test\n\n"
@@ -199,7 +199,7 @@ async def test_finalize_meeting_pipeline(sample_meeting_id):
         "knowledge_chunks": {sample_meeting_id: []},
     }
 
-    agent = SpecGeneratorAgent(memory_store=store)
+    agent = SpecGeneratorAgent(api_key="", memory_store=store)
     result = await agent.finalize_meeting(
         meeting_id=sample_meeting_id,
         drawio_xml="<mxfile><mxCell value='Redis Cache'/></mxfile>",

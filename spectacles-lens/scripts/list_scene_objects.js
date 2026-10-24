@@ -36,16 +36,14 @@ function callMcp(tool, args) {
 async function main() {
   const q = `
     query {
-      sceneObject(id: "7e394714-7a6a-4e46-875f-5b92a6021979") {
+      rootSceneObjects {
         id
         name
+        enabled
         children {
           id
           name
-          children {
-            id
-            name
-          }
+          enabled
         }
       }
     }

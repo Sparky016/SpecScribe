@@ -19,6 +19,11 @@ export class SpecScribeDC3Scenario extends Scenario {
     expect(sm).toBeTruthy();
     if (!sm) return;
 
+    if (sm.getWhiteboardState && sm.getWhiteboardState() !== 2) {
+      sm.startDrawingAndIngestion();
+      await sleep(200);
+    }
+
     const initialNodes = sm.getNodeCount();
 
     // 1. Pinch Decision button
