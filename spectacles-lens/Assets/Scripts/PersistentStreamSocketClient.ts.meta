@@ -29,6 +29,7 @@
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
     cameraCapturer: false
+    simulatedSpeechPhrase: false
     websocketUrl: false
   ScriptTypesHidden:
     {}
@@ -41,9 +42,11 @@
   DefaultScriptInputs:
     - websocketUrl: "ws://localhost:8000/ws/meeting/demo-session-01"
       cameraCapturer: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      simulatedSpeechPhrase: Payment Gateway Microservice
   ScriptTypes:
     -
       {}
   InputLines:
     - '// @input string websocketUrl = "ws://localhost:8000/ws/meeting/demo-session-01"'
     - // @input AssignableType_1 cameraCapturer
+    - '// @input string simulatedSpeechPhrase = "Payment Gateway Microservice"'

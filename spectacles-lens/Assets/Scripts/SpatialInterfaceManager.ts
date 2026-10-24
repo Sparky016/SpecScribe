@@ -31,12 +31,29 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   @allowUndefined
   private diffToastText?: Text;
 
+  private tapCycleIndex: number = 0;
+  private readonly tapNodeTypes: string[] = ['service', 'database', 'decision', 'terminal'];
+
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
       this.resolveReferences();
       this.bindPaletteButtons();
       this.bindSocketCallbacks();
+      this.bindTapGesture();
     });
+  }
+
+  private bindTapGesture(): void {
+    try {
+      this.createEvent('TapEvent').bind(() => {
+        const nextType = this.tapNodeTypes[this.tapCycleIndex % this.tapNodeTypes.length];
+        this.tapCycleIndex++;
+        print(`[SpatialInterfaceManager] Preview Tap detected -> Adding node [${nextType.toUpperCase()}]`);
+        this.triggerAddNode(nextType);
+      });
+    } catch (e) {
+      // Ignored if TapEvent is unavailable
+    }
   }
 
   private resolveReferences(): void {
@@ -131,9 +148,16 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   }
 
   public triggerAddNode(nodeType: string): void {
-    const spokenLabel = this.socketClient
+    let spokenLabel = this.socketClient
       ? this.socketClient.getLatestSpokenPhrase()
       : `New ${nodeType}`;
+    if (!spokenLabel || spokenLabel === 'New Component') {
+      if (nodeType === 'service') spokenLabel = 'Auth Gateway Service';
+      else if (nodeType === 'database') spokenLabel = 'Redis Token Cache';
+      else if (nodeType === 'decision') spokenLabel = 'Enforce JWT HMAC Verification';
+      else if (nodeType === 'terminal') spokenLabel = 'Client HTTPS Entrypoint';
+      else spokenLabel = `New ${nodeType}`;
+    }
     if (this.diffToastText) {
       this.diffToastText.text = `Adding [${nodeType.toUpperCase()}]: "${spokenLabel}"...`;
     }

@@ -209,7 +209,10 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.setVisualState(AgentState.IDLE, '', '');
       }
     } else if (this.currentState === AgentState.IDLE && this.socketClient) {
-      const query = this.socketClient.getLatestSpokenPhrase();
+      let query = this.socketClient.getLatestSpokenPhrase();
+      if (!query || query === 'New Component') {
+        query = 'How should we secure the customer session store against unauthorized token forging?';
+      }
       this.setVisualState(AgentState.RESEARCHING, '🔍 Researching...', '');
       this.socketClient.sendPinchCommand('ASK_AGENT', 'research', query);
     }

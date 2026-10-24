@@ -9,6 +9,10 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   @allowUndefined
   private cameraCapturer?: PeriodicCameraCapturer;
 
+  @input
+  @allowUndefined
+  private simulatedSpeechPhrase: string = 'Payment Gateway Microservice';
+
   private internetModule: InternetModule = require('LensStudio:InternetModule');
   private asrModule: AsrModule = require('LensStudio:AsrModule');
   private activeSocket?: WebSocket;
@@ -36,7 +40,10 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   }
 
   public getLatestSpokenPhrase(): string {
-    return this.latestSpokenPhrase;
+    if (this.latestSpokenPhrase && this.latestSpokenPhrase !== 'New Component') {
+      return this.latestSpokenPhrase;
+    }
+    return this.simulatedSpeechPhrase;
   }
 
   public getElapsedMs(): number {

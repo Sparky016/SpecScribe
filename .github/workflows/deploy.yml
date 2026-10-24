@@ -92,7 +92,6 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    environment: production
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -158,10 +157,9 @@ jobs:
             SUPABASE_URL=${{ vars.SUPABASE_URL }}
             ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
             HOST=0.0.0.0
-          secrets: |
-            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}:latest
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}:latest
-            DEEPGRAM_API_KEY=${{ secrets.DEEPGRAM_API_KEY }}:latest
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            DEEPGRAM_API_KEY=${{ secrets.DEEPGRAM_API_KEY }}
 
       - name: Verify Live Service Health
         run: |

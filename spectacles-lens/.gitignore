@@ -23,6 +23,4 @@ Workspaces/**
 .vscode/mcp.json
 .codex/config.toml
 .claude/settings.local.json
-ls-live-instance.json
-ls-live-instance.json.tmp
 # END Lens Studio managed Agents-Docs block

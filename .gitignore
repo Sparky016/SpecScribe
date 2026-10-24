@@ -66,3 +66,8 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+.agents
+.agents
+.claude
+agent/
+
