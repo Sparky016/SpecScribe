@@ -1,0 +1,52 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <!-- Board Frame -->
+  <rect x="10" y="10" width="1180" height="780" rx="24" fill="#0F172A" stroke="#334155" stroke-width="8" filter="url(#shadow)"/>
+  <!-- Board Surface -->
+  <rect x="24" y="24" width="1152" height="752" rx="16" fill="#F8FAFC"/>
+  <rect x="24" y="24" width="1152" height="752" rx="16" fill="url(#grid)" opacity="0.7"/>
+  
+  <!-- Board Header -->
+  <rect x="40" y="38" width="380" height="36" rx="8" fill="#E2E8F0"/>
+  <text x="54" y="62" font-family="sans-serif" font-size="16" font-weight="700" fill="#475569" letter-spacing="1.5">SPECSCRIBE WHITEBOARD // SESSION 01</text>
+  
+  <!-- Hand-Drawn Marker Sketches (Stand-in representation) -->
+  <g stroke="#0F172A" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.85">
+    <!-- Client sketch -->
+    <rect x="80" y="240" width="180" height="90" rx="8" stroke-dasharray="3,1"/>
+    <text x="115" y="292" font-family="sans-serif" font-size="18" font-weight="600" fill="#0F172A" stroke="none">Client Web/App</text>
+    
+    <!-- Arrow 1 -->
+    <path d="M 260 285 Q 310 285 360 285 M 350 277 L 362 285 L 350 293"/>
+    
+    <!-- Gateway sketch -->
+    <rect x="365" y="240" width="200" height="90" rx="8"/>
+    <text x="405" y="292" font-family="sans-serif" font-size="18" font-weight="600" fill="#0F172A" stroke="none">API Gateway</text>
+    
+    <!-- Arrow 2 -->
+    <path d="M 565 285 Q 615 285 665 285 M 655 277 L 667 285 L 655 293"/>
+    
+    <!-- Core Service sketch -->
+    <rect x="670" y="240" width="210" height="90" rx="8"/>
+    <text x="710" y="292" font-family="sans-serif" font-size="18" font-weight="600" fill="#0F172A" stroke="none">Core Microservice</text>
+    
+    <!-- Arrow 3 -->
+    <path d="M 880 285 Q 925 285 965 285 M 955 277 L 967 285 L 955 293"/>
+    
+    <!-- Database sketch -->
+    <ellipse cx="1040" cy="255" rx="60" ry="20"/>
+    <path d="M 980 255 L 980 315 A 60 20 0 0 0 1100 315 L 1100 255"/>
+    <ellipse cx="1040" cy="315" rx="60" ry="20" stroke-dasharray="4,2"/>
+    <text x="1005" y="295" font-family="sans-serif" font-size="16" font-weight="600" fill="#0F172A" stroke="none">Postgres DB</text>
+    
+    <!-- Hand written note -->
+    <text x="85" y="370" font-family="sans-serif" font-size="15" font-style="italic" fill="#64748B" stroke="none">* Note: Add token validation before dispatching to core service!</text>
+  </g>
+</svg>

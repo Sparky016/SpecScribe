@@ -1,0 +1,72 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#00FF66" flood-opacity="0.9"/>
+    </filter>
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#00E5FF" flood-opacity="0.9"/>
+    </filter>
+    <filter id="glowAmber" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="8" flood-color="#FFB300" flood-opacity="0.95"/>
+    </filter>
+  </defs>
+  
+  <!-- Digital Overlay Badge -->
+  <g filter="url(#glowAmber)">
+    <rect x="70" y="120" width="560" height="42" rx="10" fill="#020617" stroke="#FFB300" stroke-width="2" fill-opacity="0.9"/>
+    <text x="90" y="147" font-family="sans-serif" font-size="15" font-weight="700" fill="#FFB300" letter-spacing="1">LIVE NODE INJECTED: [DECISION: ENFORCE JWT HMAC] (5 NODES)</text>
+  </g>
+  
+  <!-- Directed DAG Edges -->
+  <g stroke="#00E5FF" stroke-width="4" fill="none" filter="url(#glowCyan)">
+    <path d="M 230 285 L 290 285"/>
+    <polygon points="300,285 285,277 285,293" fill="#00E5FF"/>
+    
+    <path d="M 480 285 L 530 285"/>
+    <polygon points="540,285 525,277 525,293" fill="#00E5FF"/>
+  </g>
+  <g stroke="#FFB300" stroke-width="4" fill="none" filter="url(#glowAmber)">
+    <path d="M 710 285 L 755 285"/>
+    <polygon points="765,285 750,277 750,293" fill="#FFB300"/>
+  </g>
+  <g stroke="#00FF66" stroke-width="4" fill="none" filter="url(#glowGreen)">
+    <path d="M 935 285 L 980 285"/>
+    <polygon points="990,285 975,277 975,293" fill="#00FF66"/>
+  </g>
+  
+  <!-- Node 1: Client -->
+  <g filter="url(#glowCyan)">
+    <rect x="60" y="235" width="165" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00E5FF" stroke-width="3.5"/>
+    <text x="75" y="261" font-family="sans-serif" font-size="11" font-weight="800" fill="#00E5FF">TERMINAL</text>
+    <text x="75" y="295" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Client HTTPS</text>
+  </g>
+
+  <!-- Node 2: Gateway -->
+  <g filter="url(#glowGreen)">
+    <rect x="305" y="235" width="170" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00FF66" stroke-width="3.5"/>
+    <text x="320" y="261" font-family="sans-serif" font-size="11" font-weight="800" fill="#00FF66">SERVICE</text>
+    <text x="320" y="295" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">API Gateway</text>
+  </g>
+
+  <!-- Node 3: Injected Decision Diamond -->
+  <g filter="url(#glowAmber)">
+    <polygon points="625,220 705,285 625,350 545,285" fill="#030712" fill-opacity="0.95" stroke="#FFB300" stroke-width="4"/>
+    <text x="625" y="275" font-family="sans-serif" font-size="12" font-weight="800" fill="#FFB300" text-anchor="middle">DECISION</text>
+    <text x="625" y="298" font-family="sans-serif" font-size="14" font-weight="700" fill="#FFFFFF" text-anchor="middle">Verify JWT</text>
+    <text x="625" y="316" font-family="sans-serif" font-size="11" fill="#CBD5E1" text-anchor="middle">HMAC-SHA256</text>
+  </g>
+
+  <!-- Node 4: Core Service -->
+  <g filter="url(#glowGreen)">
+    <rect x="770" y="235" width="165" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00FF66" stroke-width="3.5"/>
+    <text x="785" y="261" font-family="sans-serif" font-size="11" font-weight="800" fill="#00FF66">SERVICE</text>
+    <text x="785" y="295" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Core Engine</text>
+  </g>
+
+  <!-- Node 5: Database -->
+  <g filter="url(#glowCyan)">
+    <rect x="995" y="235" width="150" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00E5FF" stroke-width="3.5"/>
+    <text x="1010" y="261" font-family="sans-serif" font-size="11" font-weight="800" fill="#00E5FF">DATABASE</text>
+    <text x="1010" y="295" font-family="sans-serif" font-size="16" font-weight="700" fill="#FFFFFF">Postgres DB</text>
+  </g>
+</svg>

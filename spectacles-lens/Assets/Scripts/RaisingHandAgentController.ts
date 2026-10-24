@@ -50,12 +50,13 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private isCardExpanded: boolean = false;
   private animTime: number = 0;
   private initialScale: vec3 = new vec3(1.0, 1.0, 1.0);
+  private audioTrack?: AudioTrackAsset;
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
       this.resolveReferences();
       this.initScale();
-      this.configureAudioLowLatency();
+      this.loadAudioTrack();
       this.setVisualState(AgentState.IDLE, '', '');
       this.bindInteractions();
     });
@@ -65,20 +66,19 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     });
   }
 
-  private resolveReferences(): void {
-    if (!this.socketClient) {
-      try {
-        const comps = this.getSceneObject().getComponents('Component.ScriptComponent' as any);
-        for (const c of comps) {
-          if (c !== this && (c as any).sendPinchCommand) {
-            this.socketClient = c as any;
-            break;
-          }
-        }
-      } catch (e) {
-        // Ignored
+  private loadAudioTrack(): void {
+    try {
+      this.audioTrack = requireAsset('../GeneratedSFX/AgentNotificationChime.wav') as AudioTrackAsset;
+      if (this.agentAudioComponent && this.audioTrack) {
+        this.agentAudioComponent.audioTrack = this.audioTrack;
+        this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
       }
+    } catch (e) {
+      // Audio optional in mock / headless
     }
+  }
+
+  private resolveReferences(): void {
     if (!this.handRaisedPillObject) {
       this.handRaisedPillObject = this.findSceneObject('HandRaisedPillBadge') || undefined;
     }
@@ -109,17 +109,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     if (!this.agentOrbPinchButton) {
       const orbObj = this.findSceneObject('AgentOrbMesh') || this.findSceneObject('RaisingHandAgentRoot');
       if (orbObj) {
-        try {
-          const comps = orbObj.getComponents('Component.ScriptComponent' as any);
-          for (const c of comps) {
-            if ((c as any).onButtonPinched || (c as any).onTriggerEnd || (c as any).isPinch) {
-              this.agentOrbPinchButton = c as any;
-              break;
-            }
-          }
-        } catch (e) {
-          // Ignored
-        }
+        this.agentOrbPinchButton = this.findInteractableOnObject(orbObj);
       }
     }
     if (!this.agentAudioComponent) {
@@ -132,13 +122,42 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private findSceneObject(name: string): SceneObject | null {
     try {
-      if (typeof global !== 'undefined' && (global as any).scene && (global as any).scene.findObjectByName) {
-        return (global as any).scene.findObjectByName(name);
+      if (typeof global !== 'undefined' && (global as any).scene) {
+        const sc = (global as any).scene;
+        const count = sc.getRootObjectsCount();
+        for (let i = 0; i < count; i++) {
+          const found = this.searchHierarchy(sc.getRootObject(i), name);
+          if (found) return found;
+        }
       }
     } catch (e) {
       // Ignored
     }
     return null;
+  }
+
+  private searchHierarchy(obj: SceneObject, name: string): SceneObject | null {
+    if (obj.name === name) {
+      return obj;
+    }
+    const count = obj.getChildrenCount();
+    for (let i = 0; i < count; i++) {
+      const found = this.searchHierarchy(obj.getChild(i), name);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private findInteractableOnObject(obj: SceneObject): Interactable | undefined {
+    try {
+      const interactable = obj.getComponent(Interactable.getTypeName()) as Interactable;
+      if (interactable) {
+        return interactable;
+      }
+    } catch (e) {
+      // Ignored
+    }
+    return undefined;
   }
 
   private initScale(): void {
@@ -147,12 +166,6 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       if (obj) {
         this.initialScale = obj.getTransform().getLocalScale();
       }
-    }
-  }
-
-  private configureAudioLowLatency(): void {
-    if (this.agentAudioComponent) {
-      this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
     }
   }
 
@@ -173,48 +186,51 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         title = title.substring(0, 28);
         const body = payload.detailed_body || '';
         this.setVisualState(AgentState.HAND_RAISED, title, body);
-
-        // Audio notification alert in low-latency mode
-        if (this.agentAudioComponent) {
-          try {
-            this.agentAudioComponent.play(1);
-          } catch (e) {
-            // Audio play ignored if clip not set
-          }
-        }
+        this.playNotificationSound();
       };
     }
 
     if (this.agentOrbPinchButton) {
-      if ((this.agentOrbPinchButton as any).onButtonPinched) {
-        (this.agentOrbPinchButton as any).onButtonPinched.add(() => {
-          this.handleOrbPinched();
-        });
-      } else if ((this.agentOrbPinchButton as any).onTriggerEnd) {
-        (this.agentOrbPinchButton as any).onTriggerEnd.add(() => {
-          this.handleOrbPinched();
-        });
+      const btn = this.agentOrbPinchButton as any;
+      if (btn.onButtonPinched) {
+        btn.onButtonPinched.add(() => this.handleOrbPinched());
+      } else if (btn.onTriggerEnd) {
+        btn.onTriggerEnd.add(() => this.handleOrbPinched());
+      }
+    }
+  }
+
+  private playNotificationSound(): void {
+    if (this.agentAudioComponent) {
+      try {
+        if (this.audioTrack && !this.agentAudioComponent.audioTrack) {
+          this.agentAudioComponent.audioTrack = this.audioTrack;
+        }
+        this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
+        this.agentAudioComponent.play(1);
+      } catch (e) {
+        // Audio play ignored if unavailable
       }
     }
   }
 
   public handleOrbPinched(): void {
+    print(`[RaisingHandAgentController] Orb pinched. CurrentState: ${this.currentState}`);
     if (this.currentState === AgentState.HAND_RAISED) {
       this.isCardExpanded = !this.isCardExpanded;
       if (this.expandedCritiqueCard) {
         this.expandedCritiqueCard.enabled = this.isCardExpanded;
       }
-      this.configureAudioLowLatency();
-      if (!this.isCardExpanded) {
-        this.setVisualState(AgentState.IDLE, '', '');
-      }
-    } else if (this.currentState === AgentState.IDLE && this.socketClient) {
-      let query = this.socketClient.getLatestSpokenPhrase();
-      if (!query || query === 'New Component') {
-        query = 'How should we secure the customer session store against unauthorized token forging?';
-      }
-      this.setVisualState(AgentState.RESEARCHING, '🔍 Researching...', '');
-      this.socketClient.sendPinchCommand('ASK_AGENT', 'research', query);
+      print(`[RaisingHandAgentController] Critique card toggled: expanded = ${this.isCardExpanded}`);
+      this.playNotificationSound();
+    } else if (this.currentState === AgentState.IDLE) {
+      // Simulate proactive insight trigger in preview
+      this.setVisualState(
+        AgentState.HAND_RAISED,
+        '⚠️ Auth Token Leak Risk',
+        '• Risk: Unsigned JWT tokens can be forged\n• Fix: Require HMAC-SHA256 signature verification\n• Alternative: Move session state to Redis Token Cache'
+      );
+      this.playNotificationSound();
     }
   }
 
@@ -223,7 +239,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     this.latestCritiqueBody = detailedBody;
 
     if (this.handRaisedPillObject) {
-      this.handRaisedPillObject.enabled = state !== AgentState.IDLE;
+      this.handRaisedPillObject.enabled = state === AgentState.HAND_RAISED;
     }
     if (this.pillTitleText) {
       this.pillTitleText.text = shortTitle;
@@ -256,8 +272,21 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       }
     }
 
-    // State 2: RESEARCHING rotating ring
-    if (this.currentState === AgentState.RESEARCHING && this.researchingRingObject) {
+    // State 2: HAND_RAISED energetic pulse
+    if (this.currentState === AgentState.HAND_RAISED && this.agentOrbMeshVisual) {
+      const obj = this.agentOrbMeshVisual.getSceneObject();
+      if (obj) {
+        const pulse = 1.0 + 0.08 * Math.sin(this.animTime * 4.0);
+        obj.getTransform().setLocalScale(new vec3(
+          this.initialScale.x * pulse,
+          this.initialScale.y * pulse,
+          this.initialScale.z * pulse
+        ));
+      }
+    }
+
+    // Rotating ring
+    if (this.researchingRingObject && this.researchingRingObject.enabled) {
       const transform = this.researchingRingObject.getTransform();
       const currentRot = transform.getLocalRotation();
       const deltaAngle = deltaTime * 180.0 * (Math.PI / 180.0);
@@ -291,5 +320,6 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       }
     }
     this.setVisualState(AgentState.HAND_RAISED, title.substring(0, 28), detailedBody);
+    this.playNotificationSound();
   }
 }
