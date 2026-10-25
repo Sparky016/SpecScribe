@@ -52,13 +52,22 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private initialScale: vec3 = new vec3(1.0, 1.0, 1.0);
   private audioTrack?: AudioTrackAsset;
 
+  private agentRootObject?: SceneObject;
+  private cameraObject?: SceneObject;
+  // Local offset in camera space: top right of view at comfortable depth
+  private readonly cameraAnchorOffset: vec3 = new vec3(12.0, 7.5, -50.0);
+  private readonly cameraAnchorRotation: quat = quat.fromEulerVec(new vec3(4 * Math.PI / 180, -10 * Math.PI / 180, 0));
+
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
       this.resolveReferences();
+      this.anchorToCamera();
+      this.configureOrbCollider();
       this.initScale();
       this.loadAudioTrack();
       this.setVisualState(AgentState.IDLE, '', '');
       this.bindInteractions();
+      this.bindPreviewInteractions();
     });
 
     this.createEvent('UpdateEvent').bind((eventData) => {
@@ -240,6 +249,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
     if (this.handRaisedPillObject) {
       this.handRaisedPillObject.enabled = state === AgentState.HAND_RAISED;
+      this.handRaisedPillObject.getTransform().setLocalPosition(new vec3(-14.0, 0.0, 0.0));
     }
     if (this.pillTitleText) {
       this.pillTitleText.text = shortTitle;
@@ -250,14 +260,26 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     if (this.researchingRingObject) {
       this.researchingRingObject.enabled = state === AgentState.RESEARCHING;
     }
-    if (this.expandedCritiqueCard && state !== AgentState.HAND_RAISED) {
-      this.expandedCritiqueCard.enabled = false;
-      this.isCardExpanded = false;
+    if (this.expandedCritiqueCard) {
+      this.expandedCritiqueCard.getTransform().setLocalPosition(new vec3(-18.0, -14.0, 0.0));
+      if (state !== AgentState.HAND_RAISED) {
+        this.expandedCritiqueCard.enabled = false;
+        this.isCardExpanded = false;
+      }
     }
   }
 
   private onUpdate(deltaTime: number): void {
     this.animTime += deltaTime;
+
+    // Maintain persistent view anchoring to camera in every frame
+    if (this.agentRootObject && this.cameraObject) {
+      if (this.agentRootObject.getParent() !== this.cameraObject) {
+        this.agentRootObject.setParent(this.cameraObject);
+      }
+      this.agentRootObject.getTransform().setLocalPosition(this.cameraAnchorOffset);
+      this.agentRootObject.getTransform().setLocalRotation(this.cameraAnchorRotation);
+    }
 
     // State 1: IDLE subtle pulse
     if (this.currentState === AgentState.IDLE && this.agentOrbMeshVisual) {
@@ -293,6 +315,96 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       const rotQuat = quat.angleAxis(deltaAngle, new vec3(0, 0, 1));
       transform.setLocalRotation(currentRot.multiply(rotQuat));
     }
+  }
+
+  private anchorToCamera(): void {
+    if (!this.agentRootObject) {
+      this.agentRootObject = this.findSceneObject('RaisingHandAgentRoot') || undefined;
+    }
+    if (!this.cameraObject) {
+      this.cameraObject = this.findCameraObject() || undefined;
+    }
+    if (this.agentRootObject && this.cameraObject) {
+      if (this.agentRootObject.getParent() !== this.cameraObject) {
+        this.agentRootObject.setParent(this.cameraObject);
+      }
+      this.agentRootObject.getTransform().setLocalPosition(this.cameraAnchorOffset);
+      this.agentRootObject.getTransform().setLocalRotation(this.cameraAnchorRotation);
+      this.agentRootObject.getTransform().setLocalScale(new vec3(1.0, 1.0, 1.0));
+      print(`[RaisingHandAgentController] AI Orb anchored to Camera view at top-right (${this.cameraAnchorOffset.x}, ${this.cameraAnchorOffset.y}, ${this.cameraAnchorOffset.z})`);
+    } else if (this.agentRootObject) {
+      this.agentRootObject.getTransform().setWorldPosition(new vec3(27.0, 14.0, -30.0));
+    }
+  }
+
+  private findCameraObject(): SceneObject | null {
+    const direct = this.findSceneObject('Camera Object') || this.findSceneObject('Camera') || this.findSceneObject('Main Camera');
+    if (direct) {
+      return direct;
+    }
+    try {
+      if (typeof global !== 'undefined' && (global as any).scene) {
+        const sc = (global as any).scene;
+        const count = sc.getRootObjectsCount();
+        for (let i = 0; i < count; i++) {
+          const root = sc.getRootObject(i);
+          const cam = this.searchForCamera(root);
+          if (cam) return cam;
+        }
+      }
+    } catch (e) {}
+    return null;
+  }
+
+  private searchForCamera(obj: SceneObject): SceneObject | null {
+    if (obj.getComponent('Component.Camera' as any)) {
+      return obj;
+    }
+    const count = obj.getChildrenCount();
+    for (let i = 0; i < count; i++) {
+      const found = this.searchForCamera(obj.getChild(i));
+      if (found) return found;
+    }
+    return null;
+  }
+
+  private configureOrbCollider(): void {
+    const orbObj = this.findSceneObject('AgentOrbMesh');
+    if (orbObj) {
+      try {
+        let col = orbObj.getComponent('Physics.ColliderComponent' as any) || orbObj.getComponent('Component.ColliderComponent' as any);
+        if (col && (col as any).shape) {
+          const sphere = Shape.createSphereShape();
+          sphere.radius = 10.0;
+          (col as any).shape = sphere;
+        }
+      } catch (e) {}
+    }
+  }
+
+  private bindPreviewInteractions(): void {
+    try {
+      this.createEvent('TapEvent').bind((eventData: any) => {
+        const p = eventData && eventData.getTapPosition ? eventData.getTapPosition() : null;
+        if (p) {
+          // If tapped in upper right corner of the view (top-right quadrant)
+          if (p.x > 0.65 && p.y < 0.38) {
+            print(`[RaisingHandAgentController] Preview tap in top-right view (x=${p.x.toFixed(2)}, y=${p.y.toFixed(2)}) -> Toggling AI Orb`);
+            this.handleOrbPinched();
+          }
+        }
+      });
+    } catch (e) {}
+
+    try {
+      this.createEvent('KeyPressEvent').bind((eventData: any) => {
+        const key = (eventData as any).key || (eventData as any).char || '';
+        if (typeof key === 'string' && (key.toLowerCase() === 'h' || key.toLowerCase() === 'o')) {
+          print(`[RaisingHandAgentController] Keyboard '${key}' pressed -> Toggling AI Orb`);
+          this.handleOrbPinched();
+        }
+      });
+    } catch (e) {}
   }
 
   public getState(): AgentState {

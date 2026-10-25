@@ -7,7 +7,8 @@ import {SpecScribeDC3Scenario} from './SpecScribeDC3Scenario';
 import {SpecScribeDC4Scenario} from './SpecScribeDC4Scenario';
 import {SpecScribeDC5Scenario} from './SpecScribeDC5Scenario';
 import {SpecScribeDC6Scenario} from './SpecScribeDC6Scenario';
-import {SpecScribeSelectAreaScenario, SpecScribeStartDrawingScenario} from './SpecScribeDemoStateRunner';
+import {SpecScribeSelectAreaScenario} from './SpecScribeSelectAreaScenario';
+import {SpecScribeStartDrawingScenario} from './SpecScribeStartDrawingScenario';
 
 @component
 export class LeafIndex extends BaseScriptComponent {

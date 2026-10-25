@@ -34,40 +34,49 @@ function callMcp(tool, args) {
   });
 }
 
-function saveShot(base64Data, filename) {
-  const buf = Buffer.from(base64Data, 'base64');
-  fs.writeFileSync(`c:/Users/ruanc/source/repos/SpecScribe/${filename}`, buf);
-  fs.writeFileSync(`C:/Users/ruanc/.gemini/antigravity-ide/brain/a1d49ac0-9611-4865-a573-37788258aacb/${filename}`, buf);
-  console.log(`Saved ${filename}`);
+async function captureShot(filename) {
+  for (let i = 0; i < 5; i++) {
+    const shot = await callMcp('CapturePanelScreenshotTool', { pluginId: 'Snap.Plugin.Gui.PreviewPanel' });
+    if (shot && shot.result && shot.result.content && shot.result.content[0] && shot.result.content[0].data) {
+      const buf = Buffer.from(shot.result.content[0].data, 'base64');
+      fs.writeFileSync(`c:/Users/ruanc/source/repos/SpecScribe/${filename}`, buf);
+      fs.writeFileSync(`C:/Users/ruanc/.gemini/antigravity-ide/brain/a1d49ac0-9611-4865-a573-37788258aacb/${filename}`, buf);
+      console.log(`Saved ${filename} (${buf.length} bytes)`);
+      return;
+    }
+    console.log(`Waiting for preview capture retry ${i + 1}...`);
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  throw new Error(`Failed to capture ${filename}`);
 }
 
 async function main() {
   console.log('1. Recompiling TypeScript...');
   await callMcp('RecompileTypeScriptTool', {});
+  await new Promise(r => setTimeout(r, 1500));
 
   console.log('2. Resetting preview panel...');
-  await callMcp('PreviewPanelTool', { action: 'restart' });
-  await new Promise(r => setTimeout(r, 2200));
+  await callMcp('PreviewPanelTool', { action: 'refresh' });
+  await new Promise(r => setTimeout(r, 4000));
 
   console.log('3. Capturing State 1: Area Selection Mode (Selection reticle, zero drawings)...');
-  let shot1 = await callMcp('CapturePanelScreenshotTool', { pluginId: 'Snap.Plugin.Gui.PreviewPanel' });
-  saveShot(shot1.result.content[0].data, 'preview_state1_select_area.jpg');
+  await captureShot('preview_state1_select_area.jpg');
 
   console.log('4. Executing demo-select-whiteboard scenario...');
-  await callMcp('run_leaf_scenario', { scenarioId: 'demo-select-whiteboard' });
-  await new Promise(r => setTimeout(r, 800));
+  const resSel = await callMcp('run_leaf_scenario', { scenarioId: 'demo-select-whiteboard' });
+  console.log('demo-select-whiteboard result:', JSON.stringify(resSel, null, 2));
+  await new Promise(r => setTimeout(r, 1500));
 
   console.log('5. Capturing State 2: Clean Whiteboard (Area selected, board pristine with 0 drawings)...');
-  let shot2 = await callMcp('CapturePanelScreenshotTool', { pluginId: 'Snap.Plugin.Gui.PreviewPanel' });
-  saveShot(shot2.result.content[0].data, 'preview_state2_clean_whiteboard.jpg');
+  await captureShot('preview_state2_clean_whiteboard.jpg');
 
   console.log('6. Executing demo-start-drawing scenario...');
-  await callMcp('run_leaf_scenario', { scenarioId: 'demo-start-drawing' });
-  await new Promise(r => setTimeout(r, 800));
+  const resDraw = await callMcp('run_leaf_scenario', { scenarioId: 'demo-start-drawing' });
+  console.log('demo-start-drawing result:', JSON.stringify(resDraw, null, 2));
+  await new Promise(r => setTimeout(r, 1500));
 
   console.log('7. Capturing State 3: Drawing Ingested & Active (Marker sketches + Sugiyama DAG overlay)...');
-  let shot3 = await callMcp('CapturePanelScreenshotTool', { pluginId: 'Snap.Plugin.Gui.PreviewPanel' });
-  saveShot(shot3.result.content[0].data, 'preview_state3_drawing_active.jpg');
+  await captureShot('preview_state3_drawing_active.jpg');
 
   console.log('All 3 state screenshots captured successfully!');
 }

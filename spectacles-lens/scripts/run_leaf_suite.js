@@ -40,7 +40,7 @@ async function main() {
   console.log('Compile result:', JSON.stringify(comp, null, 2));
 
   console.log('2. Waiting for Lens reload...');
-  await new Promise(r => setTimeout(r, 2000));
+  await new Promise(r => setTimeout(r, 4000));
 
   const scenarios = [
     'dc0-whiteboard-selection',

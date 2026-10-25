@@ -78,15 +78,24 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private texSnapshotUpdated?: Texture;
   private texConcluded?: Texture;
 
+  private touchStartPos?: vec2;
+  private lastTouchPos?: vec2;
+  private isTouchDragging: boolean = false;
+  private lastDragEndTime: number = 0;
+  private resizePresetIndex: number = 0;
+
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
       this.loadTextures();
       this.resolveReferences();
+      this.configureWhiteboardCollider();
       this.applyInitialVisuals();
       this.bindPaletteButtons();
       this.bindMeetingControls();
       this.bindWhiteboardInteraction();
       this.bindSocketCallbacks();
+      this.bindTouchDragging();
+      this.bindKeyboardControls();
       this.bindTapGesture();
     });
   }
@@ -111,17 +120,28 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.diagramStage = 0;
     this.nodeCount = 0;
 
-    // Whiteboard starts in selection/calibration mode on wall
-    if (this.whiteboardBoardMesh && this.texSelectArea) {
-      this.setMeshTexture(this.whiteboardBoardMesh, this.texSelectArea);
+    // Whiteboard starts in selection/calibration mode up high on the wall
+    if (this.whiteboardBoardMesh) {
+      const obj = this.whiteboardBoardMesh.getSceneObject();
+      obj.getTransform().setWorldPosition(new vec3(50, 185, -230));
+      obj.getTransform().setWorldScale(new vec3(140, 1, 90));
+      this.enableWhiteboardManipulation();
+
+      if (this.texSelectArea) {
+        this.setMeshTexture(this.whiteboardBoardMesh, this.texSelectArea);
+      }
     }
     // Overlay starts 100% clean and transparent (zero drawings)
     if (this.diagramOverlayMesh && this.texEmpty) {
       this.setMeshTexture(this.diagramOverlayMesh, this.texEmpty);
     }
     if (this.diffToastText) {
-      this.diffToastText.text = 'Whiteboard Calibration: Pinch board or [ Lock Whiteboard ] to select area on wall';
+      this.diffToastText.text = 'Whiteboard Calibration: Drag board lower to eye level, resize, then pinch middle to set';
     }
+  }
+
+  public pinchCenterToSet(): void {
+    this.selectWhiteboardArea();
   }
 
   public selectWhiteboardArea(): void {
@@ -132,7 +152,12 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.diagramStage = 0;
     this.nodeCount = 0;
 
-    print('[SpatialInterfaceManager] Whiteboard area calibrated and locked onto wall.');
+    // Lock whiteboard manipulation rigidly in place
+    this.disableWhiteboardManipulation();
+
+    const pos = this.getWhiteboardPosition();
+    const sc = this.getWhiteboardScale();
+    print(`[SpatialInterfaceManager] Whiteboard area calibrated and locked at y=${pos.y.toFixed(1)}, size=${sc.x.toFixed(0)}x${sc.z.toFixed(0)}cm.`);
 
     // Switch board to pristine clean whiteboard surface (NO drawings)
     if (this.whiteboardBoardMesh && this.texWhiteboardClean) {
@@ -143,11 +168,11 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       this.setMeshTexture(this.diagramOverlayMesh, this.texEmpty);
     }
     if (this.diffToastText) {
-      this.diffToastText.text = 'Whiteboard Area Selected (120x80cm) • Clean Whiteboard Ready';
+      this.diffToastText.text = `Whiteboard Area Locked at Y: ${pos.y.toFixed(1)}cm (${sc.x.toFixed(0)}x${sc.z.toFixed(0)}cm) • Clean Whiteboard Ready`;
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand('CALIBRATE_AREA', 'whiteboard', 'Area locked on wall');
+      this.socketClient.sendPinchCommand('CALIBRATE_AREA', 'whiteboard', `Area locked at y=${pos.y.toFixed(1)}`);
     }
   }
 
@@ -180,8 +205,12 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
   private handleWhiteboardPinch(): void {
     if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      print('[SpatialInterfaceManager] Whiteboard pinched in SELECT_AREA mode -> Locking area');
-      this.selectWhiteboardArea();
+      if (getTime() - this.lastDragEndTime < 0.35 || this.isTouchDragging) {
+        print('[SpatialInterfaceManager] Ignoring pinch release right after dragging');
+        return;
+      }
+      print('[SpatialInterfaceManager] Center Whiteboard pinched in SELECT_AREA mode -> Locking area');
+      this.pinchCenterToSet();
     } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
       print('[SpatialInterfaceManager] Whiteboard pinched in CLEAN_BOARD mode -> Starting drawing & ingestion');
       this.startDrawingAndIngestion();
@@ -205,8 +234,9 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     try {
       this.createEvent('TapEvent').bind(() => {
         if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-          print('[SpatialInterfaceManager] Tap detected -> Selecting Whiteboard Area');
-          this.selectWhiteboardArea();
+          // Do NOT auto-lock on arbitrary tap during selection mode.
+          // Touch dragging and deliberate center pinch handle placement and locking.
+          return;
         } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
           print('[SpatialInterfaceManager] Tap detected on clean board -> Starting drawing & ingestion');
           this.startDrawingAndIngestion();
@@ -219,6 +249,105 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       });
     } catch (e) {
       // Ignored if TapEvent is unavailable
+    }
+  }
+
+  private bindTouchDragging(): void {
+    try {
+      this.createEvent('TouchStartEvent').bind((event: TouchStartEvent) => {
+        if (this.whiteboardState !== WhiteboardState.SELECT_AREA) {
+          return;
+        }
+        const p = event.getTouchPosition();
+        this.touchStartPos = new vec2(p.x, p.y);
+        this.lastTouchPos = new vec2(p.x, p.y);
+        this.isTouchDragging = false;
+      });
+
+      this.createEvent('TouchMoveEvent').bind((event: TouchMoveEvent) => {
+        if (this.whiteboardState !== WhiteboardState.SELECT_AREA || !this.lastTouchPos || !this.touchStartPos) {
+          return;
+        }
+        const current = event.getTouchPosition();
+        const dx = current.x - this.lastTouchPos.x;
+        const dy = current.y - this.lastTouchPos.y;
+
+        const totalDist = Math.sqrt(
+          (current.x - this.touchStartPos.x) * (current.x - this.touchStartPos.x) +
+          (current.y - this.touchStartPos.y) * (current.y - this.touchStartPos.y)
+        );
+
+        if (totalDist > 0.01) {
+          this.isTouchDragging = true;
+          // In Lens Studio screen coords: +Y is down, so moving down on screen gives positive dy.
+          // In world coords: moving down means decreasing Y (negative deltaY).
+          const worldDeltaX = dx * 160.0;
+          const worldDeltaY = -dy * 160.0;
+          this.dragWhiteboard(worldDeltaY, worldDeltaX);
+        }
+
+        this.lastTouchPos = new vec2(current.x, current.y);
+      });
+
+      this.createEvent('TouchEndEvent').bind((event: TouchEndEvent) => {
+        if (this.whiteboardState !== WhiteboardState.SELECT_AREA) {
+          return;
+        }
+        const p = event.getTouchPosition();
+        const wasDragging = this.isTouchDragging;
+        this.isTouchDragging = false;
+        this.lastTouchPos = undefined;
+
+        if (wasDragging) {
+          this.lastDragEndTime = getTime();
+          const pos = this.getWhiteboardPosition();
+          print(`[SpatialInterfaceManager] Mouse/Touch drag finished. Whiteboard now at y=${pos.y.toFixed(1)} cm.`);
+          if (this.diffToastText) {
+            this.diffToastText.text = `Whiteboard at Y: ${pos.y.toFixed(1)} cm • Pinch center [ ⊙ ] to set`;
+          }
+          return;
+        }
+
+        // Tap without drag: check if tap was near the center of the whiteboard
+        if (this.touchStartPos && Math.abs(p.x - 0.5) < 0.22 && Math.abs(p.y - 0.5) < 0.28) {
+          print('[SpatialInterfaceManager] Tap on center target detected -> Locking whiteboard area!');
+          this.pinchCenterToSet();
+        }
+      });
+    } catch (e) {
+      print(`[SpatialInterfaceManager] Touch drag binding notice: ${e}`);
+    }
+  }
+
+  private bindKeyboardControls(): void {
+    try {
+      this.createEvent('KeyPressEvent').bind((event: KeyPressEvent) => {
+        if (this.whiteboardState !== WhiteboardState.SELECT_AREA) {
+          return;
+        }
+        const evAny = event as any;
+        const rawKey = evAny.key || evAny.char || (typeof evAny.getKey === 'function' ? evAny.getKey() : '');
+        const key = typeof rawKey === 'string' ? rawKey.toLowerCase() : '';
+        if (key === 's' || key === 'down') {
+          this.dragWhiteboard(-6, 0);
+        } else if (key === 'w' || key === 'up') {
+          this.dragWhiteboard(6, 0);
+        } else if (key === 'a' || key === 'left') {
+          this.dragWhiteboard(0, -6);
+        } else if (key === 'd' || key === 'right') {
+          this.dragWhiteboard(0, 6);
+        } else if (key === '-' || key === '[') {
+          const sc = this.getWhiteboardScale();
+          this.resizeWhiteboard(Math.max(80, sc.x - 10), Math.max(50, sc.z - 6));
+        } else if (key === '+' || key === '=' || key === ']') {
+          const sc = this.getWhiteboardScale();
+          this.resizeWhiteboard(Math.min(160, sc.x + 10), Math.min(105, sc.z + 6));
+        } else if (key === 'enter' || key === 'space') {
+          this.pinchCenterToSet();
+        }
+      });
+    } catch (e) {
+      // KeyPressEvent may be absent on device
     }
   }
 
@@ -362,10 +491,48 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   }
 
   private bindPaletteButtons(): void {
-    this.bindSingleButton(this.btnAddDecision, () => this.triggerAddNode('decision'));
-    this.bindSingleButton(this.btnAddService, () => this.triggerAddNode('service'));
-    this.bindSingleButton(this.btnAddDatabase, () => this.triggerAddNode('database'));
-    this.bindSingleButton(this.btnAddTerminal, () => this.triggerAddNode('terminal'));
+    this.bindSingleButton(this.btnAddDecision, () => this.handleBtnAddDecision());
+    this.bindSingleButton(this.btnAddService, () => this.handleBtnAddService());
+    this.bindSingleButton(this.btnAddDatabase, () => this.handleBtnAddDatabase());
+    this.bindSingleButton(this.btnAddTerminal, () => this.handleBtnAddTerminal());
+  }
+
+  private handleBtnAddDecision(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      print('[SpatialInterfaceManager] Palette [Lower] triggered -> Moving whiteboard down (-10cm)');
+      this.dragWhiteboard(-10, 0);
+    } else {
+      this.triggerAddNode('decision');
+    }
+  }
+
+  private handleBtnAddService(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      print('[SpatialInterfaceManager] Palette [Raise] triggered -> Moving whiteboard up (+10cm)');
+      this.dragWhiteboard(10, 0);
+    } else {
+      this.triggerAddNode('service');
+    }
+  }
+
+  private handleBtnAddDatabase(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      this.toggleWhiteboardResize();
+    } else {
+      this.triggerAddNode('database');
+    }
+  }
+
+  private handleBtnAddTerminal(): void {
+    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
+      print('[SpatialInterfaceManager] Palette [Center] triggered -> Moving whiteboard to eye level y=155');
+      this.setWhiteboardPosition(50, 155, -230);
+      if (this.diffToastText) {
+        this.diffToastText.text = 'Whiteboard Centered at Eye Level (Y: 155cm) • Pinch Center [ ⊙ ] to Set';
+      }
+    } else {
+      this.triggerAddNode('terminal');
+    }
   }
 
   private bindMeetingControls(): void {
@@ -622,5 +789,119 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     if (this.diffToastText) {
       this.diffToastText.text = text;
     }
+  }
+
+  public getWhiteboardPosition(): vec3 {
+    if (this.whiteboardBoardMesh) {
+      return this.whiteboardBoardMesh.getSceneObject().getTransform().getWorldPosition();
+    }
+    return new vec3(50, 185, -230);
+  }
+
+  public getWhiteboardScale(): vec3 {
+    if (this.whiteboardBoardMesh) {
+      return this.whiteboardBoardMesh.getSceneObject().getTransform().getWorldScale();
+    }
+    return new vec3(140, 1, 90);
+  }
+
+  public setWhiteboardPosition(x: number, y: number, z: number): void {
+    if (this.whiteboardBoardMesh) {
+      this.whiteboardBoardMesh.getSceneObject().getTransform().setWorldPosition(new vec3(x, y, z));
+    }
+  }
+
+  public setWhiteboardScale(x: number, y: number, z: number): void {
+    if (this.whiteboardBoardMesh) {
+      this.whiteboardBoardMesh.getSceneObject().getTransform().setWorldScale(new vec3(x, y, z));
+    }
+  }
+
+  public dragWhiteboard(deltaY: number, deltaX: number = 0, deltaZ: number = 0): void {
+    if (this.whiteboardBoardMesh) {
+      const tr = this.whiteboardBoardMesh.getSceneObject().getTransform();
+      const currentPos = tr.getWorldPosition();
+      const newPos = new vec3(currentPos.x + deltaX, currentPos.y + deltaY, currentPos.z + deltaZ);
+      tr.setWorldPosition(newPos);
+      if (this.diffToastText) {
+        this.diffToastText.text = `Moving Whiteboard: Y = ${newPos.y.toFixed(1)} cm (Pinch middle to set)`;
+      }
+    }
+  }
+
+  public resizeWhiteboard(newWidth: number, newHeight: number): void {
+    if (this.whiteboardBoardMesh) {
+      const tr = this.whiteboardBoardMesh.getSceneObject().getTransform();
+      const newScale = new vec3(newWidth, 1, newHeight);
+      tr.setWorldScale(newScale);
+      if (this.diffToastText) {
+        this.diffToastText.text = `Resizing Whiteboard: ${newWidth.toFixed(0)}x${newHeight.toFixed(0)} cm (Pinch middle to set)`;
+      }
+    }
+  }
+
+  public enableWhiteboardManipulation(): void {
+    try {
+      if (this.whiteboardBoardMesh) {
+        const obj = this.whiteboardBoardMesh.getSceneObject();
+        const comps = obj.getComponents('Component.ScriptComponent' as any);
+        for (const c of comps) {
+          if (c !== this && (c as any).enableTranslation !== undefined) {
+            (c as any).enableTranslation = true;
+            (c as any).enableScale = true;
+            (c as any).enableRotation = false;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignored
+    }
+  }
+
+  public disableWhiteboardManipulation(): void {
+    try {
+      if (this.whiteboardBoardMesh) {
+        const obj = this.whiteboardBoardMesh.getSceneObject();
+        const comps = obj.getComponents('Component.ScriptComponent' as any);
+        for (const c of comps) {
+          if (c !== this && (c as any).enableTranslation !== undefined) {
+            (c as any).enableTranslation = false;
+            (c as any).enableScale = false;
+          }
+        }
+      }
+    } catch (e) {
+      // Ignored
+    }
+  }
+
+  public configureWhiteboardCollider(): void {
+    try {
+      if (this.whiteboardBoardMesh) {
+        const obj = this.whiteboardBoardMesh.getSceneObject();
+        const col = obj.getComponent('Physics.ColliderComponent') as any;
+        if (col) {
+          const box = Shape.createBoxShape();
+          box.size = new vec3(140, 10, 90);
+          col.shape = box;
+          col.fitVisual = false;
+          print('[SpatialInterfaceManager] Configured 140x90cm BoxShape collider on WhiteboardBackplate');
+        }
+      }
+    } catch (e) {
+      print(`[SpatialInterfaceManager] Collider configuration notice: ${e}`);
+    }
+  }
+
+  public toggleWhiteboardResize(): void {
+    const presets = [
+      { w: 120, h: 76 },
+      { w: 100, h: 64 },
+      { w: 140, h: 90 },
+    ];
+    this.resizePresetIndex = (this.resizePresetIndex + 1) % presets.length;
+    const p = presets[this.resizePresetIndex];
+    print(`[SpatialInterfaceManager] Toggling Whiteboard Size to ${p.w}x${p.h} cm`);
+    this.resizeWhiteboard(p.w, p.h);
   }
 }

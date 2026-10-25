@@ -39,6 +39,7 @@
     raisingHandAgent: false
     socketClient: false
     whiteboardBoardMesh: false
+    whiteboardInteractable: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -56,6 +57,7 @@
       btnAddTerminal: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
       btnUpdateSnapshot: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
       btnConcludeMeeting: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
+      whiteboardInteractable: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
       diagramOverlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       whiteboardBoardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       diffToastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
@@ -71,6 +73,7 @@
     - // @input AssignableType_6 btnAddTerminal
     - // @input AssignableType_7 btnUpdateSnapshot
     - // @input AssignableType_8 btnConcludeMeeting
+    - // @input AssignableType_9 whiteboardInteractable
     - // @input Component.RenderMeshVisual diagramOverlayMesh
     - // @input Component.RenderMeshVisual whiteboardBoardMesh
     - // @input Component.Text diffToastText
