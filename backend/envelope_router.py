@@ -237,10 +237,12 @@ class PinchCommandHandler(BaseEnvelopeHandler):
 
             if action == PinchAction.ADD_NODE:
                 node_id = session.add_node(node_type, label)
+                label = session.node_metadata[node_id]["label"]
+                verb = "~ Updated" if session.last_node_reused else "+ Added"
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
 
-                diff_summary = f"+ Added [{node_type}] {label}"
+                diff_summary = f"{verb} [{node_type}] {label}"
                 snapshot_id = await session_mgr.db_save_diagram_snapshot(
                     meeting_id=meeting_id,
                     timestamp_ms=timestamp_ms,

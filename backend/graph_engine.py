@@ -111,13 +111,26 @@ class LiveGraphSession:
         self.diagram = self.file.active_diagram
         self.diagram.name = "ARStream"
         self.layout_engine = LayoutEngine()
-        self.node_by_label: Dict[str, str] = {}  # lowercase label -> cell_id
+        self.node_by_label: Dict[str, str] = {}  # lowercase label -> cell_id (latest node with that label)
+        self.node_by_key: Dict[Tuple[str, str], str] = {}  # (lowercase label, type) -> cell_id (dedupe key)
         self.node_metadata: Dict[str, Dict[str, str]] = {}  # cell_id -> {label, type}
+        self.last_node_reused: bool = False  # True when the last add_node call reused an existing node
         self.last_phash: Optional[imagehash.ImageHash] = None
 
-    def add_node(self, node_type: str, label: str) -> str:
+    def _generate_node_label(self, clean_type: str) -> str:
+        """Auto-label for nodes without a label: '<registry prefix> <n>', unique per type."""
+        prefix = NODE_REGISTRY[clean_type].label_prefix if clean_type in NODE_REGISTRY else "Node"
+        n = sum(1 for m in self.node_metadata.values() if m["type"] == clean_type) + 1
+        while (f"{prefix} {n}".lower(), clean_type) in self.node_by_key:
+            n += 1
+        return f"{prefix} {n}"
+
+    def add_node(self, node_type: str, label: Optional[str]) -> str:
         """
         Inserts a node styled for waveguide display and registers its label.
+
+        A node is reused only when both the label (case-insensitive) and the type match.
+        Missing/blank labels get an auto-generated one. Sets `last_node_reused`.
         """
         clean_type = node_type.lower()
         if clean_type not in STYLE_MAP:
@@ -126,17 +139,24 @@ class LiveGraphSession:
         style = STYLE_MAP[clean_type]
         width, height = DEFAULT_DIMENSIONS.get(clean_type, (120.0, 60.0))
 
-        # Check if vertex with exact label already exists
-        clean_label = label.strip()
+        clean_label = (label or "").strip()
+        if not clean_label:
+            clean_label = self._generate_node_label(clean_type)
         lower_label = clean_label.lower()
-        if lower_label in self.node_by_label:
-            existing_id = self.node_by_label[lower_label]
-            # Update style/label if needed
+
+        # Reuse only when label AND type match
+        key = (lower_label, clean_type)
+        if key in self.node_by_key:
+            existing_id = self.node_by_key[key]
             for c in self.diagram.cells:
                 if c.id == existing_id:
                     c.value = clean_label
                     c.style = style
-                    return existing_id
+                    break
+            self.node_metadata[existing_id] = {"label": clean_label, "type": clean_type}
+            self.node_by_label[lower_label] = existing_id
+            self.last_node_reused = True
+            return existing_id
 
         # Insert new vertex
         cell_id = self.diagram.add_vertex(
@@ -147,8 +167,10 @@ class LiveGraphSession:
             height=height,
             style=style,
         )
+        self.node_by_key[key] = str(cell_id)
         self.node_by_label[lower_label] = str(cell_id)
         self.node_metadata[str(cell_id)] = {"label": clean_label, "type": clean_type}
+        self.last_node_reused = False
         return str(cell_id)
 
     def add_edge(self, source_label_or_id: str, target_label_or_id: str, edge_label: str = "") -> Optional[str]:
