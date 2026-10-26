@@ -259,10 +259,71 @@ class LiveGraphSession:
         return False, hamming, current_hash
 
 
+try:
+    from playwright.async_api import Error as PlaywrightError
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+except ImportError:  # pragma: no cover - keeps the module importable without Playwright
+    class PlaywrightError(Exception):
+        """Stand-in so renderer error handling still type-checks without Playwright."""
+
+    class PlaywrightTimeoutError(PlaywrightError):
+        """Stand-in for playwright.async_api.TimeoutError."""
+
+
+# Upper bound for one render attempt (evaluate + completion wait + screenshot).
+RENDER_TIMEOUT_S = 2.0
+# How long to wait for window.__renderDone after window.render() is invoked.
+RENDER_DONE_TIMEOUT_MS = 500
+# Per-resource bound when closing page/browser/playwright, so teardown can't hang a restart.
+TEARDOWN_TIMEOUT_S = 5.0
+
+# export3.html's window.render() exposes no completion promise or callback, so the render is
+# considered done once the SVG's element count is stable across consecutive polls. A thenable
+# return value is awaited first in case a future page version provides one. __renderSeq stops a
+# poller left over from a timed-out render from flagging a newer render as done.
+_RENDER_JS = """
+(args) => {
+    const seq = (window.__renderSeq || 0) + 1;
+    window.__renderSeq = seq;
+    window.__renderDone = false;
+    const result = window.render({
+        xml: args.xml,
+        format: 'png',
+        bg: 'none',
+        border: 0,
+        scale: args.scale,
+        extras: JSON.stringify({ diagrams: [{ dark: true }] })
+    });
+    const countSvgElements = () => {
+        const svg = document.querySelector('svg');
+        return svg ? svg.getElementsByTagName('*').length : -1;
+    };
+    let last = -1, stablePolls = 0, polls = 0;
+    const poll = () => {
+        if (window.__renderSeq !== seq) return;
+        const count = countSvgElements();
+        stablePolls = (count >= 0 && count === last) ? stablePolls + 1 : 0;
+        last = count;
+        if (stablePolls >= 2) {
+            window.__renderDone = true;
+            return;
+        }
+        if (++polls < 200) setTimeout(poll, 16);
+    };
+    Promise.resolve(result).then(poll, () => {});
+}
+"""
+
+_RENDER_DONE_JS = "() => window.__renderDone === true"
+
+
 class HeadlessDrawioDaemon:
     """
     Pre-warmed headless Chromium renderer using Playwright and viewer.diagrams.net/export3.html.
     Delivers transparent RGBA PNG renders in <140ms with zero disk I/O.
+
+    Each render waits for a render-complete signal before the screenshot, is bounded by
+    RENDER_TIMEOUT_S, and a Playwright failure (e.g. Chromium crash) restarts the browser once.
     """
 
     def __init__(self):
@@ -271,10 +332,19 @@ class HeadlessDrawioDaemon:
         self.page = None
         self._lock = asyncio.Lock()
         self._is_ready = False
+        self._restarting = False  # guard flag: set while restart runs under the render lock
+        self._stopped = False  # set by stop(); prevents a restart from reviving a stopped daemon
+        self.render_timeout_s = RENDER_TIMEOUT_S
+        self.render_done_timeout_ms = RENDER_DONE_TIMEOUT_MS
+
+    def is_ready(self) -> bool:
+        """True when the renderer can accept renders (started, has a page, not restarting)."""
+        return self._is_ready and self.page is not None and not self._restarting
 
     async def start(self) -> None:
         from playwright.async_api import async_playwright
 
+        self._stopped = False
         logger.info("Initializing Playwright Headless Chromium Daemon...")
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
@@ -298,23 +368,7 @@ class HeadlessDrawioDaemon:
                 '<mxCell id="w" value="" vertex="1" parent="1"><mxGeometry width="10" height="10" as="geometry"/>'
                 "</mxCell></root></mxGraphModel></diagram></mxfile>"
             )
-            await self.page.evaluate(
-                """
-                (xmlPayload) => {
-                    window.render({
-                        xml: xmlPayload,
-                        format: 'png',
-                        bg: 'none',
-                        border: 0,
-                        scale: 1.0,
-                        extras: JSON.stringify({ diagrams: [{ dark: true }] })
-                    });
-                }
-                """,
-                warmup_xml,
-            )
-            svg = self.page.locator("svg").first
-            _ = await svg.screenshot(omit_background=True)
+            await asyncio.wait_for(self._render_once(warmup_xml, scale=1.0), timeout=self.render_timeout_s)
         except Exception as e:
             logger.debug("Warmup render initial pass: %s", e)
 
@@ -323,45 +377,91 @@ class HeadlessDrawioDaemon:
 
     async def stop(self) -> None:
         logger.info("Stopping HeadlessDrawioDaemon...")
+        self._stopped = True
         self._is_ready = False
+        await self._teardown()
+
+    async def _teardown(self) -> None:
+        """Close page, browser and playwright independently so one failure can't leak the rest."""
+        page, browser, playwright = self.page, self.browser, self.playwright
+        self.page = self.browser = self.playwright = None
+        closers = (
+            ("page", page.close if page else None),
+            ("browser", browser.close if browser else None),
+            ("playwright", playwright.stop if playwright else None),
+        )
+        for name, close in closers:
+            if close is None:
+                continue
+            try:
+                await asyncio.wait_for(close(), timeout=TEARDOWN_TIMEOUT_S)
+            except Exception as e:
+                logger.warning("Error closing HeadlessDrawioDaemon %s: %s", name, e)
+
+    async def _restart_locked(self) -> None:
+        """stop()+start() the browser. Caller must hold self._lock; never re-acquires it."""
+        if self._stopped:
+            raise RuntimeError("HeadlessDrawioDaemon was stopped; not restarting")
+        self._restarting = True
         try:
-            if self.page:
-                await self.page.close()
-            if self.browser:
-                await self.browser.close()
-            if self.playwright:
-                await self.playwright.stop()
-        except Exception as e:
-            logger.warning("Error stopping HeadlessDrawioDaemon: %s", e)
+            await self._teardown()
+            await self.start()
+        except BaseException:
+            # Failed or cancelled mid-restart: leave no half-started Chromium behind.
+            self._is_ready = False
+            await self._teardown()
+            raise
+        finally:
+            self._restarting = False
+        if self._stopped:  # stop() ran while the restart was in flight
+            self._is_ready = False
+            await self._teardown()
+            raise RuntimeError("HeadlessDrawioDaemon was stopped during restart")
+        logger.info("HeadlessDrawioDaemon restarted.")
+
+    async def _render_once(self, drawio_xml: str, scale: float = 1.5) -> bytes:
+        """One render: window.render(), wait for the render-complete signal, then screenshot."""
+        page = self.page
+        await page.evaluate(_RENDER_JS, {"xml": drawio_xml, "scale": scale})
+        # Screenshot only after the page reports the new diagram is fully drawn
+        await page.wait_for_function(_RENDER_DONE_JS, timeout=self.render_done_timeout_ms)
+        # Capture SVG bounding box screenshot with omit_background=True
+        svg = page.locator("svg").first
+        return await svg.screenshot(omit_background=True)
+
+    async def _render_bounded(self, drawio_xml: str) -> bytes:
+        try:
+            return await asyncio.wait_for(self._render_once(drawio_xml), timeout=self.render_timeout_s)
+        except PlaywrightTimeoutError as e:
+            raise TimeoutError(f"Render-complete signal not received: {e}") from e
 
     async def render_b64_png(self, drawio_xml: str) -> str:
         """
         Renders Draw.io XML into a Base64 transparent PNG via export3.html window.render().
+
+        Raises TimeoutError if the render does not finish within render_timeout_s (the lock is
+        released). On a Playwright error (e.g. TargetClosedError after a Chromium crash) the
+        browser is restarted once and the render retried once; a failed restart leaves the
+        daemon not ready.
         """
-        if not self._is_ready or not self.page:
+        if not self.is_ready():
             raise RuntimeError("HeadlessDrawioDaemon is not initialized or ready")
 
         async with self._lock:
-            # Execute window.render on the pre-warmed page
-            await self.page.evaluate(
-                """
-                (xmlPayload) => {
-                    window.render({
-                        xml: xmlPayload,
-                        format: 'png',
-                        bg: 'none',
-                        border: 0,
-                        scale: 1.5,
-                        extras: JSON.stringify({ diagrams: [{ dark: true }] })
-                    });
-                }
-                """,
-                drawio_xml,
-            )
-
-            # Capture SVG bounding box screenshot with omit_background=True
-            svg = self.page.locator("svg").first
-            png_bytes = await svg.screenshot(omit_background=True)
+            # Re-check: a crash, failed restart or stop() may have happened while we waited.
+            if not self.is_ready():
+                raise RuntimeError("HeadlessDrawioDaemon is not initialized or ready")
+            try:
+                png_bytes = await self._render_bounded(drawio_xml)
+            except PlaywrightError as e:
+                logger.error("Renderer Playwright error, restarting Chromium once: %s", e)
+                self._is_ready = False
+                try:
+                    await self._restart_locked()
+                except Exception as restart_err:
+                    logger.error("HeadlessDrawioDaemon restart failed; renderer not ready: %s", restart_err)
+                    raise
+                png_bytes = await self._render_bounded(drawio_xml)
             return base64.b64encode(png_bytes).decode("ascii")
 
 
