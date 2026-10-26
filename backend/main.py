@@ -21,9 +21,12 @@ if backend_dir not in sys.path:
 
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
 from auth import WS_UNAUTHORIZED_CLOSE_CODE, require_api_token, validate_auth_config, ws_token_ok
 from graph_engine import (
@@ -168,6 +171,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# Per-client rate limit for the Gemini-backed POST routes (CWE-770 cost abuse).
+# Cloud Run sits behind a proxy, so the client is keyed on the first X-Forwarded-For entry.
+RATE_LIMIT = os.environ.get("SPECSCRIBE_RATE_LIMIT", "10/minute")
+
+
+def _rate_limit_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    first_hop = forwarded_for.split(",", 1)[0].strip()
+    return first_hop or get_remote_address(request)
+
+
+limiter = Limiter(key_func=_rate_limit_key, headers_enabled=True)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 # REST Schemas
@@ -379,8 +398,11 @@ async def get_meeting_knowledge_chunks(
 
 
 @app.post("/api/meetings/{meeting_id}/proactive-critique", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def trigger_proactive_critique(
     meeting_id: str,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     """Triggers an immediate Raising-Hand proactive evaluation for the meeting."""
@@ -410,8 +432,11 @@ async def trigger_proactive_critique(
 
 
 @app.post("/api/meetings/{meeting_id}/finalize", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def finalize_meeting(
     meeting_id: str,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     session = session_mgr.get_or_create_session(meeting_id)
@@ -428,14 +453,17 @@ async def finalize_meeting(
 
 
 @app.post("/api/meetings/{meeting_id}/ask", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def ask_meeting_rag(
     meeting_id: str,
-    request: AskQuestionRequest,
+    body: AskQuestionRequest,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     return await session_mgr.spec_generator.answer_question(
         meeting_id=meeting_id,
-        question=request.question,
+        question=body.question,
     )
 
 

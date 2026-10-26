@@ -7,7 +7,7 @@ import base64
 import io
 import time
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 
@@ -24,7 +24,7 @@ from graph_engine import (
 )
 from starlette.websockets import WebSocketDisconnect
 from auth import validate_auth_config
-from main import app, live_sessions, memory_store, renderer_daemon
+from main import app, limiter, live_sessions, memory_store, renderer_daemon, session_manager
 
 TEST_API_TOKEN = "test-token-123"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
@@ -427,6 +427,25 @@ def test_rest_requires_bearer_token():
         assert client.get("/api/meetings/m1/timeline", headers={"Authorization": TEST_API_TOKEN}).status_code == 401
         assert client.get("/api/meetings/m1/timeline", headers=AUTH_HEADERS).status_code != 401
         assert client.post("/api/meetings", json={"title": "x"}, headers=AUTH_HEADERS).status_code == 200
+
+
+def test_gemini_post_routes_rate_limited_per_client():
+    """11th POST /ask within a minute from one client returns 429 + Retry-After; GET routes stay open."""
+    answer = AsyncMock(return_value={"answer": "stub"})
+    limiter.reset()
+    try:
+        with patch.object(session_manager.spec_generator, "answer_question", answer):
+            with TestClient(app, headers=AUTH_HEADERS) as client:
+                for _ in range(10):
+                    assert client.post("/api/meetings/rl-1/ask", json={"question": "q"}).status_code == 200
+                limited = client.post("/api/meetings/rl-1/ask", json={"question": "q"})
+                assert limited.status_code == 429
+                assert int(limited.headers["Retry-After"]) > 0
+                assert answer.await_count == 10
+                for _ in range(20):
+                    assert client.get("/api/meetings/rl-1/timeline").status_code == 200
+    finally:
+        limiter.reset()
 
 
 def test_health_is_public():
