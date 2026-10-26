@@ -25,6 +25,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, 
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+from auth import WS_UNAUTHORIZED_CLOSE_CODE, require_api_token, validate_auth_config, ws_token_ok
 from graph_engine import (
     HeadlessDrawioDaemon,
     LiveGraphSession,
@@ -126,6 +127,7 @@ async def db_save_diagram_snapshot(
 # FastAPI Lifespan Handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_auth_config()
     logger.info("Initializing SpecScribe FastAPI Orchestrator lifespan...")
     app.state.session_manager = session_manager
     try:
@@ -195,7 +197,7 @@ async def health_check(session_mgr: SessionManager = Depends(get_session_manager
     }
 
 
-@app.post("/api/meetings")
+@app.post("/api/meetings", dependencies=[Depends(require_api_token)])
 async def create_meeting(
     request: CreateMeetingRequest,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -231,7 +233,7 @@ def filter_by_window(items: List[Dict[str, Any]], from_t: Optional[int], to_t: O
     return res
 
 
-@app.get("/api/meetings/{meeting_id}/timeline")
+@app.get("/api/meetings/{meeting_id}/timeline", dependencies=[Depends(require_api_token)])
 async def get_meeting_timeline(
     meeting_id: str,
     limit: int = Query(default=100, ge=1, le=500),
@@ -329,7 +331,7 @@ async def get_meeting_timeline(
 
 
 
-@app.get("/api/meetings/{meeting_id}/interventions")
+@app.get("/api/meetings/{meeting_id}/interventions", dependencies=[Depends(require_api_token)])
 async def get_meeting_interventions(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -348,7 +350,7 @@ async def get_meeting_interventions(
     return session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
 
 
-@app.get("/api/meetings/{meeting_id}/knowledge")
+@app.get("/api/meetings/{meeting_id}/knowledge", dependencies=[Depends(require_api_token)])
 async def get_meeting_knowledge_chunks(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -376,7 +378,7 @@ async def get_meeting_knowledge_chunks(
     ]
 
 
-@app.post("/api/meetings/{meeting_id}/proactive-critique")
+@app.post("/api/meetings/{meeting_id}/proactive-critique", dependencies=[Depends(require_api_token)])
 async def trigger_proactive_critique(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -407,7 +409,7 @@ async def trigger_proactive_critique(
     }
 
 
-@app.post("/api/meetings/{meeting_id}/finalize")
+@app.post("/api/meetings/{meeting_id}/finalize", dependencies=[Depends(require_api_token)])
 async def finalize_meeting(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -425,7 +427,7 @@ async def finalize_meeting(
     return result
 
 
-@app.post("/api/meetings/{meeting_id}/ask")
+@app.post("/api/meetings/{meeting_id}/ask", dependencies=[Depends(require_api_token)])
 async def ask_meeting_rag(
     meeting_id: str,
     request: AskQuestionRequest,
@@ -441,6 +443,10 @@ async def ask_meeting_rag(
 @app.websocket("/ws/meeting/{meeting_id}")
 async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
     session_mgr = getattr(app.state, "session_manager", session_manager)
+    if not ws_token_ok(websocket):
+        # Close before accept(): the handshake is rejected.
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
+        return
     await websocket.accept()
     session_mgr.active_connections[meeting_id].add(websocket)
     session = session_mgr.get_or_create_session(meeting_id)

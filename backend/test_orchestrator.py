@@ -22,7 +22,19 @@ from graph_engine import (
     VertexAddition,
     EdgeAddition,
 )
+from starlette.websockets import WebSocketDisconnect
+from auth import validate_auth_config
 from main import app, live_sessions, memory_store, renderer_daemon
+
+TEST_API_TOKEN = "test-token-123"
+AUTH_HEADERS = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
+
+
+@pytest.fixture(autouse=True)
+def _api_token(monkeypatch):
+    """Enable token auth for every test in this module (overrides conftest's disabled default)."""
+    monkeypatch.delenv("SPECSCRIBE_AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("SPECSCRIBE_API_TOKEN", TEST_API_TOKEN)
 
 
 def test_waveguide_styles_and_node_addition():
@@ -211,7 +223,7 @@ async def test_headless_daemon_mocked_render():
 
 def test_rest_api_lifecycle():
     """Verify REST API meeting creation, timeline retrieval, and finalization."""
-    with TestClient(app) as client:
+    with TestClient(app, headers=AUTH_HEADERS) as client:
         # 1. Create meeting
         resp = client.post("/api/meetings", json={"title": "Cloud Migration Brainstorm"})
         assert resp.status_code == 200
@@ -233,10 +245,10 @@ def test_rest_api_lifecycle():
 
 def test_websocket_pinch_command_and_transcription():
     """Verify WebSocket full-duplex protocol handling handshake, ASR, and pinch commands."""
-    with TestClient(app) as client:
+    with TestClient(app, headers=AUTH_HEADERS) as client:
         meeting_id = "test-ws-session-99"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -278,10 +290,10 @@ def test_websocket_pinch_command_and_transcription():
 
 def test_websocket_camera_frame_diff_gate():
     """Verify cameraFrame event triggers diff gate, diagram update, and suppresses duplicates."""
-    with TestClient(app) as client:
+    with TestClient(app, headers=AUTH_HEADERS) as client:
         meeting_id = "test-ws-camera-session"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -331,10 +343,10 @@ def test_websocket_camera_frame_diff_gate():
 
 def test_websocket_pinch_command_resilience():
     """Verify pinchCommand unhandled exceptions dispatch COMMAND_ERROR and do not close WebSocket (#2)."""
-    with TestClient(app) as client:
+    with TestClient(app, headers=AUTH_HEADERS) as client:
         meeting_id = "test-ws-resilience-session"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # 1. Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -405,3 +417,51 @@ def test_websocket_pinch_command_resilience():
             assert "Resilient DocStore" in diagram_update["diff_summary"]
             assert len(diagram_update["image_b64"]) > 50
 
+
+def test_rest_requires_bearer_token():
+    """Unauthenticated / wrong-token REST calls return 401; valid token succeeds."""
+    with TestClient(app) as client:
+        assert client.get("/api/meetings/m1/timeline").status_code == 401
+        assert client.post("/api/meetings", json={"title": "x"}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers={"Authorization": TEST_API_TOKEN}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers=AUTH_HEADERS).status_code != 401
+        assert client.post("/api/meetings", json={"title": "x"}, headers=AUTH_HEADERS).status_code == 200
+
+
+def test_health_is_public():
+    with TestClient(app) as client:
+        assert client.get("/api/health").status_code == 200
+
+
+def test_websocket_rejected_without_valid_token():
+    """Missing or wrong ?token= closes with 4401 before accept."""
+    with TestClient(app) as client:
+        for url in ("/ws/meeting/auth-ws-1", "/ws/meeting/auth-ws-1?token=wrong"):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect(url):
+                    pass
+            assert exc.value.code == 4401
+    assert "auth-ws-1" not in live_sessions
+
+
+def test_websocket_accepts_valid_token():
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/auth-ws-2?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+
+
+def test_startup_refuses_without_token_unless_disabled(monkeypatch, caplog):
+    monkeypatch.delenv("SPECSCRIBE_API_TOKEN", raising=False)
+    monkeypatch.delenv("SPECSCRIBE_AUTH_DISABLED", raising=False)
+    with pytest.raises(RuntimeError):
+        validate_auth_config()
+    with pytest.raises(RuntimeError):
+        with TestClient(app):
+            pass
+    monkeypatch.setenv("SPECSCRIBE_AUTH_DISABLED", "1")
+    with caplog.at_level("WARNING"):
+        validate_auth_config()
+    assert "DISABLED" in caplog.text
+    with TestClient(app) as client:
+        assert client.post("/api/meetings", json={"title": "x"}).status_code == 200
