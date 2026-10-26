@@ -9,11 +9,16 @@ import {SpecScribeDC5Scenario} from './SpecScribeDC5Scenario';
 import {SpecScribeDC6Scenario} from './SpecScribeDC6Scenario';
 import {SpecScribeSelectAreaScenario} from './SpecScribeSelectAreaScenario';
 import {SpecScribeStartDrawingScenario} from './SpecScribeStartDrawingScenario';
+import {SpecScribeFullDemoScenario} from './SpecScribeFullDemoScenario';
 
 @component
 export class LeafIndex extends BaseScriptComponent {
   @scenariosIndex
   static scenariosIndex: ScenarioMetadata[] = [
+    {
+      id: 'demo-full-journey',
+      typename: SpecScribeFullDemoScenario.getTypeName(),
+    },
     {
       id: 'dc0-whiteboard-selection',
       typename: SpecScribeDC0WhiteboardSelectionScenario.getTypeName(),

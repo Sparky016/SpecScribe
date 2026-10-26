@@ -1,6 +1,7 @@
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 import { RaisingHandAgentController } from './RaisingHandAgentController';
+import { LENS_NODE_REGISTRY } from './NodeRegistry';
 
 export enum WhiteboardState {
   SELECT_AREA = 0,    // Area selection mode: Reticle overlay, no drawings
@@ -13,6 +14,9 @@ export enum WhiteboardState {
 
 @component
 export class SpatialInterfaceManager extends BaseScriptComponent {
+  @input
+  public isPhysicalHardware: boolean = false;
+
   @input
   @allowUndefined
   private socketClient?: PersistentStreamSocketClient;
@@ -62,7 +66,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private diffToastText?: Text;
 
   private tapCycleIndex: number = 0;
-  private readonly tapNodeTypes: string[] = ['decision', 'service', 'database', 'terminal'];
+  private readonly tapNodeTypes: string[] = Object.keys(LENS_NODE_REGISTRY);
 
   private whiteboardState: WhiteboardState = WhiteboardState.SELECT_AREA;
   private diagramStage: number = 0; // 0: initial/clean/select, 1: node added, 2: snapshot updated, 3: concluded
@@ -85,6 +89,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private resizePresetIndex: number = 0;
 
   onAwake(): void {
+    try {
+      (global as any).SpecScribeSpatialInterfaceManager = this;
+    } catch (e) {}
+
     this.createEvent('OnStartEvent').bind(() => {
       this.loadTextures();
       this.resolveReferences();
@@ -223,7 +231,13 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private setMeshTexture(rmv: RenderMeshVisual, tex: Texture): void {
     try {
       if (rmv && rmv.mainMaterial && rmv.mainMaterial.mainPass) {
-        rmv.mainMaterial.mainPass.baseTex = tex;
+        if (this.isPhysicalHardware && rmv === this.whiteboardBoardMesh) {
+          // On physical Spectacles in front of a real whiteboard, disable virtual quad to prevent waveguide glare
+          rmv.enabled = false;
+        } else {
+          rmv.enabled = true;
+          rmv.mainMaterial.mainPass.baseTex = tex;
+        }
       }
     } catch (e) {
       // Ignored
@@ -498,41 +512,19 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   }
 
   private handleBtnAddDecision(): void {
-    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      print('[SpatialInterfaceManager] Palette [Lower] triggered -> Moving whiteboard down (-10cm)');
-      this.dragWhiteboard(-10, 0);
-    } else {
-      this.triggerAddNode('decision');
-    }
+    this.triggerAddNode('decision');
   }
 
   private handleBtnAddService(): void {
-    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      print('[SpatialInterfaceManager] Palette [Raise] triggered -> Moving whiteboard up (+10cm)');
-      this.dragWhiteboard(10, 0);
-    } else {
-      this.triggerAddNode('service');
-    }
+    this.triggerAddNode('service');
   }
 
   private handleBtnAddDatabase(): void {
-    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      this.toggleWhiteboardResize();
-    } else {
-      this.triggerAddNode('database');
-    }
+    this.triggerAddNode('database');
   }
 
   private handleBtnAddTerminal(): void {
-    if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      print('[SpatialInterfaceManager] Palette [Center] triggered -> Moving whiteboard to eye level y=155');
-      this.setWhiteboardPosition(50, 155, -230);
-      if (this.diffToastText) {
-        this.diffToastText.text = 'Whiteboard Centered at Eye Level (Y: 155cm) • Pinch Center [ ⊙ ] to Set';
-      }
-    } else {
-      this.triggerAddNode('terminal');
-    }
+    this.triggerAddNode('terminal');
   }
 
   private bindMeetingControls(): void {
@@ -581,12 +573,14 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
     let spokenLabel = this.socketClient
       ? this.socketClient.getLatestSpokenPhrase()
-      : `New ${nodeType}`;
+      : undefined;
     if (!spokenLabel || spokenLabel === 'New Component') {
+      const def = LENS_NODE_REGISTRY[nodeType.toLowerCase()];
       if (nodeType === 'service') spokenLabel = 'Auth Gateway Service';
       else if (nodeType === 'database') spokenLabel = 'Redis Token Cache';
       else if (nodeType === 'decision') spokenLabel = 'Enforce JWT HMAC Verification';
       else if (nodeType === 'terminal') spokenLabel = 'Client HTTPS Entrypoint';
+      else if (def) spokenLabel = `${def.labelPrefix} Component`;
       else spokenLabel = `New ${nodeType}`;
     }
 
@@ -697,6 +691,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     // Switch overlay texture to concluded stage
     if (this.diagramOverlayMesh && this.texConcluded) {
       this.setMeshTexture(this.diagramOverlayMesh, this.texConcluded);
+    }
+    // Ensure whiteboard shows drawn whiteboard rather than calibration reticle
+    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
     }
 
     // Play conclude sound if audio component exists

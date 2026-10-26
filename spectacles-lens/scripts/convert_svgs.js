@@ -44,10 +44,7 @@ async function convert(svgRelPath) {
 }
 
 async function main() {
-  await convert('Textures/Whiteboard_Backdrop.svg');
-  await convert('Textures/Whiteboard_SelectArea.svg');
-  await convert('Textures/Whiteboard_Drawn.svg');
-  await convert('Textures/Diagram_Empty.svg');
+  await convert('Textures/Diagram_Concluded.svg');
 }
 
 main().catch(console.error);

@@ -19,6 +19,11 @@ export class SpecScribeDC6Scenario extends Scenario {
     expect(sm).toBeTruthy();
     if (!sm) return;
 
+    if (sm.getWhiteboardState && sm.getWhiteboardState() !== 2) {
+      sm.startDrawingAndIngestion();
+      await sleep(200);
+    }
+
     const btnConclude = findInteractablesByName('BtnConcludeMeeting')[0];
     expect(btnConclude).toBeTruthy();
 

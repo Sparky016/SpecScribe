@@ -36,6 +36,7 @@
     btnUpdateSnapshot: false
     diagramOverlayMesh: false
     diffToastText: false
+    isPhysicalHardware: false
     raisingHandAgent: false
     socketClient: false
     whiteboardBoardMesh: false
@@ -49,7 +50,8 @@
   Attachments:
     []
   DefaultScriptInputs:
-    - socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+    - isPhysicalHardware: false
+      socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
       btnAddDecision: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
       btnAddService: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
@@ -65,6 +67,7 @@
     -
       {}
   InputLines:
+    - // @input bool isPhysicalHardware
     - // @input AssignableType_1 socketClient
     - // @input AssignableType_2 raisingHandAgent
     - // @input AssignableType_3 btnAddDecision

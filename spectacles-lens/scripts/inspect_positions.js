@@ -23,23 +23,23 @@ async function main() {
   const code = `
     const model = pluginSystem.findInterface(Editor.Model.IModel);
     const scene = model.project.scene;
-    const find = n => scene.sceneObjects.find(o => o.name === n);
-    const cam = find('Camera Object');
-    const pal = find('SIKPinchPaletteRoot');
-    const agent = find('RaisingHandAgentRoot');
-    const orb = find('AgentOrbMesh');
-    const btn1 = find('BtnAddDecision');
-    const backplate = find('WhiteboardBackplate');
-
-    const camComp = cam.components.find(c => c.name === 'Camera');
+    function findRec(obj: any, name: string): any {
+      if (obj.name === name) return obj;
+      for (const child of obj.children) {
+        const found = findRec(child, name);
+        if (found) return found;
+      }
+      return null;
+    }
+    const wb = scene.sceneObjects.map(o => findRec(o, 'Whiteboard')).find(Boolean);
+    const wbMesh = scene.sceneObjects.map(o => findRec(o, 'WhiteboardBoardMesh')).find(Boolean);
+    const pal = scene.sceneObjects.map(o => findRec(o, 'SIKPinchPaletteRoot')).find(Boolean);
     return JSON.stringify({
-      camRenderLayer: camComp ? camComp.renderLayer : null,
-      camObjLayer: cam ? cam.layer : null,
-      palLayer: pal ? pal.layer : null,
-      agentLayer: agent ? agent.layer : null,
-      orbLayer: orb ? orb.layer : null,
-      btn1Layer: btn1 ? btn1.layer : null,
-      bpLayer: backplate ? backplate.layer : null
+      topLevel: scene.sceneObjects.map(o => o.name),
+      wbParent: wb?.parent?.name,
+      wbPos: wb ? { x: wb.localTransform.position.x, y: wb.localTransform.position.y, z: wb.localTransform.position.z } : null,
+      wbMeshPos: wbMesh ? { x: wbMesh.localTransform.position.x, y: wbMesh.localTransform.position.y, z: wbMesh.localTransform.position.z } : null,
+      palPos: pal ? { x: pal.localTransform.position.x, y: pal.localTransform.position.y, z: pal.localTransform.position.z } : null,
     }, null, 2);
   `;
   const res = await call('ExecuteEditorCode', { code });

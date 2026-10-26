@@ -429,19 +429,19 @@ const diagramConcludedSvg = `<svg width="1200" height="800" xmlns="http://www.w3
   </defs>
   
   <g filter="url(#glowGreen)">
-    <rect x="150" y="180" width="900" height="380" rx="24" fill="#030712" fill-opacity="0.95" stroke="#00FF66" stroke-width="4"/>
+    <rect x="140" y="160" width="920" height="420" rx="24" fill="#030712" fill-opacity="0.95" stroke="#00FF66" stroke-width="4"/>
     
-    <circle cx="600" cy="270" r="45" fill="#00FF66" fill-opacity="0.15" stroke="#00FF66" stroke-width="3"/>
-    <path d="M 580 270 L 595 285 L 625 255" fill="none" stroke="#00FF66" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="600" cy="250" r="45" fill="#00FF66" fill-opacity="0.15" stroke="#00FF66" stroke-width="3"/>
+    <path d="M 580 250 L 595 265 L 625 235" fill="none" stroke="#00FF66" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
     
-    <text x="600" y="350" font-family="sans-serif" font-size="28" font-weight="900" fill="#00FF66" text-anchor="middle" letter-spacing="2">TECHNICAL SPECIFICATION GENERATED</text>
-    <text x="600" y="388" font-family="sans-serif" font-size="18" font-weight="600" fill="#FFFFFF" text-anchor="middle">Meeting Session Successfully Concluded</text>
+    <text x="600" y="335" font-family="sans-serif" font-size="32" font-weight="900" fill="#00FF66" text-anchor="middle" letter-spacing="2">TECHNICAL SPECIFICATION GENERATED</text>
+    <text x="600" y="375" font-family="sans-serif" font-size="22" font-weight="700" fill="#FFFFFF" text-anchor="middle">Meeting Session Successfully Concluded</text>
     
-    <line x1="300" y1="415" x2="900" y2="415" stroke="#334155" stroke-width="2"/>
+    <line x1="260" y1="405" x2="940" y2="405" stroke="#00FF66" stroke-width="2" stroke-opacity="0.4"/>
     
-    <text x="600" y="450" font-family="sans-serif" font-size="16" fill="#94A3B8" text-anchor="middle">6 Architecture Nodes • 7 Directed Edges • 0 Open Vulnerabilities</text>
-    <text x="600" y="480" font-family="sans-serif" font-size="15" fill="#00E5FF" text-anchor="middle">Exported to GitHub Issues, Jira &amp; OpenAPI Contract</text>
-    <text x="600" y="515" font-family="sans-serif" font-size="14" font-weight="700" fill="#64748B" text-anchor="middle">SPECSCRIBE AR // DEVPOST HACKATHON</text>
+    <text x="600" y="445" font-family="sans-serif" font-size="20" font-weight="700" fill="#00FF66" text-anchor="middle">6 Architecture Nodes • 7 Directed Edges • 0 Open Vulnerabilities</text>
+    <text x="600" y="485" font-family="sans-serif" font-size="20" font-weight="700" fill="#00E5FF" text-anchor="middle">Exported to GitHub Issues, Jira &amp; OpenAPI Contract</text>
+    <text x="600" y="530" font-family="sans-serif" font-size="16" font-weight="800" fill="#38BDF8" text-anchor="middle">SPECSCRIBE AR // DEVPOST HACKATHON</text>
   </g>
 </svg>`;
 

@@ -633,7 +633,14 @@ The proposed design decomposes into modular components organized into a hierarch
                         sim = cosine_similarity(query_vec, emb)
                         scored.append((sim, c))
 
-            scored.sort(key=lambda x: x[0], reverse=True)
+            # Prioritize granular DECISION and TRANSCRIPT_WINDOW chunks for specific architectural queries
+            scored.sort(
+                key=lambda x: (
+                    1 if x[1].get("chunk_type") in ("DECISION", "TRANSCRIPT_WINDOW") else 0,
+                    x[0],
+                ),
+                reverse=True,
+            )
             matched_chunks = [
                 {
                     "id": item.get("id"),
@@ -654,6 +661,8 @@ The proposed design decomposes into modular components organized into a hierarch
                 "label": format_timestamp_ms(ts),
                 "excerpt": c.get("content", "")[:120],
             })
+        # Ensure temporal citations with timestamp_ms > 0 are prioritized over 00:00 document headers
+        citations.sort(key=lambda c: (1 if c["timestamp_ms"] > 0 else 0), reverse=True)
 
         if self._genai_client and matched_chunks:
             try:
@@ -710,6 +719,9 @@ The proposed design decomposes into modular components organized into a hierarch
                                 "label": f_ts,
                                 "excerpt": excerpt,
                             })
+
+                    if refined_citations:
+                        refined_citations.sort(key=lambda c: (1 if c["timestamp_ms"] > 0 else 0), reverse=True)
 
                     return {
                         "meeting_id": meeting_id,

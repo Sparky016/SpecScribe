@@ -54,11 +54,15 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private agentRootObject?: SceneObject;
   private cameraObject?: SceneObject;
-  // Local offset in camera space: top right of view at comfortable depth
-  private readonly cameraAnchorOffset: vec3 = new vec3(12.0, 7.5, -50.0);
+  // Local offset in camera space: top right of view at 1.15m optical comfort depth
+  private readonly cameraAnchorOffset: vec3 = new vec3(26.0, 15.0, -115.0);
   private readonly cameraAnchorRotation: quat = quat.fromEulerVec(new vec3(4 * Math.PI / 180, -10 * Math.PI / 180, 0));
 
   onAwake(): void {
+    try {
+      (global as any).SpecScribeRaisingHandAgent = this;
+    } catch (e) {}
+
     this.createEvent('OnStartEvent').bind(() => {
       this.resolveReferences();
       this.anchorToCamera();
@@ -330,10 +334,11 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       }
       this.agentRootObject.getTransform().setLocalPosition(this.cameraAnchorOffset);
       this.agentRootObject.getTransform().setLocalRotation(this.cameraAnchorRotation);
-      this.agentRootObject.getTransform().setLocalScale(new vec3(1.0, 1.0, 1.0));
-      print(`[RaisingHandAgentController] AI Orb anchored to Camera view at top-right (${this.cameraAnchorOffset.x}, ${this.cameraAnchorOffset.y}, ${this.cameraAnchorOffset.z})`);
+      this.agentRootObject.getTransform().setLocalScale(new vec3(2.2, 2.2, 2.2));
+      print(`[RaisingHandAgentController] AI Orb anchored to Camera view at optical comfort depth (${this.cameraAnchorOffset.x}, ${this.cameraAnchorOffset.y}, ${this.cameraAnchorOffset.z})`);
     } else if (this.agentRootObject) {
-      this.agentRootObject.getTransform().setWorldPosition(new vec3(27.0, 14.0, -30.0));
+      this.agentRootObject.getTransform().setWorldPosition(new vec3(26.0, 15.0, -115.0));
+      this.agentRootObject.getTransform().setWorldScale(new vec3(2.2, 2.2, 2.2));
     }
   }
 

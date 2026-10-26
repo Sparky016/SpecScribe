@@ -8,6 +8,7 @@
     - !<own> 5c3f35aa-d723-4f23-b0f8-d233dedfc2f2
     - !<own> fd2dcb00-e03f-4df7-a432-aaaa628aed49
     - !<own> 7e394714-7a6a-4e46-875f-5b92a6021979
+    - !<own> 51c26207-c8a1-4f0a-aec6-cf9cc722afb4
   layers: !<Layers/267ee9a7-aff2-4f9d-9a49-f71214747d03>
     userLayers:
       - id: 1
@@ -542,7 +543,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -924,7 +925,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -1153,7 +1154,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -1338,7 +1339,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -1452,7 +1453,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -1596,6 +1597,21 @@
   BlendNormals: false
   BlendShapes:
     {}
+- !<SceneObject/51c26207-c8a1-4f0a-aec6-cf9cc722afb4>
+  PrefabRemaps:
+    []
+  Name: LEAF Plugin Bridge
+  Enabled: true
+  Layers: 1
+  LocalTransform: !<TransformEntity>
+    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
+    HasSegmentScaleCompensation: false
+  Children:
+    []
+  Components:
+    - !<own> 617c6197-1072-447c-b4b6-0d45572fa4b2
 - !<SceneObject/51ddf89c-a5d6-4471-932e-5032f3f79204>
   PrefabRemaps:
     []
@@ -1810,6 +1826,22 @@
     - !<own> e94f40ad-5e0b-4c87-b12a-9939be590313
   Components:
     []
+- !<ScriptComponent/617c6197-1072-447c-b4b6-0d45572fa4b2>
+  PrefabRemaps:
+    []
+  Name: MessagingBridge
+  Enabled: true
+  ScriptAsset: !<reference> 9aa407db-2872-4afc-a162-cf7faf2a0f29
+  ScriptInputsDefault:
+    {}
+  ScriptTypesDefault:
+    {}
+  ScriptInputs:
+    "":
+      {}
+  ScriptTypes:
+    "":
+      {}
 - !<SceneObject/640620d5-3116-4c57-a46a-0ce873af42a6>
   PrefabRemaps:
     []
@@ -2010,7 +2042,7 @@
     []
   Name: Text
   Enabled: true
-  RenderOrder: 10
+  RenderOrder: 0
   StretchMode: Stretch
   VerticalAlignment: Center
   HorizontalAlignment: Center
@@ -2329,6 +2361,7 @@
   Enabled: true
   ScriptAsset: !<reference> c6a9746b-40a4-4870-98fc-be92460e1f90
   ScriptInputsDefault:
+    isPhysicalHardware: true
     socketClient: true
     raisingHandAgent: true
     btnAddDecision: true
@@ -2345,6 +2378,7 @@
     {}
   ScriptInputs:
     "":
+      isPhysicalHardware: false
       socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
       btnAddDecision: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
