@@ -56,6 +56,13 @@ except ImportError:
     from backend.envelope_router import EnvelopeRouter
 
 WS_INVALID_MEETING_ID_CLOSE_CODE = 4400
+WS_SESSION_CAP_CLOSE_CODE = 4429
+
+
+async def _require_meeting(session_mgr: SessionManager, meeting_id: str) -> None:
+    """404 unless the meeting is in memory or Supabase. Never creates a session."""
+    if not await session_mgr.meeting_exists(meeting_id):
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
 
 # Load environment variables from .env if present
@@ -141,6 +148,8 @@ async def lifespan(app: FastAPI):
         await session_manager.renderer_daemon.start()
     except Exception as e:
         logger.error("Failed to pre-warm HeadlessDrawioDaemon: %s", e)
+
+    session_manager.spawn(session_manager.run_eviction_loop())
 
     yield
 
@@ -266,6 +275,7 @@ async def get_meeting_timeline(
     to_ms: Optional[int] = Query(default=None, ge=0),
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     meeting = session_mgr.memory_store["meetings"].get(meeting_id)
     all_turns: List[Dict[str, Any]] = []
     snapshots: List[Dict[str, Any]] = []
@@ -308,13 +318,7 @@ async def get_meeting_timeline(
         knowledge_chunks = session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
 
     if not meeting:
-        # Check if requested demo session
-        meeting = {
-            "id": meeting_id,
-            "title": "Core Architecture Brainstorming: Auth & Real-Time Ingestion",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "latest_drawio_xml": session_mgr.memory_store["meetings"].get(meeting_id, {}).get("latest_drawio_xml"),
-        }
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
     # Time-window filtering
     filtered_turns = filter_by_window(all_turns, from_ms, to_ms)
@@ -411,6 +415,7 @@ async def trigger_proactive_critique(
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     """Triggers an immediate Raising-Hand proactive evaluation for the meeting."""
+    await _require_meeting(session_mgr, meeting_id)
     session = session_mgr.get_or_create_session(meeting_id)
     xml = session.get_xml()
     ts = session.elapsed_ms()
@@ -444,6 +449,7 @@ async def finalize_meeting(
     response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     session = session_mgr.get_or_create_session(meeting_id)
     final_xml = session.compile_layout_xml()
     meeting_meta = session_mgr.memory_store["meetings"].get(meeting_id, {})
@@ -466,6 +472,7 @@ async def ask_meeting_rag(
     response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     return await session_mgr.spec_generator.answer_question(
         meeting_id=meeting_id,
         question=body.question,
@@ -484,6 +491,10 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
         meeting_id = resolve_meeting_id(meeting_id)
     except ValueError:
         await websocket.close(code=WS_INVALID_MEETING_ID_CLOSE_CODE)
+        return
+    if not session_mgr.can_admit(meeting_id):
+        logger.warning("Session cap reached; rejecting WebSocket for meeting %s", meeting_id)
+        await websocket.close(code=WS_SESSION_CAP_CLOSE_CODE)
         return
     await websocket.accept()
     session_mgr.active_connections[meeting_id].add(websocket)
@@ -516,6 +527,8 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
         if not session_mgr.active_connections[meeting_id]:
             session_mgr.active_connections.pop(meeting_id, None)
             session_mgr.raising_hand_agent.stop_proactive_loop(meeting_id)
+            session_mgr.touch(meeting_id)
+            session_mgr.evict_if_idle(meeting_id)
 
 
 

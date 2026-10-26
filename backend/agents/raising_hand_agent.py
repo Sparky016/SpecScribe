@@ -668,6 +668,12 @@ class RaisingHandAgent:
         self._loop_telemetry.pop(meeting_id, None)
 
 
+    def clear_meeting(self, meeting_id: str) -> None:
+        """Stops the meeting's loop and drops its per-meeting history (used on session eviction)."""
+        self.stop_proactive_loop(meeting_id)
+        self._history.pop(meeting_id, None)
+        self._last_intervention_time.pop(meeting_id, None)
+
     def stop_all(self) -> None:
         """Stops all active proactive loops."""
         for meeting_id in list(self._active_loops.keys()):

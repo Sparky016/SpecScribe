@@ -40,6 +40,24 @@ DEMO_MEETING_IDS = ("demo", "demo-session-01")
 DEMO_MEETING_UUID = "00000000-0000-4000-8000-000000000d0e"
 
 
+DEFAULT_SESSION_TTL_SECONDS = 1800.0
+DEFAULT_MAX_SESSIONS = 50
+DEFAULT_SWEEP_INTERVAL_SECONDS = 60.0
+
+
+def _env_number(name: str, default: float) -> float:
+    """Read a non-negative number from the environment, falling back to the default."""
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("Ignoring invalid %s=%r; using %s", name, raw, default)
+        return default
+    return value if value >= 0 else default
+
+
 class TimedLiveGraphSession(LiveGraphSession):
     """LiveGraphSession that tracks elapsed time since the session started."""
 
@@ -97,6 +115,8 @@ class SessionManager:
             memory_store=self.memory_store,
         )
         self._bg_tasks: Set[asyncio.Task] = set()
+        self.last_activity: Dict[str, float] = {}
+        self._clock = time.monotonic
 
     def spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
         """Run a fire-and-forget coroutine while holding a reference to its task.
@@ -126,7 +146,76 @@ class SessionManager:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._bg_tasks.clear()
 
+    @property
+    def session_ttl_seconds(self) -> float:
+        return _env_number("SPECSCRIBE_SESSION_TTL_SECONDS", DEFAULT_SESSION_TTL_SECONDS)
+
+    @property
+    def max_sessions(self) -> int:
+        return int(_env_number("SPECSCRIBE_MAX_SESSIONS", DEFAULT_MAX_SESSIONS))
+
+    def can_admit(self, meeting_id: str) -> bool:
+        """True when the meeting already has a live session or the session cap has room."""
+        return meeting_id in self.live_sessions or len(self.live_sessions) < self.max_sessions
+
+    async def meeting_exists(self, meeting_id: str) -> bool:
+        """True when the meeting is in memory or in Supabase. Never creates state."""
+        if meeting_id in self.memory_store["meetings"] or meeting_id in self.live_sessions:
+            return True
+        if self.supabase_client:
+            try:
+                res = await asyncio.to_thread(
+                    lambda: self.supabase_client.table("meetings").select("id").eq("id", meeting_id).execute()
+                )
+                return bool(res.data)
+            except Exception as e:
+                logger.error("Supabase meetings lookup error: %s", e, exc_info=True)
+        return False
+
+    def touch(self, meeting_id: str) -> None:
+        self.last_activity[meeting_id] = self._clock()
+
+    def evict(self, meeting_id: str) -> bool:
+        """Drop all in-memory state for a meeting. Refuses (False) while any socket is live."""
+        if self.active_connections.get(meeting_id):
+            return False
+        self.raising_hand_agent.clear_meeting(meeting_id)
+        self.active_connections.pop(meeting_id, None)
+        self.live_sessions.pop(meeting_id, None)
+        self.last_activity.pop(meeting_id, None)
+        self.memory_store["meetings"].pop(meeting_id, None)
+        for key in ("transcript_turns", "diagram_snapshots", "agent_interventions", "knowledge_chunks"):
+            self.memory_store[key].pop(meeting_id, None)
+        logger.info("Evicted idle session for meeting %s", meeting_id)
+        return True
+
+    def evict_if_idle(self, meeting_id: str) -> bool:
+        """Evict a socketless session whose idle time has reached the TTL (TTL=0 evicts at once)."""
+        if meeting_id not in self.live_sessions or self.active_connections.get(meeting_id):
+            return False
+        idle = self._clock() - self.last_activity.get(meeting_id, 0.0)
+        if idle < self.session_ttl_seconds:
+            return False
+        return self.evict(meeting_id)
+
+    def sweep_idle_sessions(self) -> int:
+        """Evict every idle, socketless session past the TTL; returns the number evicted."""
+        return sum(1 for mid in list(self.live_sessions) if self.evict_if_idle(mid))
+
+    async def run_eviction_loop(self) -> None:
+        """Periodic idle-session sweep; per-iteration errors are logged, cancellation propagates."""
+        while True:
+            interval = _env_number("SPECSCRIBE_SESSION_SWEEP_SECONDS", DEFAULT_SWEEP_INTERVAL_SECONDS)
+            await asyncio.sleep(interval or DEFAULT_SWEEP_INTERVAL_SECONDS)
+            try:
+                self.sweep_idle_sessions()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.error("Session eviction sweep failed: %s", e, exc_info=True)
+
     def get_or_create_session(self, meeting_id: str) -> LiveGraphSession:
+        self.touch(meeting_id)
         if meeting_id not in self.live_sessions:
             session = TimedLiveGraphSession(meeting_id)
             self.live_sessions[meeting_id] = session
