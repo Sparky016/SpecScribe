@@ -413,7 +413,7 @@ async def trigger_proactive_critique(
     """Triggers an immediate Raising-Hand proactive evaluation for the meeting."""
     session = session_mgr.get_or_create_session(meeting_id)
     xml = session.get_xml()
-    ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    ts = session.elapsed_ms()
 
     evaluation = await session_mgr.raising_hand_agent.evaluate_proactive_async(
         meeting_id=meeting_id,
@@ -494,7 +494,7 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
             meeting_id=meeting_id,
             interval_seconds=20.0,
             get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
-            get_timestamp_fn=lambda mid: int(datetime.now(timezone.utc).timestamp() * 1000),
+            get_timestamp_fn=lambda mid: session_mgr.get_or_create_session(mid).elapsed_ms(),
             broadcast_fn=session_mgr.broadcast_to_meeting,
         )
 

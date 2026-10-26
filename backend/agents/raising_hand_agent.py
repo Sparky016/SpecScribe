@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Literal, Optional, Set
@@ -601,13 +602,15 @@ class RaisingHandAgent:
             logger.debug("Proactive loop already running for meeting %s", meeting_id)
             return self._active_loops[meeting_id]
 
+        loop_started = time.monotonic()
+
         async def _loop():
             logger.info("Started RaisingHand proactive loop for meeting %s (interval=%ss)", meeting_id, interval_seconds)
             try:
                 while True:
                     await asyncio.sleep(interval_seconds)
                     xml = get_diagram_fn(meeting_id) if get_diagram_fn else ""
-                    ts = get_timestamp_fn(meeting_id) if get_timestamp_fn else int(datetime.now(timezone.utc).timestamp() * 1000)
+                    ts = get_timestamp_fn(meeting_id) if get_timestamp_fn else int((time.monotonic() - loop_started) * 1000)
 
                     self._loop_telemetry[meeting_id] = {
                         "status": "healthy",

@@ -9,6 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import json
 import logging
+import time
 from typing import Any, Coroutine, Dict, Optional, Set
 import uuid
 
@@ -37,6 +38,18 @@ logger = logging.getLogger("specscribe.session_manager")
 # Demo meeting IDs (non-UUID) accepted only when SPECSCRIBE_DEMO_MODE=1.
 DEMO_MEETING_IDS = ("demo", "demo-session-01")
 DEMO_MEETING_UUID = "00000000-0000-4000-8000-000000000d0e"
+
+
+class TimedLiveGraphSession(LiveGraphSession):
+    """LiveGraphSession that tracks elapsed time since the session started."""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+        self.started_at_monotonic: float = time.monotonic()
+
+    def elapsed_ms(self) -> int:
+        """Milliseconds since meeting/session start (PRD timestamp_ms)."""
+        return int((time.monotonic() - self.started_at_monotonic) * 1000)
 
 
 def resolve_meeting_id(meeting_id: str) -> str:
@@ -115,7 +128,7 @@ class SessionManager:
 
     def get_or_create_session(self, meeting_id: str) -> LiveGraphSession:
         if meeting_id not in self.live_sessions:
-            session = LiveGraphSession(meeting_id)
+            session = TimedLiveGraphSession(meeting_id)
             self.live_sessions[meeting_id] = session
             if meeting_id not in self.memory_store["meetings"]:
                 self.memory_store["meetings"][meeting_id] = {
