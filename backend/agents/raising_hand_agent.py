@@ -674,6 +674,13 @@ class RaisingHandAgent:
         self._history.pop(meeting_id, None)
         self._last_intervention_time.pop(meeting_id, None)
 
+    def health(self) -> Dict[str, Any]:
+        """Public read-only snapshot of proactive-loop health (used by /api/health)."""
+        return {
+            "proactive_loops": sum(1 for task in self._active_loops.values() if not task.done()),
+            "proactive_telemetry": {mid: dict(telemetry) for mid, telemetry in self._loop_telemetry.items()},
+        }
+
     def stop_all(self) -> None:
         """Stops all active proactive loops."""
         for meeting_id in list(self._active_loops.keys()):

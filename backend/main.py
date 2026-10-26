@@ -23,6 +23,7 @@ if backend_dir not in sys.path:
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -213,19 +214,21 @@ class AskQuestionRequest(BaseModel):
 # REST Endpoints
 @app.get("/api/health")
 async def health_check(session_mgr: SessionManager = Depends(get_session_manager)):
-    return {
-        "status": "online",
-        "renderer_ready": session_mgr.renderer_daemon._is_ready,
+    # Intentionally public (no auth). Returns 503 while the renderer is not ready.
+    renderer_ready = session_mgr.renderer_daemon.is_ready()
+    body = {
+        "status": "online" if renderer_ready else "degraded",
+        "renderer_ready": renderer_ready,
         "active_sessions": len(session_mgr.live_sessions),
         "active_agents": {
             "decision_linker": True,
             "raising_hand_agent": True,
             "spec_generator": True,
-            "proactive_loops": len(session_mgr.raising_hand_agent._active_loops),
-            "proactive_telemetry": session_mgr.raising_hand_agent._loop_telemetry,
+            **session_mgr.raising_hand_agent.health(),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    return JSONResponse(status_code=200 if renderer_ready else 503, content=body)
 
 
 @app.post("/api/meetings", dependencies=[Depends(require_api_token)])
@@ -498,22 +501,31 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
     session_mgr.active_connections[meeting_id].add(websocket)
     session = await session_mgr.ensure_session(meeting_id)
 
-    if meeting_id not in session_mgr.raising_hand_agent._active_loops or session_mgr.raising_hand_agent._active_loops[meeting_id].done():
-        session_mgr.raising_hand_agent.start_proactive_loop(
-            meeting_id=meeting_id,
-            interval_seconds=20.0,
-            get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
-            get_timestamp_fn=lambda mid: session_mgr.get_or_create_session(mid).elapsed_ms(),
-            broadcast_fn=session_mgr.broadcast_to_meeting,
-        )
+    # start_proactive_loop is idempotent: it returns the existing task when a loop is already running.
+    session_mgr.raising_hand_agent.start_proactive_loop(
+        meeting_id=meeting_id,
+        interval_seconds=20.0,
+        get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
+        get_timestamp_fn=lambda mid: session_mgr.get_or_create_session(mid).elapsed_ms(),
+        broadcast_fn=session_mgr.broadcast_to_meeting,
+    )
 
     try:
         while True:
-            raw_text = await websocket.receive_text()
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000))
+            raw_text = message.get("text")
+            if raw_text is None:
+                logger.debug("Ignoring non-text WebSocket frame for meeting %s", meeting_id)
+                continue
             try:
                 msg = json.loads(raw_text)
             except Exception as e:
                 logger.warning("Malformed JSON received: %s", e)
+                continue
+            if not isinstance(msg, dict):
+                logger.debug("Ignoring non-object JSON WebSocket frame for meeting %s", meeting_id)
                 continue
             await envelope_router.dispatch(msg, websocket, session_mgr, meeting_id)
     except WebSocketDisconnect:

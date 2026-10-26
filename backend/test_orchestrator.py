@@ -484,9 +484,33 @@ def test_gemini_post_routes_rate_limited_per_client():
         limiter.reset()
 
 
-def test_health_is_public():
+def test_health_is_public(monkeypatch):
+    monkeypatch.setattr(session_manager.renderer_daemon, "is_ready", lambda: True)
     with TestClient(app) as client:
-        assert client.get("/api/health").status_code == 200
+        resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json()["renderer_ready"] is True
+
+
+def test_health_returns_503_when_renderer_not_ready(monkeypatch):
+    monkeypatch.setattr(session_manager.renderer_daemon, "is_ready", lambda: False)
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["renderer_ready"] is False
+    assert "proactive_telemetry" in body["active_agents"]
+
+
+def test_websocket_ignores_non_object_and_binary_frames():
+    mid = "00000000-0000-4000-8000-000000000251"
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}") as ws:
+            ws.send_text("[1, 2, 3]")
+            ws.send_text('"just a string"')
+            ws.send_bytes(b"\x00\x01\x02")
+            ws.send_json(_HANDSHAKE)
+            assert _receive_json_bounded(ws)["event"] == "HANDSHAKE_ACK"
 
 
 def test_websocket_rejected_without_valid_token():
