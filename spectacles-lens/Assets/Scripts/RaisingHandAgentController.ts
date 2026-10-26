@@ -207,8 +207,12 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       const btn = this.agentOrbPinchButton as any;
       if (btn.onButtonPinched) {
         btn.onButtonPinched.add(() => this.handleOrbPinched());
-      } else if (btn.onTriggerEnd) {
+      }
+      if (btn.onTriggerEnd) {
         btn.onTriggerEnd.add(() => this.handleOrbPinched());
+      }
+      if (btn.onTriggerStart && !btn.onButtonPinched && !btn.onTriggerEnd) {
+        btn.onTriggerStart.add(() => this.handleOrbPinched());
       }
     }
   }
@@ -227,7 +231,15 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     }
   }
 
+  private lastPinchTime: number = 0;
+
   public handleOrbPinched(): void {
+    const now = this.animTime;
+    if (now - this.lastPinchTime < 0.25) {
+      return; // Debounce rapid multi-events
+    }
+    this.lastPinchTime = now;
+
     print(`[RaisingHandAgentController] Orb pinched. CurrentState: ${this.currentState}`);
     if (this.currentState === AgentState.HAND_RAISED) {
       this.isCardExpanded = !this.isCardExpanded;
@@ -236,14 +248,29 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       }
       print(`[RaisingHandAgentController] Critique card toggled: expanded = ${this.isCardExpanded}`);
       this.playNotificationSound();
+      if (!this.isCardExpanded) {
+        this.setVisualState(AgentState.IDLE, '', '');
+      }
     } else if (this.currentState === AgentState.IDLE) {
-      // Simulate proactive insight trigger in preview
-      this.setVisualState(
-        AgentState.HAND_RAISED,
-        '⚠️ Auth Token Leak Risk',
-        '• Risk: Unsigned JWT tokens can be forged\n• Fix: Require HMAC-SHA256 signature verification\n• Alternative: Move session state to Redis Token Cache'
-      );
-      this.playNotificationSound();
+      if (this.socketClient) {
+        const query = this.socketClient.getLatestSpokenPhrase();
+        this.setVisualState(AgentState.RESEARCHING, '🔍 Researching...', '');
+        this.socketClient.sendPinchCommand('ASK_AGENT', 'research', query);
+      } else {
+        // Standalone preview / device test: immediately transition to HAND_RAISED and expand card
+        this.setVisualState(
+          AgentState.HAND_RAISED,
+          '⚠️ Auth Token Leak Risk',
+          '• Risk: Unsigned JWT tokens can be forged\n• Fix: Require HMAC-SHA256 signature verification\n• Alternative: Move session state to Redis Token Cache'
+        );
+        this.isCardExpanded = true;
+        if (this.expandedCritiqueCard) {
+          this.expandedCritiqueCard.enabled = true;
+        }
+        this.playNotificationSound();
+      }
+    } else if (this.currentState === AgentState.RESEARCHING) {
+      this.setVisualState(AgentState.IDLE, '', '');
     }
   }
 
@@ -252,20 +279,35 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     this.latestCritiqueBody = detailedBody;
 
     if (this.handRaisedPillObject) {
-      this.handRaisedPillObject.enabled = state === AgentState.HAND_RAISED;
-      this.handRaisedPillObject.getTransform().setLocalPosition(new vec3(-14.0, 0.0, 0.0));
+      this.handRaisedPillObject.enabled = state !== AgentState.IDLE;
+      this.handRaisedPillObject.getTransform().setLocalPosition(new vec3(-2.0, 5.0, 1.0));
     }
     if (this.pillTitleText) {
       this.pillTitleText.text = shortTitle;
+      try {
+        (this.pillTitleText as any).size = 18;
+        (this.pillTitleText as any).renderOrder = 5;
+      } catch (e) {}
     }
     if (this.critiqueBodyText) {
-      this.critiqueBodyText.text = detailedBody;
+      const formattedText = shortTitle && !detailedBody.includes(shortTitle)
+        ? `${shortTitle}\n${detailedBody}`
+        : detailedBody;
+      this.critiqueBodyText.text = formattedText;
+      try {
+        (this.critiqueBodyText as any).size = 24;
+        (this.critiqueBodyText as any).renderOrder = 5;
+        (this.critiqueBodyText as any).horizontalAlignment = 0; // Left
+        (this.critiqueBodyText as any).verticalAlignment = 1;   // Center
+        (this.critiqueBodyText as any).horizontalOverflow = 3;  // Wrap
+      } catch (e) {}
     }
     if (this.researchingRingObject) {
       this.researchingRingObject.enabled = state === AgentState.RESEARCHING;
     }
     if (this.expandedCritiqueCard) {
-      this.expandedCritiqueCard.getTransform().setLocalPosition(new vec3(-18.0, -14.0, 0.0));
+      // Position adjacent to orb at comfortable reading distance: left of orb, eye level
+      this.expandedCritiqueCard.getTransform().setLocalPosition(new vec3(-11.5, -1.5, 1.5));
       if (state !== AgentState.HAND_RAISED) {
         this.expandedCritiqueCard.enabled = false;
         this.isCardExpanded = false;

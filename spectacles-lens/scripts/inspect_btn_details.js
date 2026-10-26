@@ -39,8 +39,8 @@ async function main() {
     const textComp: any = btn.components.find(c => c.name === 'Text');
     const rmvComp: any = btn.components.find(c => c.name === 'Render Mesh Visual');
     return JSON.stringify({
-      btnPos: btn.localTransform.position,
-      btnScale: btn.localTransform.scale,
+      btnPos: { x: btn.localTransform.position.x, y: btn.localTransform.position.y, z: btn.localTransform.position.z },
+      btnScale: { x: btn.localTransform.scale.x, y: btn.localTransform.scale.y, z: btn.localTransform.scale.z },
       text: textComp ? { text: textComp.text, size: textComp.size } : null,
       rmv: rmvComp ? { mesh: rmvComp.mesh.name, mat: rmvComp.materials.map((m: any) => m ? m.name : 'null') } : null
     }, null, 2);
