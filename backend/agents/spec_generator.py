@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from agents.decision_linker import (
     generate_text_embedding,
+    get_embedding_model,
     generate_text_embedding_async,
     generate_text_embeddings_batch_async,
 )
@@ -485,6 +486,9 @@ class SpecGeneratorAgent:
 
         persisted_chunks: List[Dict[str, Any]] = []
         for c, embedding in zip(raw_chunks, embeddings):
+            if embedding is None:
+                logger.warning("Embedding failed for %s chunk; skipping persistence", c.get("chunk_type"))
+                continue
             chunk_id = str(uuid.uuid4())
             record = {
                 "id": chunk_id,
@@ -493,6 +497,7 @@ class SpecGeneratorAgent:
                 "timestamp_ms": c.get("timestamp_ms", 0),
                 "content": c["content"],
                 "embedding": embedding,
+                "embedding_model": get_embedding_model(),
             }
             persisted_chunks.append(record)
 
@@ -648,9 +653,11 @@ class SpecGeneratorAgent:
         """
         query_vec = await generate_text_embedding_async(question, api_key=self.api_key, target_dim=1536)
         matched_chunks: List[Dict[str, Any]] = []
+        if query_vec is None:
+            logger.warning("Question embedding failed; skipping vector retrieval")
 
         # 1. Supabase pgvector RPC search
-        if self.supabase_client:
+        if self.supabase_client and query_vec is not None:
             try:
                 rpc_res = await asyncio.to_thread(
                     lambda: self.supabase_client.rpc(
@@ -669,7 +676,7 @@ class SpecGeneratorAgent:
                 logger.warning("Supabase match_knowledge_chunks RPC fallback: %s", e)
 
         # 2. In-Memory Cosine Similarity fallback
-        if not matched_chunks and self.memory_store:
+        if not matched_chunks and self.memory_store and query_vec is not None:
             meeting_chunks = self.memory_store.get("knowledge_chunks", {}).get(meeting_id, [])
             scored: List[Tuple[float, Dict[str, Any]]] = []
             is_mock = self._genai_client is None
