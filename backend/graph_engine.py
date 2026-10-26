@@ -342,9 +342,16 @@ class HeadlessDrawioDaemon:
         return self._is_ready and self.page is not None and not self._restarting
 
     async def start(self) -> None:
+        """Public start: clears a previous stop() and launches the browser."""
+        self._stopped = False
+        await self._launch()
+        self._is_ready = True
+        logger.info("HeadlessDrawioDaemon pre-warmed and ready.")
+
+    async def _launch(self) -> None:
+        """Launch Playwright, Chromium and the export page. Never touches _stopped or _is_ready."""
         from playwright.async_api import async_playwright
 
-        self._stopped = False
         logger.info("Initializing Playwright Headless Chromium Daemon...")
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
@@ -371,9 +378,6 @@ class HeadlessDrawioDaemon:
             await asyncio.wait_for(self._render_once(warmup_xml, scale=1.0), timeout=self.render_timeout_s)
         except Exception as e:
             logger.debug("Warmup render initial pass: %s", e)
-
-        self._is_ready = True
-        logger.info("HeadlessDrawioDaemon pre-warmed and ready.")
 
     async def stop(self) -> None:
         logger.info("Stopping HeadlessDrawioDaemon...")
@@ -405,18 +409,21 @@ class HeadlessDrawioDaemon:
         self._restarting = True
         try:
             await self._teardown()
-            await self.start()
+            # Uses _launch(), not start(): start() clears _stopped and would undo a stop()
+            # that arrived while this restart was in flight.
+            if self._stopped:
+                raise RuntimeError("HeadlessDrawioDaemon was stopped during restart")
+            await self._launch()
+            if self._stopped:
+                raise RuntimeError("HeadlessDrawioDaemon was stopped during restart")
+            self._is_ready = True
         except BaseException:
-            # Failed or cancelled mid-restart: leave no half-started Chromium behind.
+            # Failed, cancelled or stopped mid-restart: leave no half-started Chromium behind.
             self._is_ready = False
             await self._teardown()
             raise
         finally:
             self._restarting = False
-        if self._stopped:  # stop() ran while the restart was in flight
-            self._is_ready = False
-            await self._teardown()
-            raise RuntimeError("HeadlessDrawioDaemon was stopped during restart")
         logger.info("HeadlessDrawioDaemon restarted.")
 
     async def _render_once(self, drawio_xml: str, scale: float = 1.5) -> bytes:

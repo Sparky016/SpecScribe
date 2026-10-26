@@ -85,10 +85,10 @@ def make_daemon(page):
 
 
 def install_fake_start(daemon, page_factory, fail=False):
-    """Replace start() with a fake that installs a fresh fake page (or fails)."""
+    """Replace _launch() (used by start() and restart) with a fake that installs a fresh fake page (or fails)."""
     state = {"calls": 0, "pages": []}
 
-    async def fake_start():
+    async def fake_launch():
         state["calls"] += 1
         if fail:
             raise PlaywrightError("chromium failed to launch")
@@ -96,9 +96,8 @@ def install_fake_start(daemon, page_factory, fail=False):
         state["pages"].append(page)
         daemon.page = page
         daemon.browser = FakeBrowser()
-        daemon._is_ready = True
 
-    daemon.start = fake_start
+    daemon._launch = fake_launch
     return state
 
 
@@ -253,3 +252,165 @@ def test_stop_closes_everything_even_if_page_close_fails():
     assert page.closed and browser.closed
     assert daemon.page is None and daemon.browser is None
     assert daemon.is_ready() is False
+
+
+class FakeLaunchedPage(FakePage):
+    """A page produced by the fake playwright; goto() can be made slow to widen the launch window."""
+
+    def __init__(self, goto_delay=0.0):
+        super().__init__()
+        self.goto_delay = goto_delay
+
+    async def goto(self, url, wait_until=None):
+        self.calls.append("goto")
+        await asyncio.sleep(self.goto_delay)
+
+
+class FakeLaunchedBrowser(FakeBrowser):
+    def __init__(self, page_factory, pages):
+        super().__init__()
+        self._page_factory = page_factory
+        self._pages = pages
+
+    async def new_page(self):
+        page = self._page_factory()
+        self._pages.append(page)
+        return page
+
+
+class FakePlaywright:
+    def __init__(self, page_factory, record):
+        self.stopped = False
+        self._page_factory = page_factory
+        self._record = record
+        self.chromium = self
+
+    async def launch(self, **kwargs):
+        browser = FakeLaunchedBrowser(self._page_factory, self._record["pages"])
+        self._record["browsers"].append(browser)
+        return browser
+
+    async def stop(self):
+        self.stopped = True
+
+
+def install_fake_playwright(monkeypatch, page_factory):
+    """Patch async_playwright() so the REAL start()/_launch() run against fake objects."""
+    import playwright.async_api as pa
+
+    record = {"playwrights": [], "browsers": [], "pages": []}
+
+    class FakeContextManager:
+        async def start(self):
+            pw = FakePlaywright(page_factory, record)
+            record["playwrights"].append(pw)
+            return pw
+
+    monkeypatch.setattr(pa, "async_playwright", lambda: FakeContextManager())
+    return record
+
+
+def _assert_stopped_and_dead(daemon, record):
+    assert daemon._stopped is True
+    assert daemon.is_ready() is False
+    assert daemon._is_ready is False
+    assert daemon._restarting is False
+    assert daemon.page is None and daemon.browser is None and daemon.playwright is None
+    # Anything the restart launched has been closed again: no live Chromium after stop().
+    assert all(b.closed for b in record["browsers"])
+    assert all(p.closed for p in record["pages"])
+    assert all(pw.stopped for pw in record["playwrights"])
+    assert not daemon._lock.locked()
+
+
+def test_real_start_path_with_fake_playwright(monkeypatch):
+    record = install_fake_playwright(monkeypatch, FakeLaunchedPage)
+    daemon = HeadlessDrawioDaemon()
+
+    async def scenario():
+        await daemon.start()
+        assert daemon.is_ready() is True
+        b64 = await daemon.render_b64_png(XML)
+        await daemon.stop()
+        return b64
+
+    assert base64.b64decode(asyncio.run(scenario())) == PNG_BYTES
+    assert daemon.is_ready() is False
+    assert record["browsers"][0].closed and record["playwrights"][0].stopped
+
+
+def test_stop_during_restart_teardown_does_not_revive_daemon(monkeypatch):
+    """stop() arrives while the restart is closing the crashed page (before relaunch)."""
+    record = install_fake_playwright(monkeypatch, FakeLaunchedPage)
+    daemon = HeadlessDrawioDaemon()
+
+    async def scenario():
+        await daemon.start()
+        crashed = record["pages"][0]
+        crashed.crash_on_evaluate = 1
+        teardown_started = asyncio.Event()
+        release_close = asyncio.Event()
+        original_close = crashed.close
+
+        async def slow_close():
+            teardown_started.set()
+            await release_close.wait()
+            await original_close()
+
+        crashed.close = slow_close
+        render = asyncio.create_task(daemon.render_b64_png(XML))
+        await asyncio.wait_for(teardown_started.wait(), timeout=2.0)
+        assert daemon._restarting is True and daemon.is_ready() is False
+        await daemon.stop()
+        release_close.set()
+        with pytest.raises(RuntimeError, match="stopped"):
+            await render
+
+    asyncio.run(scenario())
+    assert len(record["browsers"]) == 1  # restart never relaunched Chromium
+    _assert_stopped_and_dead(daemon, record)
+
+
+def test_stop_during_restart_launch_tears_down_new_browser(monkeypatch):
+    """stop() arrives while the restart's _launch() is navigating the new page."""
+    pages_made = []
+
+    def page_factory():
+        # First page (initial start) is fast; the restarted page's goto() is slow.
+        page = FakeLaunchedPage(goto_delay=0.3 if pages_made else 0.0)
+        pages_made.append(page)
+        return page
+
+    record = install_fake_playwright(monkeypatch, page_factory)
+    daemon = HeadlessDrawioDaemon()
+
+    async def scenario():
+        await daemon.start()
+        record["pages"][0].crash_on_evaluate = 1
+        render = asyncio.create_task(daemon.render_b64_png(XML))
+        while len(record["pages"]) < 2:  # wait until the restart has launched a new page
+            await asyncio.sleep(0.01)
+        assert daemon._restarting is True and daemon.is_ready() is False
+        await daemon.stop()
+        with pytest.raises(RuntimeError, match="stopped"):
+            await render
+
+    asyncio.run(scenario())
+    assert len(record["browsers"]) == 2
+    _assert_stopped_and_dead(daemon, record)
+
+
+def test_start_after_stop_still_works(monkeypatch):
+    """Public start() still clears a previous stop()."""
+    record = install_fake_playwright(monkeypatch, FakeLaunchedPage)
+    daemon = HeadlessDrawioDaemon()
+
+    async def scenario():
+        await daemon.start()
+        await daemon.stop()
+        await daemon.start()
+        return await daemon.render_b64_png(XML)
+
+    assert base64.b64decode(asyncio.run(scenario())) == PNG_BYTES
+    assert daemon._stopped is False and daemon.is_ready() is True
+    assert len(record["browsers"]) == 2
