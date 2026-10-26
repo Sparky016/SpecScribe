@@ -5,6 +5,7 @@ Unit & Integration Test Suite for SpecScribe AR Orchestrator (T-05 & T-06)
 import asyncio
 import base64
 import io
+import threading
 import time
 import pytest
 from unittest.mock import AsyncMock, patch
@@ -35,6 +36,26 @@ def _api_token(monkeypatch):
     """Enable token auth for every test in this module (overrides conftest's disabled default)."""
     monkeypatch.delenv("SPECSCRIBE_AUTH_DISABLED", raising=False)
     monkeypatch.setenv("SPECSCRIBE_API_TOKEN", TEST_API_TOKEN)
+
+
+def _receive_json_bounded(ws, timeout=15.0):
+    """ws.receive_json() blocks forever when no event is queued; fail the test instead of hanging."""
+    outcome = {}
+
+    def _recv():
+        try:
+            outcome["msg"] = ws.receive_json()
+        except BaseException as exc:  # re-raised on the test thread below
+            outcome["exc"] = exc
+
+    reader = threading.Thread(target=_recv, daemon=True)
+    reader.start()
+    reader.join(timeout)
+    if reader.is_alive():
+        pytest.fail(f"No WebSocket event received within {timeout}s")
+    if "exc" in outcome:
+        raise outcome["exc"]
+    return outcome["msg"]
 
 
 def test_waveguide_styles_and_node_addition():
@@ -290,7 +311,19 @@ def test_websocket_pinch_command_and_transcription():
 
 def test_websocket_camera_frame_diff_gate():
     """Verify cameraFrame event triggers diff gate, diagram update, and suppresses duplicates."""
-    with TestClient(app, headers=AUTH_HEADERS) as client:
+    # Mock the vision call (looked up in envelope_router) so the delta is meaningful and offline-safe.
+    vision_delta = GraphDeltaSchema(
+        person_occluding_board=False,
+        has_meaningful_change=True,
+        added_vertices=[VertexAddition(temp_id="v-cam-1", label="Camera Whiteboard Node", node_type="service")],
+        added_edges=[],
+        diff_summary="+ Whiteboard camera node",
+    )
+    with patch(
+        "envelope_router.extract_graph_delta_from_gemini",
+        new_callable=AsyncMock,
+        return_value=vision_delta,
+    ) as vision, TestClient(app, headers=AUTH_HEADERS) as client:
         meeting_id = "00000000-0000-4000-8000-000000000098"
 
         with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
@@ -301,7 +334,7 @@ def test_websocket_camera_frame_diff_gate():
                 "protocolVersion": "1.1.0",
                 "timestamp_ms": 0,
             })
-            ack = ws.receive_json()
+            ack = _receive_json_bounded(ws)
             assert ack["event"] == "HANDSHAKE_ACK"
 
             # Generate synthetic whiteboard frame
@@ -320,7 +353,8 @@ def test_websocket_camera_frame_diff_gate():
             })
 
             # Expect DIAGRAM_UPDATED from vision extractor mutation
-            diagram_update = ws.receive_json()
+            diagram_update = _receive_json_bounded(ws)
+            vision.assert_awaited_once()
             assert diagram_update["event"] == "DIAGRAM_UPDATED"
             assert "Whiteboard" in diagram_update["diff_summary"] or len(diagram_update["image_b64"]) > 50
 
