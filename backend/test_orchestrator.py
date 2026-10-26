@@ -246,7 +246,7 @@ def test_rest_api_lifecycle():
 def test_websocket_pinch_command_and_transcription():
     """Verify WebSocket full-duplex protocol handling handshake, ASR, and pinch commands."""
     with TestClient(app, headers=AUTH_HEADERS) as client:
-        meeting_id = "test-ws-session-99"
+        meeting_id = "00000000-0000-4000-8000-000000000099"
 
         with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
@@ -291,7 +291,7 @@ def test_websocket_pinch_command_and_transcription():
 def test_websocket_camera_frame_diff_gate():
     """Verify cameraFrame event triggers diff gate, diagram update, and suppresses duplicates."""
     with TestClient(app, headers=AUTH_HEADERS) as client:
-        meeting_id = "test-ws-camera-session"
+        meeting_id = "00000000-0000-4000-8000-000000000098"
 
         with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
@@ -344,7 +344,7 @@ def test_websocket_camera_frame_diff_gate():
 def test_websocket_pinch_command_resilience():
     """Verify pinchCommand unhandled exceptions dispatch COMMAND_ERROR and do not close WebSocket (#2)."""
     with TestClient(app, headers=AUTH_HEADERS) as client:
-        meeting_id = "test-ws-resilience-session"
+        meeting_id = "00000000-0000-4000-8000-000000000097"
 
         with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # 1. Handshake
@@ -466,8 +466,114 @@ def test_websocket_rejected_without_valid_token():
 
 def test_websocket_accepts_valid_token():
     with TestClient(app) as client:
-        with client.websocket_connect(f"/ws/meeting/auth-ws-2?token={TEST_API_TOKEN}") as ws:
+        with client.websocket_connect(f"/ws/meeting/00000000-0000-4000-8000-000000000096?token={TEST_API_TOKEN}") as ws:
             ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+
+
+class _FakeSupabase:
+    """Records table calls in order; no network."""
+
+    def __init__(self, fail_on=None):
+        self.calls = []
+        self.fail_on = fail_on
+
+    def table(self, name):
+        outer = self
+
+        class _Q:
+            def __init__(self):
+                self.op = None
+
+            def _rec(self, op, *a, **k):
+                self.op = op
+                outer.calls.append((name, op, a, k))
+                return self
+
+            def upsert(self, *a, **k):
+                return self._rec("upsert", *a, **k)
+
+            def insert(self, *a, **k):
+                return self._rec("insert", *a, **k)
+
+            def update(self, *a, **k):
+                return self._rec("update", *a, **k)
+
+            def eq(self, *a, **k):
+                return self
+
+            def execute(self):
+                if outer.fail_on == self.op:
+                    raise RuntimeError("boom")
+
+                class _R:
+                    data = []
+
+                return _R()
+
+        return _Q()
+
+
+def test_websocket_rejects_non_uuid_meeting_id(monkeypatch):
+    monkeypatch.delenv("SPECSCRIBE_DEMO_MODE", raising=False)
+    with TestClient(app) as client:
+        for mid in ("not-a-uuid", "demo-session-01"):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}"):
+                    pass
+            assert exc.value.code == 4400
+    assert "not-a-uuid" not in live_sessions
+
+
+def test_websocket_demo_id_maps_to_fixed_uuid_in_demo_mode(monkeypatch):
+    from session_manager import DEMO_MEETING_UUID
+
+    monkeypatch.setenv("SPECSCRIBE_DEMO_MODE", "1")
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/demo-session-01?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+            assert DEMO_MEETING_UUID in live_sessions
+    live_sessions.pop(DEMO_MEETING_UUID, None)
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_upserts_meeting_before_child_insert():
+    from session_manager import SessionManager
+
+    fake = _FakeSupabase()
+    mgr = SessionManager(supabase_client=fake)
+    mid = "00000000-0000-4000-8000-000000000095"
+    await mgr.ensure_session(mid)
+    await mgr.db_save_transcript_turn(mid, "Speaker 0", "hello", 10)
+    assert fake.calls[0][:2] == ("meetings", "upsert")
+    assert fake.calls[0][3] == {"on_conflict": "id"}
+    assert fake.calls[0][2][0]["id"] == mid and fake.calls[0][2][0]["title"]
+    assert fake.calls[1][:2] == ("transcript_turns", "insert")
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_rejects_non_uuid():
+    from session_manager import SessionManager
+
+    with pytest.raises(ValueError):
+        await SessionManager(supabase_client=_FakeSupabase()).ensure_session("nope")
+
+
+@pytest.mark.asyncio
+async def test_persistence_failures_log_at_error(caplog):
+    from session_manager import SessionManager
+
+    mid = "00000000-0000-4000-8000-000000000094"
+    mgr = SessionManager(supabase_client=_FakeSupabase(fail_on="upsert"))
+    with caplog.at_level("ERROR", logger="specscribe.session_manager"):
+        await mgr.ensure_session(mid)
+    assert any(r.levelname == "ERROR" and r.exc_info for r in caplog.records)
+    caplog.clear()
+    mgr = SessionManager(supabase_client=_FakeSupabase(fail_on="insert"))
+    with caplog.at_level("ERROR", logger="specscribe.session_manager"):
+        await mgr.db_save_transcript_turn(mid, "s", "t", 1)
+        await mgr.db_save_diagram_snapshot(mid, 1, "<x/>", "d", None, "VISION_DIFF")
+    assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 2
 
 
 def test_startup_refuses_without_token_unless_disabled(monkeypatch, caplog):

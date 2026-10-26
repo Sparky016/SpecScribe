@@ -43,6 +43,7 @@ try:
         SessionManager,
         get_session_manager,
         get_ws_session_manager,
+        resolve_meeting_id,
     )
     from envelope_router import EnvelopeRouter
 except ImportError:
@@ -50,8 +51,11 @@ except ImportError:
         SessionManager,
         get_session_manager,
         get_ws_session_manager,
+        resolve_meeting_id,
     )
     from backend.envelope_router import EnvelopeRouter
+
+WS_INVALID_MEETING_ID_CLOSE_CODE = 4400
 
 
 # Load environment variables from .env if present
@@ -475,9 +479,14 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
         # Close before accept(): the handshake is rejected.
         await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
         return
+    try:
+        meeting_id = resolve_meeting_id(meeting_id)
+    except ValueError:
+        await websocket.close(code=WS_INVALID_MEETING_ID_CLOSE_CODE)
+        return
     await websocket.accept()
     session_mgr.active_connections[meeting_id].add(websocket)
-    session = session_mgr.get_or_create_session(meeting_id)
+    session = await session_mgr.ensure_session(meeting_id)
 
     if meeting_id not in session_mgr.raising_hand_agent._active_loops or session_mgr.raising_hand_agent._active_loops[meeting_id].done():
         session_mgr.raising_hand_agent.start_proactive_loop(

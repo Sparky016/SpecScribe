@@ -34,6 +34,20 @@ except (ImportError, ModuleNotFoundError):
 
 logger = logging.getLogger("specscribe.session_manager")
 
+# Demo meeting IDs (non-UUID) accepted only when SPECSCRIBE_DEMO_MODE=1.
+DEMO_MEETING_IDS = ("demo", "demo-session-01")
+DEMO_MEETING_UUID = "00000000-0000-4000-8000-000000000d0e"
+
+
+def resolve_meeting_id(meeting_id: str) -> str:
+    """Return the canonical UUID string for a meeting ID, or raise ValueError.
+
+    The demo IDs map to a fixed UUID only when SPECSCRIBE_DEMO_MODE=1.
+    """
+    if meeting_id in DEMO_MEETING_IDS and os.getenv("SPECSCRIBE_DEMO_MODE") == "1":
+        return DEMO_MEETING_UUID
+    return str(uuid.UUID(meeting_id))
+
 
 class SessionManager:
     """
@@ -84,6 +98,28 @@ class SessionManager:
                 }
         return self.live_sessions[meeting_id]
 
+    async def ensure_session(self, meeting_id: str) -> LiveGraphSession:
+        """Validate the UUID, upsert the meetings row, then create the live session.
+
+        The meetings upsert runs before any child insert (FK parent). Raises
+        ValueError for a non-UUID meeting_id.
+        """
+        meeting_id = resolve_meeting_id(meeting_id)
+        session = self.get_or_create_session(meeting_id)
+        if self.supabase_client:
+            meeting = self.memory_store["meetings"][meeting_id]
+            record = {
+                "id": meeting_id,
+                "title": meeting.get("title") or f"Live meeting {datetime.now(timezone.utc).date().isoformat()}",
+            }
+            try:
+                await asyncio.to_thread(
+                    lambda: self.supabase_client.table("meetings").upsert(record, on_conflict="id").execute()
+                )
+            except Exception as e:
+                logger.error("Supabase meetings upsert error: %s", e, exc_info=True)
+        return session
+
     async def broadcast_to_meeting(
         self,
         meeting_id: str,
@@ -125,7 +161,7 @@ class SessionManager:
                 if res.data:
                     return res.data[0]["id"]
             except Exception as e:
-                logger.warning("Supabase transcript_turns insert error: %s", e)
+                logger.error("Supabase transcript_turns insert error: %s", e, exc_info=True)
 
         return turn_id
 
@@ -164,7 +200,7 @@ class SessionManager:
                     lambda: self.supabase_client.table("meetings").update({"latest_drawio_xml": drawio_xml}).eq("id", meeting_id).execute()
                 )
             except Exception as e:
-                logger.warning("Supabase diagram_snapshots insert error: %s", e)
+                logger.error("Supabase diagram_snapshots insert error: %s", e, exc_info=True)
 
         return snapshot_id
 
