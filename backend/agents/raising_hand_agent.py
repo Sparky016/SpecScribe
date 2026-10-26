@@ -613,8 +613,8 @@ class RaisingHandAgent:
 
         async def _loop():
             logger.info("Started RaisingHand proactive loop for meeting %s (interval=%ss)", meeting_id, interval_seconds)
-            try:
-                while True:
+            while True:
+                try:
                     await asyncio.sleep(interval_seconds)
                     xml = get_diagram_fn(meeting_id) if get_diagram_fn else ""
                     ts = get_timestamp_fn(meeting_id) if get_timestamp_fn else int((time.monotonic() - loop_started) * 1000)
@@ -639,15 +639,22 @@ class RaisingHandAgent:
                             was_pinched=False,
                             broadcast_fn=broadcast_fn,
                         )
-            except asyncio.CancelledError:
-                logger.info("RaisingHand proactive loop cancelled for meeting %s", meeting_id)
-            except Exception as e:
-                logger.error("Unexpected error in RaisingHand proactive loop: %s", e)
-                telemetry = self._loop_telemetry.setdefault(meeting_id, {})
-                telemetry["status"] = "degraded"
-                telemetry["error_count"] = telemetry.get("error_count", 0) + 1
-                telemetry["last_error"] = str(e)
-                telemetry["last_error_time"] = datetime.now(timezone.utc).isoformat()
+                    self._loop_telemetry.setdefault(meeting_id, {})["status"] = "running"
+                except asyncio.CancelledError:
+                    logger.info("RaisingHand proactive loop cancelled for meeting %s", meeting_id)
+                    raise
+                except Exception as e:
+                    logger.error(
+                        "Error in RaisingHand proactive loop iteration for meeting %s; continuing: %s",
+                        meeting_id,
+                        e,
+                        exc_info=True,
+                    )
+                    telemetry = self._loop_telemetry.setdefault(meeting_id, {})
+                    telemetry["status"] = "degraded"
+                    telemetry["error_count"] = telemetry.get("error_count", 0) + 1
+                    telemetry["last_error"] = str(e)
+                    telemetry["last_error_time"] = datetime.now(timezone.utc).isoformat()
 
         task = asyncio.create_task(_loop())
         self._active_loops[meeting_id] = task
