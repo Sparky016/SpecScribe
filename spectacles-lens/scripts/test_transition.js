@@ -1,6 +1,6 @@
 const http = require('http');
 const fs = require('fs');
-const token = 'Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF';
+const token = require('./lib/mcpClient').getToken();
 
 function call(tool, args = {}) {
   return new Promise((resolve, reject) => {

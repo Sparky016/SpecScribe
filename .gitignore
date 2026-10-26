@@ -72,3 +72,5 @@ Thumbs.db
 agent/
 
 spectacles-lens/recorded_frames/
+
+.mcp.json

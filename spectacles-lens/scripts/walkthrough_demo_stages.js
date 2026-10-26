@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const token = 'Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF';
+const token = require('./lib/mcpClient').getToken();
 const outDir = 'C:/Users/ruanc/.gemini/antigravity-ide/brain/ab5d3b86-3403-449e-8bcc-81f24251f4f4';
 
 function callMcp(tool, args) {

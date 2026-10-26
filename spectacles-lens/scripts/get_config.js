@@ -5,7 +5,7 @@ function call(tool, args = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF'
+        'Authorization': require('./lib/mcpClient').authHeader()
       }
     }, res => {
       let d = '';

@@ -1,4 +1,5 @@
-$token = "Bearer Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF"
+if (-not $env:LS_MCP_TOKEN) { throw 'LS_MCP_TOKEN environment variable is not set' }
+$token = "Bearer $env:LS_MCP_TOKEN"
 $meshId = "bca4812a-983e-4e68-b0da-7fe482703084" # Mesh_ButtonBox
 $matId = "d761a15c-0e9d-4869-b66f-3f3fb6d824e0"  # Mat_ButtonBackplate
 $interactableId = "652e631a-22d0-4941-9f74-2943df59f34c"

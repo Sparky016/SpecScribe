@@ -1,4 +1,5 @@
-$token = "Bearer Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF"
+if (-not $env:LS_MCP_TOKEN) { throw 'LS_MCP_TOKEN environment variable is not set' }
+$token = "Bearer $env:LS_MCP_TOKEN"
 $query = @'
 mutation {
   createObj: createSceneObject(

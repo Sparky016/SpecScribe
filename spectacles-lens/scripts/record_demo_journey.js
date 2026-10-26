@@ -2,7 +2,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const token = 'Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF';
+const token = require('./lib/mcpClient').getToken();
 const framesDir = path.join(__dirname, '../recorded_frames');
 
 if (!fs.existsSync(framesDir)) {

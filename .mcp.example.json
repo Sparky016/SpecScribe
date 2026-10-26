@@ -4,7 +4,7 @@
       "type": "http",
       "url": "http://localhost:50040/mcp",
       "headers": {
-        "Authorization": "Bearer Gt0ObwXN9IV3ZQdjIcikYkRFixTh2tWCFSnItHtkC5iHp9qDqQ8pq0yvRA97OkVF"
+        "Authorization": "Bearer ${LS_MCP_TOKEN}"
       }
     }
   }

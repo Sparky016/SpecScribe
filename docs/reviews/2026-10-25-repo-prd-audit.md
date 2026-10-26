@@ -177,7 +177,7 @@ if lower_label in self.node_by_label:
 
 ### #12 — [Medium] Security: secrets — `.mcp.json:7`, `spectacles-lens/scripts/mcp_call.js:10` (+102 other scripts)
 
-**What:** `Authorization: Bearer Gt0ObwXN9IV3…` is committed in `.mcp.json` and copied into 103 files under `spectacles-lens/scripts/`.
+**What:** `Authorization: Bearer <redacted>…` is committed in `.mcp.json` and copied into 103 files under `spectacles-lens/scripts/`.
 
 **Why:** The hackathon rules require a public repo. The token protects the local Lens Studio MCP server (`localhost:50040`). That server can run arbitrary editor code (`ExecuteEditorCode`), so any local process or browser page that reaches the port with this token can control the editor. Copying it 103 times also means rotating it means editing 104 files.
 
