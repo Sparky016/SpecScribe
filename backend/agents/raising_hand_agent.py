@@ -111,7 +111,7 @@ class RaisingHandAgent:
         history = self._history.setdefault(meeting_id, set())
 
         # Rule 1: Redis / Cache added without stampede / mutex protection
-        if "redis" in combined_text or "cache" in combined_text:
+        if re.search(r"\b(?:redis|cache|caches|caching)\b", combined_text):
             title = "🚩 Cache Stampede Risk"
             if title not in history:
                 return RaisingHandEvaluation(
@@ -126,7 +126,9 @@ class RaisingHandAgent:
                 )
 
         # Rule 2: Single database without replica or clustering
-        if ("postgres" in combined_text or "database" in combined_text) and "replica" not in combined_text:
+        if re.search(r"\b(?:postgres|postgresql|database|databases)\b", combined_text) and not re.search(
+            r"\breplicas?\b", combined_text
+        ):
             title = "⚡ Single Point of Failure"
             if title not in history:
                 return RaisingHandEvaluation(
@@ -141,7 +143,9 @@ class RaisingHandAgent:
                 )
 
         # Rule 3: Auth or Token service without rate limiting
-        if ("auth" in combined_text or "token" in combined_text) and "rate" not in combined_text:
+        if re.search(
+            r"\b(?:auth|authn|authz|authentication|authorization|tokens?)\b", combined_text
+        ) and not re.search(r"\brate[- ]?limit", combined_text, re.I):
             title = "🚩 Auth Flooding Risk"
             if title not in history:
                 return RaisingHandEvaluation(
@@ -227,11 +231,14 @@ class RaisingHandAgent:
                     parsed = json.loads(response.text)
                     evaluation = RaisingHandEvaluation.model_validate(parsed)
                     evaluation.short_title = self._truncate_title(evaluation.short_title)
-                    if evaluation.trigger and evaluation.short_title not in history:
-                        return evaluation
+                    # Gemini's verdict is authoritative: a duplicate title is suppressed, never re-raised.
+                    if evaluation.short_title in history:
+                        evaluation.trigger = False
+                    return evaluation
             except Exception as e:
                 logger.warning("Gemini async proactive evaluation error: %s; falling back to heuristic", e)
 
+        # Heuristic runs only when no Gemini client exists or the Gemini call failed.
         evaluation = self._evaluate_heuristic_proactive(meeting_id, xml_content, turns)
         evaluation.short_title = self._truncate_title(evaluation.short_title)
         return evaluation
