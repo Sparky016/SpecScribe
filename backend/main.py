@@ -42,7 +42,6 @@ try:
     from session_manager import (
         SessionManager,
         get_session_manager,
-        get_ws_session_manager,
         resolve_meeting_id,
     )
     from envelope_router import EnvelopeRouter
@@ -50,7 +49,6 @@ except ImportError:
     from backend.session_manager import (
         SessionManager,
         get_session_manager,
-        get_ws_session_manager,
         resolve_meeting_id,
     )
     from backend.envelope_router import EnvelopeRouter
