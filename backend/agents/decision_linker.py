@@ -209,7 +209,7 @@ class DecisionLinkerAgent:
             except Exception as e:
                 logger.warning("Could not initialize Google GenAI Client: %s", e)
 
-    def fetch_recent_transcripts(
+    async def fetch_recent_transcripts(
         self,
         meeting_id: str,
         timestamp_ms: int,
@@ -227,8 +227,8 @@ class DecisionLinkerAgent:
         # If memory store is empty and supabase_client is connected, attempt DB query
         if not all_turns and self.supabase_client:
             try:
-                res = (
-                    self.supabase_client.table("transcript_turns")
+                res = await asyncio.to_thread(
+                    lambda: self.supabase_client.table("transcript_turns")
                     .select("*")
                     .eq("meeting_id", meeting_id)
                     .order("timestamp_ms")
@@ -414,7 +414,7 @@ class DecisionLinkerAgent:
         4. Generates 1536-dim embedding asynchronously and inserts into knowledge_chunks.
         5. Optionally broadcasts DECISION_LOGGED event to connected WebSockets.
         """
-        recent_turns = self.fetch_recent_transcripts(meeting_id, timestamp_ms, window_ms=45000)
+        recent_turns = await self.fetch_recent_transcripts(meeting_id, timestamp_ms, window_ms=45000)
         rationale = await self.synthesize_rationale_async(meeting_id, diff_summary, recent_turns, drawio_xml)
 
         logger.info(

@@ -45,7 +45,8 @@ def test_generate_text_embedding_dimensions():
     assert vec == vec2
 
 
-def test_transcript_window_filtering(test_meeting_id):
+@pytest.mark.asyncio
+async def test_transcript_window_filtering(test_meeting_id):
     """Verify fetch_recent_transcripts extracts turns strictly within the 45-second window."""
     store = {
         "transcript_turns": {
@@ -64,7 +65,7 @@ def test_transcript_window_filtering(test_meeting_id):
 
     linker = DecisionLinkerAgent(api_key="", memory_store=store)
     # Snapshot taken at 70,000ms (window: [25,000ms, 70,000ms])
-    recent = linker.fetch_recent_transcripts(test_meeting_id, timestamp_ms=70000, window_ms=45000)
+    recent = await linker.fetch_recent_transcripts(test_meeting_id, timestamp_ms=70000, window_ms=45000)
 
     turn_ids = [t["id"] for t in recent]
     assert "t2" in turn_ids
