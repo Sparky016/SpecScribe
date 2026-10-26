@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askMeetingRAG } from "../../../../../lib/api";
+import { backendFetch } from "../../../../../lib/backend";
 import { DEMO_TIMELINE } from "../../../../../lib/demoData";
 
 export async function POST(
@@ -10,19 +11,9 @@ export async function POST(
   const body = await request.json();
   const question = body.question || "";
 
-  // Bound internal service URL injected by Vercel Services, with fallbacks for local dev
-  const backendBase =
-    process.env.BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";
-
   // Try FastAPI backend first
   try {
-    const targetUrl = new URL(
-      `api/meetings/${id}/ask`,
-      backendBase.endsWith("/") ? backendBase : `${backendBase}/`
-    );
-    const res = await fetch(targetUrl, {
+    const res = await backendFetch(`api/meetings/${id}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),

@@ -1,25 +1,15 @@
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "./demoData";
+import { backendFetch } from "./backend";
 import { RAGResponse, TimelineData } from "./types";
 
-function getTargetApiUrl(path: string): string {
+// Browser calls go to the same-origin /api route handlers, which attach the backend token.
+// Server-side calls go straight to the backend through backendFetch.
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   if (typeof window !== "undefined") {
-    // In browser: call same-origin Next.js route handler (proxying to BACKEND_URL)
-    // unless an explicit external NEXT_PUBLIC_API_URL is configured
-    const publicUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (publicUrl && !publicUrl.includes("localhost:8000")) {
-      const base = publicUrl.endsWith("/") ? publicUrl : `${publicUrl}/`;
-      return new URL(cleanPath, base).toString();
-    }
-    return `/${cleanPath}`;
+    return fetch(`/${cleanPath}`, init);
   }
-  // Server-side: use bound internal service URL injected by Vercel Services
-  const backendBase =
-    process.env.BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";
-  const base = backendBase.endsWith("/") ? backendBase : `${backendBase}/`;
-  return new URL(cleanPath, base).toString();
+  return backendFetch(cleanPath, init);
 }
 
 import { formatTimestamp, parseTimestamp } from "./formatters";
@@ -51,8 +41,7 @@ export async function getMeetingTimeline(
 
     const qs = queryParams.toString();
     const endpoint = `api/meetings/${meetingId}/timeline${qs ? `?${qs}` : ""}`;
-    const targetUrl = getTargetApiUrl(endpoint);
-    const res = await fetch(targetUrl, {
+    const res = await apiFetch(endpoint, {
       cache: "no-store",
     });
     if (res.ok) {
@@ -87,8 +76,7 @@ export const fetchMeetingTimeline = getMeetingTimeline;
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
   // 1. Try FastAPI endpoint first if available
   try {
-    const targetUrl = getTargetApiUrl(`api/meetings/${meetingId}/ask`);
-    const res = await fetch(targetUrl, {
+    const res = await apiFetch(`api/meetings/${meetingId}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
