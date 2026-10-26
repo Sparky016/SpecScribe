@@ -40,7 +40,7 @@ export async function getMeetingTimeline(
     if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
 
     const qs = queryParams.toString();
-    const endpoint = `api/meetings/${meetingId}/timeline${qs ? `?${qs}` : ""}`;
+    const endpoint = `api/meetings/${encodeURIComponent(meetingId)}/timeline${qs ? `?${qs}` : ""}`;
     const res = await apiFetch(endpoint, {
       cache: "no-store",
     });
@@ -76,7 +76,7 @@ export const fetchMeetingTimeline = getMeetingTimeline;
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
   // 1. Try FastAPI endpoint first if available
   try {
-    const res = await apiFetch(`api/meetings/${meetingId}/ask`, {
+    const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),

@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { backendFetch } from "../../../../../lib/backend";
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "../../../../../lib/demoData";
+import { isValidMeetingId } from "../../../../../lib/meetingId";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidMeetingId(id)) {
+    return NextResponse.json({ error: "Invalid meeting id" }, { status: 400 });
+  }
 
   if (id === DEMO_MEETING_ID || id === "demo") {
     return NextResponse.json(DEMO_TIMELINE);
   }
 
   try {
-    const res = await backendFetch(`api/meetings/${id}/timeline`, {
+    const res = await backendFetch(`api/meetings/${encodeURIComponent(id)}/timeline`, {
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
     });
