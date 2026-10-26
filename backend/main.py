@@ -145,6 +145,7 @@ async def lifespan(app: FastAPI):
     yield
 
     logger.info("Shutting down SpecScribe FastAPI Orchestrator...")
+    await session_manager.cancel_background_tasks()
     session_manager.raising_hand_agent.stop_all()
     try:
         await session_manager.renderer_daemon.stop()

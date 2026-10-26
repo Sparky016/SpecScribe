@@ -6,7 +6,6 @@ Source: SPEC_DOC.md §4.2 (Finding #7)
 """
 
 from abc import ABC, abstractmethod
-import asyncio
 import base64
 import json
 import logging
@@ -196,7 +195,7 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 )
 
                 # Asynchronous Intelligence Sub-Agents (T-07 & T-08)
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.decision_linker.process_snapshot(
                         meeting_id=meeting_id,
                         snapshot_id=snapshot_id,
@@ -206,7 +205,7 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                         broadcast_fn=session_mgr.broadcast_to_meeting,
                     )
                 )
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                         meeting_id=meeting_id,
                         timestamp_ms=timestamp_ms,
@@ -264,7 +263,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     },
                 )
 
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.decision_linker.process_snapshot(
                         meeting_id=meeting_id,
                         snapshot_id=snapshot_id,
@@ -274,7 +273,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         broadcast_fn=session_mgr.broadcast_to_meeting,
                     )
                 )
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                         meeting_id=meeting_id,
                         timestamp_ms=timestamp_ms,
@@ -312,7 +311,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         },
                     )
 
-                    asyncio.create_task(
+                    session_mgr.spawn(
                         session_mgr.decision_linker.process_snapshot(
                             meeting_id=meeting_id,
                             snapshot_id=snapshot_id,
@@ -322,7 +321,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                             broadcast_fn=session_mgr.broadcast_to_meeting,
                         )
                     )
-                    asyncio.create_task(
+                    session_mgr.spawn(
                         session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                             meeting_id=meeting_id,
                             timestamp_ms=timestamp_ms,

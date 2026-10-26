@@ -9,7 +9,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 import json
 import logging
-from typing import Any, Dict, Optional, Set
+from typing import Any, Coroutine, Dict, Optional, Set
 import uuid
 
 from fastapi import Request, WebSocket
@@ -83,6 +83,35 @@ class SessionManager:
             supabase_client=self.supabase_client,
             memory_store=self.memory_store,
         )
+        self._bg_tasks: Set[asyncio.Task] = set()
+
+    def spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
+        """Run a fire-and-forget coroutine while holding a reference to its task.
+
+        Exceptions are logged at ERROR from the done callback; cancellation
+        happens in cancel_background_tasks() during application shutdown.
+        """
+        task = asyncio.create_task(coro)
+        self._bg_tasks.add(task)
+        task.add_done_callback(self._on_bg_task_done)
+        return task
+
+    def _on_bg_task_done(self, task: asyncio.Task) -> None:
+        self._bg_tasks.discard(task)
+        if task.cancelled():
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error("Background task failed: %s", exc, exc_info=exc)
+
+    async def cancel_background_tasks(self) -> None:
+        """Cancel and await every outstanding task started via spawn()."""
+        tasks = list(self._bg_tasks)
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        self._bg_tasks.clear()
 
     def get_or_create_session(self, meeting_id: str) -> LiveGraphSession:
         if meeting_id not in self.live_sessions:
