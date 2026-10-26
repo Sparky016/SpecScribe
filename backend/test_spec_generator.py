@@ -147,6 +147,100 @@ def test_chunk_meeting_artifacts_types(sample_meeting_id):
 
 
 # ============================================================================
+# T-09 Unit Tests: Offline Fallback Spec Grounded in Meeting Data
+# ============================================================================
+
+def test_fallback_spec_empty_input_records_no_data(sample_meeting_id):
+    """Empty input yields 'No data recorded' and no hardcoded architecture claims."""
+    agent = SpecGeneratorAgent(api_key="")
+
+    spec_md = agent.compile_markdown_spec(
+        meeting_id=sample_meeting_id,
+        meeting_title="Empty Session",
+        drawio_xml="",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    assert "No data recorded" in spec_md
+    for phrase in ("Redis", "read replica", "read-replica"):
+        assert phrase not in spec_md
+
+
+def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
+    """Every labelled node in the input draw.io XML is listed by type; edges are not nodes."""
+    agent = SpecGeneratorAgent(api_key="")
+    test_xml = (
+        "<mxfile><diagram><mxGraphModel><root>"
+        "<mxCell id='0'/><mxCell id='1' parent='0'/>"
+        "<mxCell id='2' value='Auth Gateway' vertex='1' style='rounded=1;fillColor=#107C41;'/>"
+        "<mxCell id='3' value='Session Store' vertex='1' style='shape=cylinder3;fillColor=#0D47A1;'/>"
+        "<object id='4' label='Rate Limiter'><mxCell vertex='1' style='rhombus;fillColor=#004D40;'/></object>"
+        "<mxCell id='5' value='Mobile Client' vertex='1' style='ellipse;fillColor=#999999;'/>"
+        "<mxCell id='6' value='uses' edge='1' source='2' target='3'/>"
+        "</root></mxGraphModel></diagram></mxfile>"
+    )
+
+    spec_md = agent.compile_markdown_spec(
+        meeting_id=sample_meeting_id,
+        meeting_title="Node Labels",
+        drawio_xml=test_xml,
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    architecture = spec_md.split("## 2. System Architecture Overview & Component Matrix\n", 1)[1].split("\n## 3.", 1)[0]
+    assert "- **Service:** Auth Gateway" in architecture
+    assert "- **Database:** Session Store" in architecture
+    assert "- **Decision:** Rate Limiter" in architecture
+    assert "- **Other:** Mobile Client" in architecture
+    assert "uses" not in architecture
+
+
+def test_fallback_spec_malformed_xml_records_no_architecture(sample_meeting_id):
+    """Unparseable draw.io XML yields no architecture nodes instead of raising."""
+    agent = SpecGeneratorAgent(api_key="")
+
+    spec_md = agent.compile_markdown_spec(
+        meeting_id=sample_meeting_id,
+        meeting_title="Broken XML",
+        drawio_xml="<mxfile><mxCell value='Redis'",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    assert "## 2. System Architecture Overview & Component Matrix\nNo data recorded\n" in spec_md
+
+
+def test_fallback_spec_action_items_come_from_interventions(sample_meeting_id):
+    """Section 6 action items are the recorded agent interventions, not a fixed roadmap."""
+    agent = SpecGeneratorAgent(api_key="")
+    interventions = [
+        {
+            "timestamp_ms": 50000,
+            "category": "VULNERABILITY",
+            "short_title": "Cache Stampede Risk",
+            "detailed_body": "Add mutex lock.",
+        }
+    ]
+
+    spec_md = agent.compile_markdown_spec(
+        meeting_id=sample_meeting_id,
+        meeting_title="Action Items",
+        drawio_xml="",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=interventions,
+    )
+
+    action_items = spec_md.split("## 6. Action Items & Implementation Roadmap\n", 1)[1]
+    assert action_items.strip() == "- [ ] `[00:50]` Cache Stampede Risk (`VULNERABILITY`): Add mutex lock."
+
+
+# ============================================================================
 # T-09 Integration Tests: Finalize & Grounded RAG Pipeline
 # ============================================================================
 

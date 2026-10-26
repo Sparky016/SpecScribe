@@ -11,6 +11,7 @@ import math
 import os
 import re
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -21,6 +22,11 @@ from agents.decision_linker import (
     generate_text_embedding_async,
     generate_text_embeddings_batch_async,
 )
+
+try:
+    from node_registry import NODE_REGISTRY
+except ImportError:
+    from backend.node_registry import NODE_REGISTRY
 
 logger = logging.getLogger("specscribe.spec_generator")
 
@@ -55,6 +61,42 @@ def cosine_similarity(vec_a: List[float], vec_b: List[float]) -> float:
     if norm_a == 0.0 or norm_b == 0.0:
         return 0.0
     return dot / (norm_a * norm_b)
+
+
+NO_DATA_RECORDED = "No data recorded"
+
+
+def extract_drawio_nodes(drawio_xml: str) -> List[Tuple[str, str]]:
+    """
+    Returns (label, type) for every labelled, non-edge draw.io cell in document order.
+    Type is the NODE_REGISTRY key whose fillColor matches the cell style, otherwise 'other'.
+    Unparseable XML yields no nodes rather than raising.
+    """
+    if not drawio_xml or not drawio_xml.strip():
+        return []
+    try:
+        root = ET.fromstring(drawio_xml)
+    except ET.ParseError as e:
+        logger.debug("Could not parse draw.io XML for fallback spec: %s", e)
+        return []
+
+    type_by_fill = {d.fill_color.lower(): name for name, d in NODE_REGISTRY.items()}
+    parent_of = {child: parent for parent in root.iter() for child in parent}
+    nodes: List[Tuple[str, str]] = []
+    for cell in root.iter("mxCell"):
+        if cell.get("edge") == "1":
+            continue
+        label = cell.get("value", "")
+        parent = parent_of.get(cell)
+        if not label and parent is not None and parent.tag == "object":
+            label = parent.get("label", "")
+        label = label.strip()
+        if not label:
+            continue
+        fill = re.search(r"(?:^|;)fillColor=(#[0-9a-fA-F]{6})", cell.get("style", ""))
+        node_type = type_by_fill.get(fill.group(1).lower(), "other") if fill else "other"
+        nodes.append((label, node_type))
+    return nodes
 
 
 class CitationItem(BaseModel):
@@ -108,35 +150,69 @@ class SpecGeneratorAgent:
         agent_interventions: List[Dict[str, Any]],
         created_time: str,
     ) -> str:
+        """
+        Offline fallback spec. Every section is derived from the inputs; a section with no
+        recorded data says NO_DATA_RECORDED instead of asserting architecture the meeting never recorded.
+        """
+        nodes = extract_drawio_nodes(drawio_xml)
+
+        if nodes or transcript_turns or diagram_snapshots or agent_interventions:
+            counts = [
+                f"{len(nodes)} diagram node(s)",
+                f"{len(diagram_snapshots)} decision snapshot(s)",
+                f"{len(agent_interventions)} agent intervention(s)",
+                f"{len(transcript_turns)} transcript turn(s)",
+            ]
+            executive_summary = "Recorded in this session: " + ", ".join(counts) + "."
+        else:
+            executive_summary = NO_DATA_RECORDED
+
+        architecture_lines: List[str] = []
+        if nodes:
+            labels_by_type: Dict[str, List[str]] = {}
+            for label, node_type in nodes:
+                labels_by_type.setdefault(node_type, []).append(label)
+            for node_type in [*NODE_REGISTRY, "other"]:
+                if node_type in labels_by_type:
+                    joined = ", ".join(labels_by_type[node_type])
+                    architecture_lines.append(f"- **{node_type.capitalize()}:** {joined}")
+        architecture_section = "\n".join(architecture_lines) or NO_DATA_RECORDED
+
+        xml_section = f"```xml\n{drawio_xml}\n```" if drawio_xml and drawio_xml.strip() else NO_DATA_RECORDED
+
         decision_rows = []
         for s in diagram_snapshots:
             ts_label = format_timestamp_ms(s.get("timestamp_ms", 0))
-            diff = s.get("diff_summary", "").replace("|", "/")
-            why = (s.get("decision_rationale") or "Applied during architecture session").replace("|", "/")
-            trigger = s.get("triggered_by", "MANUAL")
+            diff = (s.get("diff_summary") or NO_DATA_RECORDED).replace("|", "/")
+            why = (s.get("decision_rationale") or NO_DATA_RECORDED).replace("|", "/")
+            trigger = s.get("triggered_by") or NO_DATA_RECORDED
             decision_rows.append(f"| `[{ts_label}]` | {diff} | {why} | `{trigger}` |")
 
         decisions_table = (
             "| Timestamp | Architectural Change | Decision Rationale (\"Why\") | Source |\n"
             "| :--- | :--- | :--- | :--- |\n"
-            + ("\n".join(decision_rows) if decision_rows else "| `[00:00]` | Initial architecture diagram sync | Session baseline established | `INIT` |")
-        )
+            + "\n".join(decision_rows)
+        ) if decision_rows else NO_DATA_RECORDED
 
-        intervention_blocks = []
-        for i in agent_interventions:
-            ts_label = format_timestamp_ms(i.get("timestamp_ms", 0))
-            category = i.get("category", "REVIEW")
-            title = i.get("short_title", "Insight")
-            body = i.get("detailed_body", "")
-            intervention_blocks.append(
-                f"### `[{ts_label}]` {title} (`{category}`)\n{body}\n"
+        interventions = [
+            (
+                format_timestamp_ms(i.get("timestamp_ms", 0)),
+                i.get("category") or NO_DATA_RECORDED,
+                i.get("short_title") or NO_DATA_RECORDED,
+                i.get("detailed_body") or NO_DATA_RECORDED,
             )
+            for i in agent_interventions
+        ]
 
-        interventions_section = (
-            "\n".join(intervention_blocks)
-            if intervention_blocks
-            else "No critical architectural vulnerabilities or flaws were flagged during this session."
-        )
+        interventions_section = "\n".join(
+            f"### `[{ts_label}]` {title} (`{category}`)\n{body}\n"
+            for ts_label, category, title, body in interventions
+        ) or NO_DATA_RECORDED
+
+        action_items = "\n".join(
+            f"- [ ] `[{ts_label}]` {title} (`{category}`): {body}"
+            for ts_label, category, title, body in interventions
+        ) or NO_DATA_RECORDED
 
         spec_md = f"""# Technical Specification: {meeting_title}
 
@@ -147,19 +223,13 @@ class SpecGeneratorAgent:
 ---
 
 ## 1. Executive Summary & Goals
-This technical specification formalizes the spatial architectural brainstorming session conducted via **SpecScribe AR** on Snap Spectacles. The session established the core services, data persistence layers, caching topology, and security guardrails required for production deployment.
+{executive_summary}
 
 ## 2. System Architecture Overview & Component Matrix
-The proposed design decomposes into modular components organized into a hierarchical DAG:
-- **Ingress / Services:** High-speed gateway routing user and device interactions.
-- **Decision Gates:** Real-time policy evaluation, authentication checks, and rate limiters.
-- **Data Persistence:** Relational database with read-replica clustering and sub-millisecond in-memory caching.
-- **Client Terminals:** AR spatial interfaces and client applications.
+{architecture_section}
 
 ## 3. Architecture Model (.drawio XML)
-```xml
-{drawio_xml}
-```
+{xml_section}
 
 ## 4. Chronological Decision Log & Rationale Matrix
 {decisions_table}
@@ -168,9 +238,7 @@ The proposed design decomposes into modular components organized into a hierarch
 {interventions_section}
 
 ## 6. Action Items & Implementation Roadmap
-1. **Infrastructure Provisioning:** Deploy Redis cluster with request coalescing to eliminate cache stampede vulnerability.
-2. **Database Clustering:** Configure PostgreSQL primary with cross-AZ read replica and connection pooling.
-3. **CI/CD Integration:** Sync compiled `.drawio` XML directly into documentation repositories.
+{action_items}
 """
         return spec_md.strip()
 
