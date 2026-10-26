@@ -590,3 +590,38 @@ def test_startup_refuses_without_token_unless_disabled(monkeypatch, caplog):
     assert "DISABLED" in caplog.text
     with TestClient(app) as client:
         assert client.post("/api/meetings", json={"title": "x"}).status_code == 200
+
+
+def test_pinch_conclude_meeting_finalizes_and_stops_loop():
+    """CONCLUDE_MEETING finalizes, stops the proactive loop and emits MEETING_FINALIZED."""
+    meeting_id = "00000000-0000-4000-8000-000000000141"
+    finalize = AsyncMock(return_value={"spec_md": "# spec", "chunks_created": 3})
+    with patch.object(session_manager.spec_generator, "finalize_meeting", finalize), \
+            patch.object(session_manager.raising_hand_agent, "stop_proactive_loop") as stop_loop:
+        with TestClient(app, headers=AUTH_HEADERS) as client:
+            with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
+                ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+                assert ws.receive_json()["event"] == "HANDSHAKE_ACK"
+                ws.send_json({"eventType": "pinchCommand", "action": "CONCLUDE_MEETING", "timestamp_ms": 9000})
+                msg = ws.receive_json()
+    assert msg["event"] == "MEETING_FINALIZED"
+    assert msg["type"] == "MEETING_FINALIZED"
+    assert msg["meeting_id"] == meeting_id
+    assert msg["chunks_created"] == 3
+    finalize.assert_awaited_once()
+    assert finalize.await_args.kwargs["meeting_id"] == meeting_id
+    stop_loop.assert_any_call(meeting_id)
+
+
+@pytest.mark.parametrize("action", ["CALIBRATE_AREA", "INGEST_DRAWING", "UPDATE_SNAPSHOT"])
+def test_pinch_client_only_actions_are_acked_not_errors(action):
+    """Client-only actions get COMMAND_ACK, never COMMAND_ERROR, and log no warning."""
+    meeting_id = "00000000-0000-4000-8000-000000000142"
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+            assert ws.receive_json()["event"] == "HANDSHAKE_ACK"
+            ws.send_json({"eventType": "pinchCommand", "action": action, "timestamp_ms": 100})
+            msg = ws.receive_json()
+    assert msg["event"] == "COMMAND_ACK"
+    assert msg["action"] == action

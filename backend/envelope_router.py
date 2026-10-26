@@ -17,6 +17,8 @@ import uuid
 
 from fastapi import WebSocket
 
+from contracts import PinchAction
+
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
@@ -234,7 +236,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
             node_type = msg.get("node_type", "service")
             label = msg.get("label", f"New {node_type.capitalize()}")
 
-            if action == "ADD_NODE":
+            if action == PinchAction.ADD_NODE:
                 node_id = session.add_node(node_type, label)
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
@@ -281,7 +283,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     )
                 )
 
-            elif action == "CONNECT_NODES":
+            elif action == PinchAction.CONNECT_NODES:
                 source = msg.get("source") or msg.get("source_id", "")
                 target = msg.get("target") or msg.get("target_id", "")
                 edge_label = msg.get("edge_label", "")
@@ -343,7 +345,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         })
                     )
 
-            elif action == "ASK_AGENT":
+            elif action == PinchAction.ASK_AGENT:
                 query = msg.get("label", "") or msg.get("query", "Architectural feedback")
                 logger.info("User triggered research pull: %s", query)
                 await session_mgr.raising_hand_agent.handle_research_pull(
@@ -352,6 +354,33 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     timestamp_ms=timestamp_ms,
                     drawio_xml=session.get_xml(),
                     broadcast_fn=session_mgr.broadcast_to_meeting,
+                )
+
+            elif action == PinchAction.CONCLUDE_MEETING:
+                result = await session_mgr.spec_generator.finalize_meeting(
+                    meeting_id=meeting_id,
+                    drawio_xml=session.compile_layout_xml(),
+                    title=session_mgr.memory_store["meetings"].get(meeting_id, {}).get("title"),
+                )
+                session_mgr.raising_hand_agent.stop_proactive_loop(meeting_id)
+                await session_mgr.broadcast_to_meeting(
+                    meeting_id,
+                    {
+                        "type": "MEETING_FINALIZED",
+                        "event": "MEETING_FINALIZED",
+                        "meeting_id": meeting_id,
+                        "timestamp_ms": timestamp_ms,
+                        "chunks_created": result.get("chunks_created"),
+                    },
+                )
+
+            elif action in PinchAction.CLIENT_ONLY:
+                await websocket.send_text(
+                    json.dumps({
+                        "event": "COMMAND_ACK",
+                        "action": action,
+                        "timestamp_ms": timestamp_ms,
+                    })
                 )
 
             else:

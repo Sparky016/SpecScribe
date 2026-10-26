@@ -548,7 +548,19 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   "label": "Redis Session Cache"
 }
 ~~~
-*(Supported `action` values: `"ADD_NODE"`, `"CONNECT_NODES"`, `"ASK_AGENT"`)*
+Supported `action` values (constants: `PinchAction` in `backend/contracts.py`):
+
+| Action | Payload | Server behaviour | Response event |
+|---|---|---|---|
+| `ADD_NODE` | `node_type`, `label` | Adds node, renders diagram, saves snapshot | `DIAGRAM_UPDATED` |
+| `CONNECT_NODES` | `source`, `target`, `edge_label` | Adds edge, renders diagram, saves snapshot | `DIAGRAM_UPDATED` (or `COMMAND_ERROR` if nodes missing) |
+| `ASK_AGENT` | `label` / `query` | Runs a research pull on the Raising-Hand agent | `HAND_RAISED` |
+| `CONCLUDE_MEETING` | none | Finalizes the meeting (spec + embeddings) and stops the proactive loop | `MEETING_FINALIZED` (`meeting_id`, `timestamp_ms`, `chunks_created`) |
+| `CALIBRATE_AREA` | none | Client-only; no-op | `COMMAND_ACK` |
+| `INGEST_DRAWING` | none | Client-only; no-op | `COMMAND_ACK` |
+| `UPDATE_SNAPSHOT` | none | Client-only; no-op | `COMMAND_ACK` |
+
+Any other `action` yields `COMMAND_ERROR`.
 
 ---
 
