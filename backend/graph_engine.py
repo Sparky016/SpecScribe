@@ -355,15 +355,23 @@ async def extract_graph_delta_from_gemini(
     """
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
-        logger.info("No GEMINI_API_KEY detected; using heuristic fallback for vision diff")
+        logger.info("No GEMINI_API_KEY detected; returning no-change vision delta")
+        if os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=True,
+                added_vertices=[
+                    VertexAddition(temp_id=str(uuid.uuid4())[:8], label="Whiteboard Node", node_type="service")
+                ],
+                added_edges=[],
+                diff_summary="+ Detected whiteboard stroke additions",
+            )
         return GraphDeltaSchema(
             person_occluding_board=False,
-            has_meaningful_change=True,
-            added_vertices=[
-                VertexAddition(temp_id=str(uuid.uuid4())[:8], label="Whiteboard Node", node_type="service")
-            ],
+            has_meaningful_change=False,
+            added_vertices=[],
             added_edges=[],
-            diff_summary="+ Detected whiteboard stroke additions",
+            diff_summary="",
         )
 
     try:
@@ -404,18 +412,25 @@ async def extract_graph_delta_from_gemini(
 
         if response and response.text:
             data = json.loads(response.text)
-            parsed = GraphDeltaSchema.model_validate(data)
-            if parsed.has_meaningful_change or parsed.added_vertices or parsed.added_edges:
-                return parsed
+            return GraphDeltaSchema.model_validate(data)
+        logger.warning("Gemini vision extraction returned no response text")
     except Exception as e:
-        logger.error("Gemini vision extraction failed: %s", e)
+        logger.warning("Gemini vision extraction failed: %s", e)
 
+    if os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
+        return GraphDeltaSchema(
+            person_occluding_board=False,
+            has_meaningful_change=True,
+            added_vertices=[VertexAddition(temp_id="v-auto", label="Whiteboard Ingress", node_type="service")],
+            added_edges=[],
+            diff_summary="+ Detected Whiteboard Ingress [service]",
+        )
     return GraphDeltaSchema(
         person_occluding_board=False,
-        has_meaningful_change=True,
-        added_vertices=[VertexAddition(temp_id="v-auto", label="Whiteboard Ingress", node_type="service")],
+        has_meaningful_change=False,
+        added_vertices=[],
         added_edges=[],
-        diff_summary="+ Detected Whiteboard Ingress [service]",
+        diff_summary="",
     )
 
 
