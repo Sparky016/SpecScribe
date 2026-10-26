@@ -107,7 +107,7 @@ def test_compile_markdown_spec_structure(sample_meeting_id):
 
 
 def test_chunk_meeting_artifacts_types(sample_meeting_id):
-    """Verify chunk_meeting_artifacts generates all 4 required chunk_types."""
+    """Verify chunk_meeting_artifacts generates the finalize-owned chunk_types (no DECISION)."""
     agent = SpecGeneratorAgent(api_key="")
 
     spec_md = (
@@ -135,16 +135,12 @@ def test_chunk_meeting_artifacts_types(sample_meeting_id):
     )
 
     types = {c["chunk_type"] for c in raw_chunks}
-    assert "DECISION" in types
+    assert "DECISION" not in types
     assert "TRANSCRIPT_WINDOW" in types
     assert "AGENT_INSIGHT" in types
     assert "TECH_SPEC" in types
 
     # Check timestamps and content
-    dec_chunk = next(c for c in raw_chunks if c["chunk_type"] == "DECISION")
-    assert dec_chunk["timestamp_ms"] == 15000
-    assert "[00:15]" in dec_chunk["content"]
-
     agent_chunk = next(c for c in raw_chunks if c["chunk_type"] == "AGENT_INSIGHT")
     assert agent_chunk["timestamp_ms"] == 20000
     assert "Auth Risk" in agent_chunk["content"]
@@ -232,6 +228,42 @@ async def test_finalize_meeting_pipeline(sample_meeting_id):
     first_cit = rag_result["citations"][0]
     assert ":" in first_cit["label"]
     assert first_cit["timestamp_ms"] >= 0
+
+
+@pytest.mark.asyncio
+async def test_finalize_meeting_is_idempotent(sample_meeting_id):
+    """Finalizing twice replaces finalize-owned chunks and never creates DECISION chunks."""
+    linker_chunk = {"id": "linker-1", "meeting_id": sample_meeting_id, "chunk_type": "DECISION", "content": "linker"}
+    store = {
+        "meetings": {sample_meeting_id: {"id": sample_meeting_id, "title": "T", "latest_drawio_xml": "<mxfile/>"}},
+        "transcript_turns": {sample_meeting_id: [
+            {"speaker_label": "Speaker 0", "transcript_text": "Add Redis.", "timestamp_ms": 1000},
+        ]},
+        "diagram_snapshots": {sample_meeting_id: [
+            {"id": "s1", "timestamp_ms": 2000, "diff_summary": "+ Added Redis", "decision_rationale": "Cache"},
+        ]},
+        "agent_interventions": {sample_meeting_id: [
+            {"id": "i1", "timestamp_ms": 3000, "category": "REVIEW", "short_title": "Risk", "detailed_body": "Body"},
+        ]},
+        "knowledge_chunks": {sample_meeting_id: [dict(linker_chunk)]},
+    }
+    agent = SpecGeneratorAgent(api_key="", memory_store=store)
+
+    def counts():
+        out = {}
+        for c in store["knowledge_chunks"][sample_meeting_id]:
+            out[c["chunk_type"]] = out.get(c["chunk_type"], 0) + 1
+        return out
+
+    await agent.finalize_meeting(sample_meeting_id, "<mxfile/>", "T")
+    first = counts()
+    await agent.finalize_meeting(sample_meeting_id, "<mxfile/>", "T")
+    second = counts()
+
+    assert first == second
+    assert first["DECISION"] == 1  # only the linker-owned chunk
+    assert first["TRANSCRIPT_WINDOW"] >= 1 and first["AGENT_INSIGHT"] >= 1 and first["TECH_SPEC"] >= 1
+    assert any(c["id"] == "linker-1" for c in store["knowledge_chunks"][sample_meeting_id])
 
 
 # ============================================================================

@@ -68,6 +68,9 @@ class RAGResponseSchema(BaseModel):
     citations: List[CitationItem] = Field(default_factory=list)
 
 
+FINALIZE_CHUNK_TYPES = ("TRANSCRIPT_WINDOW", "AGENT_INSIGHT", "TECH_SPEC")
+
+
 class SpecGeneratorAgent:
     """
     Post-Meeting Technical Specification & pgvector Pipeline Agent (T-09).
@@ -333,28 +336,15 @@ The proposed design decomposes into modular components organized into a hierarch
         agent_interventions: List[Dict[str, Any]],
     ) -> List[Dict[str, Any]]:
         """
-        Creates granular knowledge chunks across all 4 required chunk_types:
-        - 'DECISION': Individual snapshot decisions and rationales.
+        Creates granular knowledge chunks across the finalize-owned chunk_types
+        (DECISION chunks are written by DecisionLinker and are not created here):
         - 'TRANSCRIPT_WINDOW': Rolling transcript dialogue windows with speaker attribution.
         - 'AGENT_INSIGHT': Raising-hand interventions and technical critique cards.
         - 'TECH_SPEC': Structured excerpts from the generated Markdown specification.
         """
         chunks: List[Dict[str, Any]] = []
 
-        # 1. DECISION Chunks
-        for s in diagram_snapshots:
-            ts = s.get("timestamp_ms", 0)
-            diff = s.get("diff_summary", "")
-            rationale = s.get("decision_rationale") or "Architectural change approved."
-            content = f"[{format_timestamp_ms(ts)}] Decision: {diff}. Rationale: {rationale}"
-            chunks.append({
-                "meeting_id": meeting_id,
-                "chunk_type": "DECISION",
-                "timestamp_ms": ts,
-                "content": content,
-            })
-
-        # 2. TRANSCRIPT_WINDOW Chunks (rolling batches of 3-4 turns)
+        # 1. TRANSCRIPT_WINDOW Chunks (rolling batches of 3-4 turns)
         batch_size = 4
         for i in range(0, len(transcript_turns), batch_size):
             batch = transcript_turns[i : i + batch_size]
@@ -374,7 +364,7 @@ The proposed design decomposes into modular components organized into a hierarch
                 "content": content,
             })
 
-        # 3. AGENT_INSIGHT Chunks
+        # 2. AGENT_INSIGHT Chunks
         for item in agent_interventions:
             ts = item.get("timestamp_ms", 0)
             category = item.get("category", "REVIEW")
@@ -388,7 +378,7 @@ The proposed design decomposes into modular components organized into a hierarch
                 "content": content,
             })
 
-        # 4. TECH_SPEC Chunks (Section headers)
+        # 3. TECH_SPEC Chunks (Section headers)
         sections = re.split(r"\n(?=## \d+\. )", spec_md)
         for idx, sec in enumerate(sections):
             clean_sec = sec.strip()
@@ -415,16 +405,15 @@ The proposed design decomposes into modular components organized into a hierarch
         concurrently/in-batch without blocking the event loop (Fixes #5), and persists
         them into Supabase knowledge_chunks table and memory_store in a single batch operation.
         """
-        if not raw_chunks:
-            return []
-
         # 1. Non-blocking asynchronous batch embedding generation (Fixes #5)
-        contents = [c["content"] for c in raw_chunks]
-        embeddings = await generate_text_embeddings_batch_async(
-            texts=contents,
-            api_key=self.api_key,
-            target_dim=1536,
-        )
+        embeddings: List[Any] = []
+        if raw_chunks:
+            contents = [c["content"] for c in raw_chunks]
+            embeddings = await generate_text_embeddings_batch_async(
+                texts=contents,
+                api_key=self.api_key,
+                target_dim=1536,
+            )
 
         persisted_chunks: List[Dict[str, Any]] = []
         for c, embedding in zip(raw_chunks, embeddings):
@@ -439,9 +428,24 @@ The proposed design decomposes into modular components organized into a hierarch
             }
             persisted_chunks.append(record)
 
-        # 2. Save in memory store
+        # 2. Replace (not append) finalize-owned chunks so repeated /finalize calls stay idempotent.
+        # DECISION chunks belong to DecisionLinker and are left untouched.
         if self.memory_store and "knowledge_chunks" in self.memory_store:
-            self.memory_store["knowledge_chunks"][meeting_id].extend(persisted_chunks)
+            existing = self.memory_store["knowledge_chunks"][meeting_id]
+            existing[:] = [c for c in existing if c.get("chunk_type") not in FINALIZE_CHUNK_TYPES]
+            existing.extend(persisted_chunks)
+
+        if self.supabase_client:
+            try:
+                await asyncio.to_thread(
+                    lambda: self.supabase_client.table("knowledge_chunks")
+                    .delete()
+                    .eq("meeting_id", meeting_id)
+                    .in_("chunk_type", list(FINALIZE_CHUNK_TYPES))
+                    .execute()
+                )
+            except Exception as e:
+                logger.warning("Supabase knowledge_chunks delete error: %s", e)
 
         # 3. Batch save in Supabase off-thread in a single round-trip
         if self.supabase_client and persisted_chunks:
