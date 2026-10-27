@@ -49,6 +49,7 @@ describe('Task 29: demoMode gating', () => {
     m.diffToastText = new MockText('');
     m.socketClient = {
       getLatestSpokenPhrase: () => undefined,
+      consumeLatestSpokenPhrase: () => null,
       sendPinchCommand: (a, t, l) => { if (a === 'ADD_NODE') sent.push({ a, t, l }); },
       onDiagramUpdated: () => {},
       onDecisionLogged: () => {}

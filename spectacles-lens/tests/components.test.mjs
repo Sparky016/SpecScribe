@@ -316,8 +316,13 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       const toastText = new MockText('');
       const overlayMesh = new MockRenderMeshVisual();
 
+      let pendingPhrase = 'Customer Auth Service';
       const socketClient = {
-        getLatestSpokenPhrase: () => 'Customer Auth Service',
+        consumeLatestSpokenPhrase: () => {
+          const phrase = pendingPhrase;
+          pendingPhrase = null;
+          return phrase;
+        },
         sendPinchCommand: (action, type, label) => {
           // CALIBRATE_AREA (client-only) is emitted by the auto-advance; this test covers ADD_NODE.
           if (action === 'ADD_NODE') sentCommands.push({ action, type, label });

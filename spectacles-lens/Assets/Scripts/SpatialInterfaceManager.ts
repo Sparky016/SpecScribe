@@ -583,18 +583,21 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.nodeCount++;
     this.diagramStage = 1;
 
-    let spokenLabel = this.socketClient
-      ? this.socketClient.getLatestSpokenPhrase()
-      : undefined;
-    if (!spokenLabel || spokenLabel === 'New Component') {
-      const def = LENS_NODE_REGISTRY[nodeType.toLowerCase()];
-      if (this.demoMode && nodeType === 'service') spokenLabel = 'Auth Gateway Service';
-      else if (this.demoMode && nodeType === 'database') spokenLabel = 'Redis Token Cache';
-      else if (this.demoMode && nodeType === 'decision') spokenLabel = 'Enforce JWT HMAC Verification';
-      else if (this.demoMode && nodeType === 'terminal') spokenLabel = 'Client HTTPS Entrypoint';
-      else if (def) spokenLabel = `${def.labelPrefix} Component`;
-      else spokenLabel = `New ${nodeType}`;
-    }
+    const spokenPhrase = this.socketClient
+      ? this.socketClient.consumeLatestSpokenPhrase()
+      : null;
+    const def = LENS_NODE_REGISTRY[nodeType.toLowerCase()];
+    let fallbackLabel: string;
+    if (this.demoMode && nodeType === 'service') fallbackLabel = 'Auth Gateway Service';
+    else if (this.demoMode && nodeType === 'database') fallbackLabel = 'Redis Token Cache';
+    else if (this.demoMode && nodeType === 'decision') fallbackLabel = 'Enforce JWT HMAC Verification';
+    else if (this.demoMode && nodeType === 'terminal') fallbackLabel = 'Client HTTPS Entrypoint';
+    else if (def) fallbackLabel = `${def.labelPrefix} Component`;
+    else fallbackLabel = `New ${nodeType}`;
+    const spokenLabel = spokenPhrase ?? fallbackLabel;
+    // Only demo mode sends canned labels; otherwise a pinch without fresh speech sends no label
+    // so successive pinches never share an identical registry-derived label.
+    const sentLabel = spokenPhrase ?? (this.demoMode ? fallbackLabel : null);
 
     const toastMsg = this.demoMode
       ? `Injected [${nodeType.toUpperCase()}]: "${spokenLabel}" (Nodes: ${this.nodeCount})`
@@ -645,7 +648,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand(PinchAction.ADD_NODE, nodeType, spokenLabel);
+      this.socketClient.sendPinchCommand(PinchAction.ADD_NODE, nodeType, sentLabel);
     }
   }
 

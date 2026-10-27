@@ -11,13 +11,14 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   @input
   @allowUndefined
-  private simulatedSpeechPhrase: string = 'Payment Gateway Microservice';
+  private simulatedSpeechPhrase?: string;
 
   private internetModule: InternetModule = require('LensStudio:InternetModule');
   private asrModule: AsrModule = require('LensStudio:AsrModule');
   private activeSocket?: WebSocket;
   private meetingStartEpochMs: number = 0;
   private latestSpokenPhrase: string = 'New Component';
+  private pendingFinalPhrase: string | null = null;
   private isDestroyed: boolean = false;
   private reconnectAttempt: number = 0;
   private reconnectEvent: DelayedCallbackEvent | null = null;
@@ -44,7 +45,17 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     if (this.latestSpokenPhrase && this.latestSpokenPhrase !== 'New Component') {
       return this.latestSpokenPhrase;
     }
-    return this.simulatedSpeechPhrase;
+    return this.simulatedSpeechPhrase ?? '';
+  }
+
+  /**
+   * Returns the latest FINAL ASR phrase spoken since the previous call, then clears it.
+   * Returns null when no new final phrase exists, so each pinch consumes at most one phrase.
+   */
+  public consumeLatestSpokenPhrase(): string | null {
+    const phrase = this.pendingFinalPhrase;
+    this.pendingFinalPhrase = null;
+    return phrase;
   }
 
   public getElapsedMs(): number {
@@ -164,6 +175,9 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       asrOptions.onTranscriptionUpdateEvent.add((eventArgs: AsrModule.TranscriptionUpdateEvent) => {
         if (eventArgs.text && eventArgs.text.trim().length > 0) {
           this.latestSpokenPhrase = eventArgs.text.trim();
+          if (eventArgs.isFinal) {
+            this.pendingFinalPhrase = eventArgs.text.trim();
+          }
         }
         if (eventArgs.isFinal) {
           this.sendJson({
@@ -213,14 +227,17 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     });
   }
 
-  public sendPinchCommand(action: string, nodeType: string, label: string): void {
-    this.sendJson({
+  public sendPinchCommand(action: string, nodeType: string, label?: string | null): void {
+    const payload: Record<string, any> = {
       eventType: 'pinchCommand',
       timestamp_ms: this.getElapsedMs(),
       action: action,
-      node_type: nodeType,
-      label: label
-    });
+      node_type: nodeType
+    };
+    if (label !== null && label !== undefined) {
+      payload.label = label;
+    }
+    this.sendJson(payload);
   }
 
   public sendJson(payload: Record<string, any>): void {

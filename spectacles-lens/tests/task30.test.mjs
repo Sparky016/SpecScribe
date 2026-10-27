@@ -51,6 +51,7 @@ describe('Task 30: pinch action contract', () => {
     m.diffToastText = new MockText('');
     m.socketClient = {
       getLatestSpokenPhrase: () => undefined,
+      consumeLatestSpokenPhrase: () => null,
       sendPinchCommand: (a, t, l) => sent.push(a),
       onDiagramUpdated: () => {},
       onDecisionLogged: () => {}
