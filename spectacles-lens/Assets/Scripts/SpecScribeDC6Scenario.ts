@@ -42,8 +42,14 @@ export class SpecScribeDC6Scenario extends Scenario {
     }
 
     expect(sm.isMeetingConcluded()).toBe(true);
-    expect(sm.getDiagramStage()).toBe(3);
-    expect(sm.getToastText().includes('Concluded')).toBe(true);
+    if (sm.demoMode) {
+      expect(sm.getDiagramStage()).toBe(3);
+      expect(sm.getToastText().includes('Concluded')).toBe(true);
+    } else {
+      // Live mode: stage 3 / 'Concluded' only follow MEETING_FINALIZED from the backend.
+      expect(sm.getToastText().includes('Generating spec')).toBe(true);
+      expect(sm.getDiagramStage() !== 3).toBe(true);
+    }
 
     print(`[LEAF DC6] Passed: Meeting concluded cleanly. Toast: "${sm.getToastText()}"`);
   }
