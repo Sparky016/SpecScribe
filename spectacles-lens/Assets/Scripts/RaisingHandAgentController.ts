@@ -424,19 +424,6 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private bindPreviewInteractions(): void {
     try {
-      this.createEvent('TapEvent').bind((eventData: any) => {
-        const p = eventData && eventData.getTapPosition ? eventData.getTapPosition() : null;
-        if (p) {
-          // If tapped in upper right corner of the view (top-right quadrant)
-          if (p.x > 0.65 && p.y < 0.38) {
-            print(`[RaisingHandAgentController] Preview tap in top-right view (x=${p.x.toFixed(2)}, y=${p.y.toFixed(2)}) -> Toggling AI Orb`);
-            this.handleOrbPinched();
-          }
-        }
-      });
-    } catch (e) {}
-
-    try {
       this.createEvent('KeyPressEvent').bind((eventData: any) => {
         const key = (eventData as any).key || (eventData as any).char || '';
         if (typeof key === 'string' && (key.toLowerCase() === 'h' || key.toLowerCase() === 'o')) {

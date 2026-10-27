@@ -71,9 +71,6 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   @allowUndefined
   private diffToastText?: Text;
 
-  private tapCycleIndex: number = 0;
-  private readonly tapNodeTypes: string[] = Object.keys(LENS_NODE_REGISTRY);
-
   private whiteboardState: WhiteboardState = WhiteboardState.SELECT_AREA;
   private diagramStage: number = 0; // 0: initial/clean/select, 1: node added, 2: snapshot updated, 3: concluded
   private nodeCount: number = 0;
@@ -112,7 +109,6 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       this.bindSocketCallbacks();
       this.bindTouchDragging();
       this.bindKeyboardControls();
-      this.bindTapGesture();
     });
   }
 
@@ -253,28 +249,6 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       }
     } catch (e) {
       // Ignored
-    }
-  }
-
-  private bindTapGesture(): void {
-    try {
-      this.createEvent('TapEvent').bind(() => {
-        if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-          // Do NOT auto-lock on arbitrary tap during selection mode.
-          // Touch dragging and deliberate center pinch handle placement and locking.
-          return;
-        } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
-          print('[SpatialInterfaceManager] Tap detected on clean board -> Starting drawing & ingestion');
-          this.startDrawingAndIngestion();
-        } else {
-          const nextType = this.tapNodeTypes[this.tapCycleIndex % this.tapNodeTypes.length];
-          this.tapCycleIndex++;
-          print(`[SpatialInterfaceManager] Preview Tap detected -> Adding node [${nextType.toUpperCase()}]`);
-          this.triggerAddNode(nextType);
-        }
-      });
-    } catch (e) {
-      // Ignored if TapEvent is unavailable
     }
   }
 
