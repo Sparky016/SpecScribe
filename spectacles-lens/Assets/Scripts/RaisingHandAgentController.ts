@@ -46,6 +46,8 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private agentAudioComponent?: AudioComponent;
 
   private currentState: AgentState = AgentState.IDLE;
+  private readonly researchTimeoutSec: number = 30.0;
+  private researchTimeoutEvent: DelayedCallbackEvent | null = null;
   private latestCritiqueBody: string = '';
   private isCardExpanded: boolean = false;
   private animTime: number = 0;
@@ -257,17 +259,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.setVisualState(AgentState.RESEARCHING, '🔍 Researching...', '');
         this.socketClient.sendPinchCommand('ASK_AGENT', 'research', query);
       } else {
-        // Standalone preview / device test: immediately transition to HAND_RAISED and expand card
-        this.setVisualState(
-          AgentState.HAND_RAISED,
-          '⚠️ Auth Token Leak Risk',
-          '• Risk: Unsigned JWT tokens can be forged\n• Fix: Require HMAC-SHA256 signature verification\n• Alternative: Move session state to Redis Token Cache'
-        );
-        this.isCardExpanded = true;
-        if (this.expandedCritiqueCard) {
-          this.expandedCritiqueCard.enabled = true;
-        }
-        this.playNotificationSound();
+        print('[RaisingHandAgentController] No socketClient configured; ASK_AGENT research unavailable.');
       }
     } else if (this.currentState === AgentState.RESEARCHING) {
       this.setVisualState(AgentState.IDLE, '', '');
@@ -277,6 +269,21 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   public setVisualState(state: AgentState, shortTitle: string, detailedBody: string): void {
     this.currentState = state;
     this.latestCritiqueBody = detailedBody;
+
+    if (state === AgentState.RESEARCHING) {
+      if (!this.researchTimeoutEvent) {
+        this.researchTimeoutEvent = this.createEvent('DelayedCallbackEvent');
+        this.researchTimeoutEvent.bind(() => {
+          if (this.currentState === AgentState.RESEARCHING) {
+            print('[RaisingHandAgentController] Research timed out; returning to IDLE.');
+            this.setVisualState(AgentState.IDLE, '', '');
+          }
+        });
+      }
+      this.researchTimeoutEvent.reset(this.researchTimeoutSec);
+    } else if (this.researchTimeoutEvent) {
+      this.researchTimeoutEvent.cancel();
+    }
 
     if (this.handRaisedPillObject) {
       this.handRaisedPillObject.enabled = state !== AgentState.IDLE;
