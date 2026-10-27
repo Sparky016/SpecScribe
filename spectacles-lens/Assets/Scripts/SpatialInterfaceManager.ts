@@ -787,6 +787,22 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     return this.diagramStage;
   }
 
+  /**
+   * Test hook: returns per-scenario state to its initial values without re-binding scene components.
+   */
+  public resetForTest(): void {
+    if (this.concludeTimeoutEvent) {
+      this.concludeTimeoutEvent.cancel();
+    }
+    this.meetingConcluded = false;
+    this.isTouchDragging = false;
+    this.lastDragEndTime = 0;
+    this.applyInitialVisuals();
+    if (this.socketClient) {
+      this.socketClient.clearLastSentCommand();
+    }
+  }
+
   public getNodeCount(): number {
     return this.nodeCount;
   }

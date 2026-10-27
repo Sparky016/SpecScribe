@@ -3,7 +3,7 @@ import {expect} from 'Leaf.lspkg/Utils/common/Expect';
 import {sleep} from 'Leaf.lspkg/Utils/common/Utils';
 import {DefaultLeafInteractor} from 'Leaf.lspkg/Interactors/interactor/DefaultLeafInteractor';
 import {findInteractablesByName} from 'Leaf.lspkg/Interactors/InteractableUtils';
-import {getSpatialManager} from './SpecScribeTestHelpers';
+import {getSpatialManager, getSocketClient} from './SpecScribeTestHelpers';
 
 /**
  * Done Criterion 6:
@@ -24,11 +24,22 @@ export class SpecScribeDC6Scenario extends Scenario {
       await sleep(200);
     }
 
+    const socket = getSocketClient();
+    expect(socket).toBeTruthy();
+    if (!socket) return;
+
     const btnConclude = findInteractablesByName('BtnConcludeMeeting')[0];
     expect(btnConclude).toBeTruthy();
 
     await interactor.trigger(btnConclude);
     await sleep(300);
+
+    const cmd = socket.getLastSentCommand();
+    expect(cmd).toBeTruthy();
+    if (cmd) {
+      expect(cmd.eventType).toBe('pinchCommand');
+      expect(cmd.action).toBe('CONCLUDE_MEETING');
+    }
 
     expect(sm.isMeetingConcluded()).toBe(true);
     expect(sm.getDiagramStage()).toBe(3);

@@ -3,7 +3,7 @@ import {expect} from 'Leaf.lspkg/Utils/common/Expect';
 import {sleep} from 'Leaf.lspkg/Utils/common/Utils';
 import {DefaultLeafInteractor} from 'Leaf.lspkg/Interactors/interactor/DefaultLeafInteractor';
 import {findInteractablesByName} from 'Leaf.lspkg/Interactors/InteractableUtils';
-import {getSpatialManager} from './SpecScribeTestHelpers';
+import {getSpatialManager, getSocketClient} from './SpecScribeTestHelpers';
 
 /**
  * Done Criterion 3:
@@ -24,6 +24,25 @@ export class SpecScribeDC3Scenario extends Scenario {
       await sleep(200);
     }
 
+    const socket = getSocketClient();
+    expect(socket).toBeTruthy();
+    if (!socket) return;
+
+    // Demo mode sends canned labels; live mode omits the label unless fresh speech was consumed.
+    const expectAddNodeCommand = (nodeType: string): void => {
+      const cmd = socket.getLastSentCommand();
+      expect(cmd).toBeTruthy();
+      if (!cmd) return;
+      expect(cmd.eventType).toBe('pinchCommand');
+      expect(cmd.action).toBe('ADD_NODE');
+      expect(cmd.node_type).toBe(nodeType);
+      if (sm.demoMode) {
+        expect(typeof cmd.label).toBe('string');
+      } else {
+        expect(cmd.label === undefined || typeof cmd.label === 'string').toBe(true);
+      }
+    };
+
     const initialNodes = sm.getNodeCount();
 
     // 1. Pinch Decision button
@@ -34,6 +53,7 @@ export class SpecScribeDC3Scenario extends Scenario {
 
     expect(sm.getNodeCount()).toBe(initialNodes + 1);
     expect(sm.getDiagramStage()).toBe(1);
+    expectAddNodeCommand('decision');
     print(`[LEAF DC3] Decision node injected successfully. Total nodes: ${sm.getNodeCount()}`);
 
     // 2. Pinch Service button
@@ -43,6 +63,7 @@ export class SpecScribeDC3Scenario extends Scenario {
     await sleep(200);
 
     expect(sm.getNodeCount()).toBe(initialNodes + 2);
+    expectAddNodeCommand('service');
     print(`[LEAF DC3] Service node injected successfully. Total nodes: ${sm.getNodeCount()}`);
 
     // 3. Pinch Database button
@@ -52,6 +73,7 @@ export class SpecScribeDC3Scenario extends Scenario {
     await sleep(200);
 
     expect(sm.getNodeCount()).toBe(initialNodes + 3);
+    expectAddNodeCommand('database');
     print(`[LEAF DC3] Database node injected successfully. Total nodes: ${sm.getNodeCount()}`);
 
     // 4. Pinch Terminal button
@@ -61,6 +83,7 @@ export class SpecScribeDC3Scenario extends Scenario {
     await sleep(200);
 
     expect(sm.getNodeCount()).toBe(initialNodes + 4);
+    expectAddNodeCommand('terminal');
     print(`[LEAF DC3] Terminal node injected successfully. Total nodes: ${sm.getNodeCount()}`);
   }
 }

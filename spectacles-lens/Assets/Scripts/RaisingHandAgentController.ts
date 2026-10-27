@@ -196,6 +196,21 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private lastPinchTime: number = 0;
 
+  /**
+   * Test hook: returns the agent to IDLE and clears the research timeout without re-binding scene components.
+   */
+  public resetForTest(): void {
+    if (this.researchTimeoutEvent) {
+      this.researchTimeoutEvent.cancel();
+    }
+    this.isCardExpanded = false;
+    this.lastPinchTime = 0;
+    if (this.expandedCritiqueCard) {
+      this.expandedCritiqueCard.enabled = false;
+    }
+    this.setVisualState(AgentState.IDLE, '', '');
+  }
+
   public handleOrbPinched(): void {
     const now = this.animTime;
     if (now - this.lastPinchTime < 0.25) {

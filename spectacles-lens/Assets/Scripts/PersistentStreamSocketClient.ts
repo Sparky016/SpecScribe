@@ -32,6 +32,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private reconnectAttempt: number = 0;
   private reconnectEvent: DelayedCallbackEvent | null = null;
   private websocketUrl: string = '';
+  private lastSentCommand: Record<string, any> | null = null;
 
   public onDiagramUpdated: (imageB64: string, diffSummary: string) => void = () => {};
   public onHandRaised: (payload: any) => void = () => {};
@@ -73,6 +74,17 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     const phrase = this.pendingFinalPhrase;
     this.pendingFinalPhrase = null;
     return phrase;
+  }
+
+  /** Returns the last pinchCommand payload handed to the socket (recorded even when the socket is not open), or null. */
+  public getLastSentCommand(): Record<string, any> | null {
+    return this.lastSentCommand;
+  }
+
+  /** Test hook: forgets the last sent command and any unconsumed final phrase. */
+  public clearLastSentCommand(): void {
+    this.lastSentCommand = null;
+    this.pendingFinalPhrase = null;
   }
 
   public getElapsedMs(): number {
@@ -303,6 +315,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     if (label !== null && label !== undefined) {
       payload.label = label;
     }
+    this.lastSentCommand = payload;
     this.sendJson(payload);
   }
 
