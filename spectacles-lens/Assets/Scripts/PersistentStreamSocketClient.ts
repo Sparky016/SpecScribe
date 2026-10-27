@@ -2,8 +2,17 @@ import { PeriodicCameraCapturer } from './PeriodicCameraCapturer';
 
 @component
 export class PersistentStreamSocketClient extends BaseScriptComponent {
+  // Preview default. On device, set to the deployed Cloud Run wss base (no trailing slash) in the Inspector.
   @input
-  private websocketUrl: string = 'ws://localhost:8000/ws/meeting/demo-session-01';
+  private backendWsBase: string = 'ws://localhost:8000';
+
+  // Must be a UUID. Default is the backend demo meeting UUID (DEMO_MEETING_UUID in backend/session_manager.py).
+  @input
+  private meetingId: string = '00000000-0000-4000-8000-000000000d0e';
+
+  // Placeholder only: set the SPECSCRIBE_API_TOKEN value in the Lens Studio Inspector. Never commit a real token here.
+  @input
+  private apiToken: string = '';
 
   @input
   @allowUndefined
@@ -22,6 +31,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private isDestroyed: boolean = false;
   private reconnectAttempt: number = 0;
   private reconnectEvent: DelayedCallbackEvent | null = null;
+  private websocketUrl: string = '';
 
   public onDiagramUpdated: (imageB64: string, diffSummary: string) => void = () => {};
   public onHandRaised: (payload: any) => void = () => {};
@@ -30,8 +40,12 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
+      this.websocketUrl = this.buildWebsocketUrl();
       if (!this.websocketUrl) {
-        print('[PersistentStreamSocketClient] onStart failed: required input websocketUrl is empty; socket cannot connect.');
+        print('[PersistentStreamSocketClient] onStart failed: required inputs backendWsBase or meetingId are empty; socket cannot connect.');
+      }
+      if (!this.apiToken) {
+        print('[PersistentStreamSocketClient] apiToken input is empty; a backend with auth enabled will reject the handshake.');
       }
       this.meetingStartEpochMs = Date.now();
       this.initializeWebSocket();
@@ -71,6 +85,16 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   public getWebsocketUrl(): string {
     return this.websocketUrl;
+  }
+
+  /**
+   * Composes the socket URL from backendWsBase, meetingId and the URI-encoded apiToken. Returns '' when base or meeting ID is empty.
+   */
+  private buildWebsocketUrl(): string {
+    if (!this.backendWsBase || !this.meetingId) {
+      return '';
+    }
+    return `${this.backendWsBase}/ws/meeting/${this.meetingId}?token=${encodeURIComponent(this.apiToken ?? '')}`;
   }
 
   public setWebsocketUrl(url: string): void {
