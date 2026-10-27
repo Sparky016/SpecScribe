@@ -3,6 +3,7 @@ import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 import { RaisingHandAgentController } from './RaisingHandAgentController';
 import { LENS_NODE_REGISTRY } from './NodeRegistry';
 import { PinchAction } from './PinchActions';
+import { findSceneObject } from './SceneUtils';
 
 export enum WhiteboardState {
   SELECT_AREA = 0,    // Area selection mode: Reticle overlay, no drawings
@@ -381,7 +382,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         print(`[SpatialInterfaceManager] resolveReferences agent lookup failed: ${e}`);
       }
       if (!this.raisingHandAgent) {
-        const agentObj = this.findSceneObject('RaisingHandAgentRoot') || this.findSceneObject('SpecScribeControllers');
+        const agentObj = findSceneObject('RaisingHandAgentRoot') || findSceneObject('SpecScribeControllers');
         if (agentObj) {
           const comps = agentObj.getComponents('Component.ScriptComponent' as any);
           for (const c of comps) {
@@ -395,21 +396,21 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (!this.diffToastText) {
-      const obj = this.findSceneObject('DiffToastText');
+      const obj = findSceneObject('DiffToastText');
       if (obj) {
         this.diffToastText = obj.getComponent('Component.Text' as any) as any;
       }
     }
 
     if (!this.diagramOverlayMesh) {
-      const obj = this.findSceneObject('WhiteboardOverlayAnchor') || this.findSceneObject('WhiteboardOverlay');
+      const obj = findSceneObject('WhiteboardOverlayAnchor') || findSceneObject('WhiteboardOverlay');
       if (obj) {
         this.diagramOverlayMesh = obj.getComponent('Component.RenderMeshVisual' as any) as any;
       }
     }
 
     if (!this.whiteboardBoardMesh) {
-      const obj = this.findSceneObject('WhiteboardBackplate') || this.findSceneObject('WhiteboardBoard');
+      const obj = findSceneObject('WhiteboardBackplate') || findSceneObject('WhiteboardBoard');
       if (obj) {
         this.whiteboardBoardMesh = obj.getComponent('Component.RenderMeshVisual' as any) as any;
       }
@@ -439,36 +440,8 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
   }
 
-  private findSceneObject(name: string): SceneObject | null {
-    try {
-      if (typeof global !== 'undefined' && (global as any).scene) {
-        const sc = (global as any).scene;
-        const count = sc.getRootObjectsCount();
-        for (let i = 0; i < count; i++) {
-          const found = this.searchHierarchy(sc.getRootObject(i), name);
-          if (found) return found;
-        }
-      }
-    } catch (e) {
-      print(`[SpatialInterfaceManager] findSceneObject failed: ${e}`);
-    }
-    return null;
-  }
-
-  private searchHierarchy(obj: SceneObject, name: string): SceneObject | null {
-    if (obj.name === name) {
-      return obj;
-    }
-    const count = obj.getChildrenCount();
-    for (let i = 0; i < count; i++) {
-      const found = this.searchHierarchy(obj.getChild(i), name);
-      if (found) return found;
-    }
-    return null;
-  }
-
   private findInteractable(name: string): Interactable | undefined {
-    const obj = this.findSceneObject(name);
+    const obj = findSceneObject(name);
     if (!obj) {
       print(`[SpatialInterfaceManager] Object "${name}" not found in scene hierarchy`);
       return undefined;

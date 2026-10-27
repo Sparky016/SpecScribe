@@ -1,5 +1,6 @@
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
+import { findSceneObject } from './SceneUtils';
 
 export enum AgentState {
   IDLE = 'IDLE',
@@ -97,72 +98,44 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private resolveReferences(): void {
     if (!this.handRaisedPillObject) {
-      this.handRaisedPillObject = this.findSceneObject('HandRaisedPillBadge') || undefined;
+      this.handRaisedPillObject = findSceneObject('HandRaisedPillBadge') || undefined;
     }
     if (!this.pillTitleText) {
-      const pill = this.handRaisedPillObject || this.findSceneObject('PillTitleText');
+      const pill = this.handRaisedPillObject || findSceneObject('PillTitleText');
       if (pill) {
         this.pillTitleText = pill.getComponent('Component.Text' as any) as any;
       }
     }
     if (!this.expandedCritiqueCard) {
-      this.expandedCritiqueCard = this.findSceneObject('ExpandedCritiqueCard') || undefined;
+      this.expandedCritiqueCard = findSceneObject('ExpandedCritiqueCard') || undefined;
     }
     if (!this.critiqueBodyText) {
-      const card = this.expandedCritiqueCard || this.findSceneObject('CritiqueBodyText');
+      const card = this.expandedCritiqueCard || findSceneObject('CritiqueBodyText');
       if (card) {
         this.critiqueBodyText = card.getComponent('Component.Text' as any) as any;
       }
     }
     if (!this.researchingRingObject) {
-      this.researchingRingObject = this.findSceneObject('ResearchingRingMesh') || undefined;
+      this.researchingRingObject = findSceneObject('ResearchingRingMesh') || undefined;
     }
     if (!this.agentOrbMeshVisual) {
-      const orbObj = this.findSceneObject('AgentOrbMesh');
+      const orbObj = findSceneObject('AgentOrbMesh');
       if (orbObj) {
         this.agentOrbMeshVisual = orbObj.getComponent('Component.RenderMeshVisual' as any) as any;
       }
     }
     if (!this.agentOrbPinchButton) {
-      const orbObj = this.findSceneObject('AgentOrbMesh') || this.findSceneObject('RaisingHandAgentRoot');
+      const orbObj = findSceneObject('AgentOrbMesh') || findSceneObject('RaisingHandAgentRoot');
       if (orbObj) {
         this.agentOrbPinchButton = this.findInteractableOnObject(orbObj);
       }
     }
     if (!this.agentAudioComponent) {
-      const audioObj = this.findSceneObject('AgentVoicePlayer') || this.getSceneObject();
+      const audioObj = findSceneObject('AgentVoicePlayer') || this.getSceneObject();
       if (audioObj) {
         this.agentAudioComponent = audioObj.getComponent('Component.AudioComponent' as any) as any;
       }
     }
-  }
-
-  private findSceneObject(name: string): SceneObject | null {
-    try {
-      if (typeof global !== 'undefined' && (global as any).scene) {
-        const sc = (global as any).scene;
-        const count = sc.getRootObjectsCount();
-        for (let i = 0; i < count; i++) {
-          const found = this.searchHierarchy(sc.getRootObject(i), name);
-          if (found) return found;
-        }
-      }
-    } catch (e) {
-      print(`[RaisingHandAgentController] findSceneObject failed: ${e}`);
-    }
-    return null;
-  }
-
-  private searchHierarchy(obj: SceneObject, name: string): SceneObject | null {
-    if (obj.name === name) {
-      return obj;
-    }
-    const count = obj.getChildrenCount();
-    for (let i = 0; i < count; i++) {
-      const found = this.searchHierarchy(obj.getChild(i), name);
-      if (found) return found;
-    }
-    return null;
   }
 
   private findInteractableOnObject(obj: SceneObject): Interactable | undefined {
@@ -364,7 +337,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private anchorToCamera(): void {
     if (!this.agentRootObject) {
-      this.agentRootObject = this.findSceneObject('RaisingHandAgentRoot') || undefined;
+      this.agentRootObject = findSceneObject('RaisingHandAgentRoot') || undefined;
     }
     if (!this.cameraObject) {
       this.cameraObject = this.findCameraObject() || undefined;
@@ -384,7 +357,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   }
 
   private findCameraObject(): SceneObject | null {
-    const direct = this.findSceneObject('Camera Object') || this.findSceneObject('Camera') || this.findSceneObject('Main Camera');
+    const direct = findSceneObject('Camera Object') || findSceneObject('Camera') || findSceneObject('Main Camera');
     if (direct) {
       return direct;
     }
@@ -417,7 +390,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   }
 
   private configureOrbCollider(): void {
-    const orbObj = this.findSceneObject('AgentOrbMesh');
+    const orbObj = findSceneObject('AgentOrbMesh');
     if (orbObj) {
       try {
         let col = orbObj.getComponent('Physics.ColliderComponent' as any) || orbObj.getComponent('Component.ColliderComponent' as any);
