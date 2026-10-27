@@ -187,21 +187,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private bindInteractions(): void {
     if (this.socketClient) {
       this.socketClient.onHandRaised = (payload: any) => {
-        let title = payload.short_title || 'Agent Insight';
-        if (payload.category) {
-          const cat = payload.category.toUpperCase();
-          if (cat === 'VULNERABILITY' && !title.includes('🚩')) {
-            title = `🚩 ${title}`;
-          } else if (cat === 'LOGIC_FLAW' && !title.includes('⚠️')) {
-            title = `⚠️ ${title}`;
-          } else if (cat === 'ALTERNATIVE_IDEA' && !title.includes('💡')) {
-            title = `💡 ${title}`;
-          }
-        }
-        title = title.substring(0, 28);
-        const body = payload.detailed_body || '';
-        this.setVisualState(AgentState.HAND_RAISED, title, body);
-        this.playNotificationSound();
+        this.triggerHandRaised(payload.short_title || 'Agent Insight', payload.detailed_body || '', payload.category);
       };
     }
 
@@ -477,15 +463,18 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     let title = shortTitle;
     if (category) {
       const cat = category.toUpperCase();
-      if (cat === 'VULNERABILITY' && !title.includes('🚩')) {
-        title = `🚩 ${title}`;
-      } else if (cat === 'LOGIC_FLAW' && !title.includes('⚠️')) {
-        title = `⚠️ ${title}`;
-      } else if (cat === 'ALTERNATIVE_IDEA' && !title.includes('💡')) {
-        title = `💡 ${title}`;
+      // Remove any leading emoji (and variation selectors/spaces) so exactly one category icon is shown.
+      const bare = title.replace(/^(\p{Extended_Pictographic}️?\s*)+/u, '');
+      if (cat === 'VULNERABILITY') {
+        title = `🚩 ${bare}`;
+      } else if (cat === 'LOGIC_FLAW') {
+        title = `⚠️ ${bare}`;
+      } else if (cat === 'ALTERNATIVE_IDEA') {
+        title = `💡 ${bare}`;
       }
     }
-    this.setVisualState(AgentState.HAND_RAISED, title.substring(0, 28), detailedBody);
+    // Code-point-safe truncation so a surrogate pair is never split.
+    this.setVisualState(AgentState.HAND_RAISED, Array.from(title).slice(0, 28).join(''), detailedBody);
     this.playNotificationSound();
   }
 }

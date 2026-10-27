@@ -458,7 +458,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(pillObj.enabled, true);
       assert.equal(cardObj.enabled, false); // Not expanded yet
       assert.ok(pillText.text.startsWith('🚩 '));
-      assert.ok(pillText.text.length <= 28, `Title length ${pillText.text.length} exceeds 28 chars`);
+      assert.ok(Array.from(pillText.text).length <= 28, `Title length ${Array.from(pillText.text).length} code points exceeds 28`);
       assert.equal(audioComp.playCount, 1); // Audio chime played
     });
 
