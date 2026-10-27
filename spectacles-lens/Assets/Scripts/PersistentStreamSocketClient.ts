@@ -97,6 +97,26 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     return `${this.backendWsBase}/ws/meeting/${this.meetingId}?token=${encodeURIComponent(this.apiToken ?? '')}`;
   }
 
+  /**
+   * Socket URL without its query string, so the API token never reaches logs.
+   */
+  private redactedWebsocketUrl(): string {
+    return (this.websocketUrl ?? '').split('?')[0];
+  }
+
+  /**
+   * Masks the API token (raw and URI-encoded) and any token= query value in an error message before it is logged.
+   */
+  private redactSecrets(text: string): string {
+    let out = text;
+    for (const secret of [this.apiToken, encodeURIComponent(this.apiToken ?? '')]) {
+      if (secret) {
+        out = out.split(secret).join('<redacted>');
+      }
+    }
+    return out.replace(/([?&]token=)[^&\s]*/g, '$1<redacted>');
+  }
+
   public setWebsocketUrl(url: string): void {
     this.websocketUrl = url;
     if (this.activeSocket) {
@@ -134,13 +154,13 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       this.activeSocket.binaryType = 'blob';
 
       this.activeSocket.onopen = () => {
-        print(`[PersistentStreamSocketClient] Connected to ${this.websocketUrl}`);
+        print(`[PersistentStreamSocketClient] Connected to ${this.redactedWebsocketUrl()}`);
         this.reconnectAttempt = 0;
         if (this.reconnectEvent) {
           try {
             this.reconnectEvent.cancel();
           } catch (e) {
-            print(`[PersistentStreamSocketClient] onopen reconnect cancel failed: ${e}`);
+            print(`[PersistentStreamSocketClient] onopen reconnect cancel failed: ${this.redactSecrets(String(e))}`);
           }
         }
         this.sendJson({
@@ -166,7 +186,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
         this.scheduleReconnect();
       };
     } catch (e) {
-      print(`[PersistentStreamSocketClient] initializeWebSocket failed: ${e}`);
+      print(`[PersistentStreamSocketClient] initializeWebSocket failed: ${this.redactSecrets(String(e))}`);
       this.scheduleReconnect();
     }
   }
@@ -208,7 +228,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
         print(`[PersistentStreamSocketClient] Command error (${msg.action}): ${msg.message}`);
       }
     } catch (e) {
-      print(`[PersistentStreamSocketClient] routeInboundJson failed: ${e}`);
+      print(`[PersistentStreamSocketClient] routeInboundJson failed: ${this.redactSecrets(String(e))}`);
     }
   }
 
@@ -238,7 +258,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       this.asrModule.startTranscribing(asrOptions);
       print('[PersistentStreamSocketClient] ASR transcription stream started in HighSpeed mode.');
     } catch (e) {
-      print(`[PersistentStreamSocketClient] initializeAsrStream failed: ${e}`);
+      print(`[PersistentStreamSocketClient] initializeAsrStream failed: ${this.redactSecrets(String(e))}`);
     }
   }
 
@@ -253,7 +273,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
           }
         }
       } catch (e) {
-        print(`[PersistentStreamSocketClient] bindCameraCapturer failed: ${e}`);
+        print(`[PersistentStreamSocketClient] bindCameraCapturer failed: ${this.redactSecrets(String(e))}`);
       }
     }
     if (!this.cameraCapturer) {
@@ -298,13 +318,13 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       try {
         this.reconnectEvent.cancel();
       } catch (e) {
-        print(`[PersistentStreamSocketClient] cleanup reconnect cancel failed: ${e}`);
+        print(`[PersistentStreamSocketClient] cleanup reconnect cancel failed: ${this.redactSecrets(String(e))}`);
       }
     }
     try {
       this.asrModule.stopTranscribing();
     } catch (e) {
-      print(`[PersistentStreamSocketClient] cleanup stopTranscribing failed: ${e}`);
+      print(`[PersistentStreamSocketClient] cleanup stopTranscribing failed: ${this.redactSecrets(String(e))}`);
     }
     if (this.activeSocket) {
       this.activeSocket.close();

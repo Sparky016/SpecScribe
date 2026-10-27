@@ -89,4 +89,50 @@ describe('Task 38: Lens connection composed from base, UUID meeting ID and token
     assert.equal(client.getWebsocketUrl(), '');
     assert.equal(created[0].url, '');
   });
+
+  test('AC2: no logged line contains the API token on connect or on a failed socket create', () => {
+    const TOKEN = 'sekret+tok/en=';
+    const ENCODED = encodeURIComponent(TOKEN);
+    const logged = [];
+    const originalPrint = global.print;
+    global.print = (msg) => logged.push(String(msg));
+    try {
+      const created = installSocketFactory();
+      const client = createComponentInstance(PersistentStreamSocketClient);
+      client.backendWsBase = 'wss://specscribe-backend.example.run.app';
+      client.meetingId = '5f1c2b7e-9a3d-4c8e-b1f0-2d6e7a8b9c0d';
+      client.apiToken = TOKEN;
+      client.onAwake();
+      client._testEvents.OnStartEvent.trigger();
+      created[0].onopen();
+
+      assert.ok(logged.some((line) => line.includes(
+        'Connected to wss://specscribe-backend.example.run.app/ws/meeting/5f1c2b7e-9a3d-4c8e-b1f0-2d6e7a8b9c0d'
+      )));
+      for (const line of logged) {
+        assert.ok(!line.includes(TOKEN), `token leaked: ${line}`);
+        assert.ok(!line.includes(ENCODED), `encoded token leaked: ${line}`);
+        assert.ok(!line.includes('token='), `token query leaked: ${line}`);
+      }
+
+      logged.length = 0;
+      global._mockSocketFactory = (url) => {
+        throw new Error(`Invalid URL: ${url}`);
+      };
+      const failing = createComponentInstance(PersistentStreamSocketClient);
+      failing.backendWsBase = 'wss://specscribe-backend.example.run.app';
+      failing.meetingId = '5f1c2b7e-9a3d-4c8e-b1f0-2d6e7a8b9c0d';
+      failing.apiToken = TOKEN;
+      failing.onAwake();
+      failing._testEvents.OnStartEvent.trigger();
+
+      assert.ok(logged.some((line) => line.includes('initializeWebSocket failed')));
+      for (const line of logged) {
+        assert.ok(!line.includes(TOKEN), `token leaked: ${line}`);
+        assert.ok(!line.includes(ENCODED), `encoded token leaked: ${line}`);
+      }
+    } finally {
+      global.print = originalPrint;
+    }
+  });
 });
