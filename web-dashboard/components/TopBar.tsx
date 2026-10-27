@@ -47,7 +47,12 @@ export const TopBar: React.FC<TopBarProps> = ({
     150000
   );
 
-  const hasDrawio = Boolean(currentSnapshotXml || timeline.meeting.latest_drawio_xml);
+  // Distinct speakers, in order of first appearance
+  const speakerLabels = Array.from(
+    new Set(timeline.transcript_turns.map((t) => t.speaker_label).filter(Boolean))
+  );
+
+  const hasDrawio =Boolean(currentSnapshotXml || timeline.meeting.latest_drawio_xml);
   const hasSpec = Boolean(timeline.meeting.generated_spec_md);
 
   const handleExport = (type: "drawio" | "md" | "json") => {
@@ -100,14 +105,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       {/* Center/Right: Speaker Badges */}
       <div className="hidden lg:flex items-center gap-2">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#107C41]/20 border border-[#00FF66]/30 text-xs font-medium text-[#00FF66]">
-          <User className="w-3.5 h-3.5" />
-          <span>Speaker 0 (Ruan)</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0D47A1]/20 border border-[#00E5FF]/30 text-xs font-medium text-[#00E5FF]">
-          <User className="w-3.5 h-3.5" />
-          <span>Speaker 1 (Architect)</span>
-        </div>
+        {speakerLabels.map((label, i) => (
+          <div
+            key={label}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
+              i % 2 === 0
+                ? "bg-[#107C41]/20 border-[#00FF66]/30 text-[#00FF66]"
+                : "bg-[#0D47A1]/20 border-[#00E5FF]/30 text-[#00E5FF]"
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>{label}</span>
+          </div>
+        ))}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
           <Bot className="w-3.5 h-3.5" />
           <span>Raising-Hand AI</span>
