@@ -13,7 +13,7 @@ from agents.spec_generator import (
     format_timestamp_ms,
     parse_timestamp_label,
 )
-from main import app, live_sessions, memory_store, get_or_create_session
+from main import app, session_manager
 
 
 @pytest.fixture
@@ -379,14 +379,14 @@ def test_rest_api_finalize_and_ask_flow():
     mid = create_resp.json()["id"]
 
     # 2. Add transcript turn via session memory
-    memory_store["transcript_turns"][mid].append({
+    session_manager.memory_store["transcript_turns"][mid].append({
         "id": "t1",
         "meeting_id": mid,
         "speaker_label": "Speaker 0 (Ruan)",
         "transcript_text": "Adding Redis to handle peak auth traffic.",
         "timestamp_ms": 36000,
     })
-    memory_store["diagram_snapshots"][mid].append({
+    session_manager.memory_store["diagram_snapshots"][mid].append({
         "id": "s1",
         "meeting_id": mid,
         "timestamp_ms": 36000,

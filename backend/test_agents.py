@@ -20,7 +20,7 @@ from agents.raising_hand_agent import (
     RaisingHandAgent,
     RaisingHandEvaluation,
 )
-from main import app, live_sessions, memory_store, db_save_transcript_turn, db_save_diagram_snapshot
+from main import app
 
 
 @pytest.fixture

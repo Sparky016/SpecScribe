@@ -57,8 +57,6 @@ class RaisingHandAgent:
 
         # Tracking per meeting: meeting_id -> Set of triggered short_titles (to avoid duplicates)
         self._history: Dict[str, Set[str]] = {}
-        # Last intervention timestamp per meeting: meeting_id -> int (ms)
-        self._last_intervention_time: Dict[str, int] = {}
         # Active background tasks: meeting_id -> asyncio.Task
         self._active_loops: Dict[str, asyncio.Task] = {}
         # Structured health telemetry: meeting_id -> telemetry dict
@@ -332,7 +330,6 @@ class RaisingHandAgent:
 
         # Update history and timestamp
         self._history.setdefault(meeting_id, set()).add(short_title)
-        self._last_intervention_time[meeting_id] = timestamp_ms
 
         # Broadcast via WebSocket
         payload = {
@@ -486,7 +483,6 @@ class RaisingHandAgent:
         """Stops the meeting's loop and drops its per-meeting history (used on session eviction)."""
         self.stop_proactive_loop(meeting_id)
         self._history.pop(meeting_id, None)
-        self._last_intervention_time.pop(meeting_id, None)
 
     def health(self) -> Dict[str, Any]:
         """Public read-only snapshot of proactive-loop health (used by /api/health)."""

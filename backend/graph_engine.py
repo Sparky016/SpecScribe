@@ -17,7 +17,6 @@ from PIL import Image
 from pydantic import BaseModel, Field
 
 # drawio-mcp imports
-import drawio_mcp.layout_engine as layout_engine_module
 from drawio_mcp.layout_engine import LayoutEngineConfig, relayout_diagram
 from drawio_mcp.models import Diagram, DrawioFile, MxCell
 
@@ -100,11 +99,6 @@ class LayoutEngine:
             compact=True,
         )
         return relayout_diagram(diagram, direction=direction, config=cfg)
-
-
-# Alias into drawio_mcp.layout_engine for compatibility with prompt specs
-if not hasattr(layout_engine_module, "LayoutEngine"):
-    setattr(layout_engine_module, "LayoutEngine", LayoutEngine)
 
 
 class LiveGraphSession:
@@ -550,27 +544,3 @@ async def extract_graph_delta_from_gemini(
     )
 
 
-def extract_graph_delta_from_gemini_sync(
-    image_bytes: bytes,
-    existing_nodes: List[Dict[str, str]],
-    api_key: Optional[str] = None,
-) -> GraphDeltaSchema:
-    """Synchronous wrapper for offline testing or blocking contexts."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                return pool.submit(
-                    asyncio.run,
-                    extract_graph_delta_from_gemini(image_bytes, existing_nodes, api_key)
-                ).result()
-        else:
-            return loop.run_until_complete(
-                extract_graph_delta_from_gemini(image_bytes, existing_nodes, api_key)
-            )
-    except Exception:
-        return asyncio.run(extract_graph_delta_from_gemini(image_bytes, existing_nodes, api_key))
-
-
-extract_graph_delta_from_gemini_async = extract_graph_delta_from_gemini

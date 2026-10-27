@@ -13,7 +13,7 @@ import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
@@ -32,7 +32,6 @@ from slowapi.util import get_remote_address
 from auth import WS_UNAUTHORIZED_CLOSE_CODE, require_api_token, validate_auth_config, ws_token_ok
 from graph_engine import (
     HeadlessDrawioDaemon,
-    LiveGraphSession,
     extract_graph_delta_from_gemini,
 )
 from agents.decision_linker import DecisionLinkerAgent
@@ -93,49 +92,6 @@ except Exception as e:
 # Encapsulated In-Memory Session & State Manager (DIP)
 session_manager = SessionManager(supabase_client=supabase_client)
 envelope_router = EnvelopeRouter()
-
-# Module-Level Backward-Compatibility Aliases
-renderer_daemon = session_manager.renderer_daemon
-live_sessions: Dict[str, LiveGraphSession] = session_manager.live_sessions
-active_connections: Dict[str, Set[WebSocket]] = session_manager.active_connections
-memory_store: Dict[str, Dict[str, Any]] = session_manager.memory_store
-decision_linker = session_manager.decision_linker
-raising_hand_agent = session_manager.raising_hand_agent
-spec_generator = session_manager.spec_generator
-
-
-def get_or_create_session(meeting_id: str) -> LiveGraphSession:
-    return session_manager.get_or_create_session(meeting_id)
-
-
-async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any], exclude: Optional[WebSocket] = None):
-    await session_manager.broadcast_to_meeting(meeting_id, message, exclude=exclude)
-
-
-# Database Persistence Helpers (backward compatibility wrappers)
-async def db_save_transcript_turn(meeting_id: str, speaker_label: str, transcript_text: str, timestamp_ms: int) -> str:
-    return await session_manager.db_save_transcript_turn(meeting_id, speaker_label, transcript_text, timestamp_ms)
-
-
-async def db_save_diagram_snapshot(
-    meeting_id: str,
-    timestamp_ms: int,
-    drawio_xml: str,
-    diff_summary: str,
-    decision_rationale: Optional[str],
-    triggered_by: str,
-    overlay_image_url: Optional[str] = None,
-) -> str:
-    return await session_manager.db_save_diagram_snapshot(
-        meeting_id=meeting_id,
-        timestamp_ms=timestamp_ms,
-        drawio_xml=drawio_xml,
-        diff_summary=diff_summary,
-        decision_rationale=decision_rationale,
-        triggered_by=triggered_by,
-        overlay_image_url=overlay_image_url,
-    )
-
 
 # FastAPI Lifespan Handler
 @asynccontextmanager

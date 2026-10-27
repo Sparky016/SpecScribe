@@ -25,7 +25,7 @@ from graph_engine import (
 )
 from starlette.websockets import WebSocketDisconnect
 from auth import validate_auth_config
-from main import app, limiter, live_sessions, memory_store, renderer_daemon, session_manager
+from main import app, limiter, session_manager
 
 TEST_API_TOKEN = "test-token-123"
 AUTH_HEADERS = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
@@ -305,7 +305,7 @@ def test_websocket_pinch_command_and_transcription():
             assert len(diagram_update["image_b64"]) > 50
 
             # Verify session state
-            session = live_sessions[meeting_id]
+            session = session_manager.live_sessions[meeting_id]
             assert "kafka event bus" in session.node_by_label
 
 
@@ -416,7 +416,7 @@ def test_websocket_pinch_command_resilience():
             assert "Could not connect" in err_msg2["message"]
 
             # 4. Simulate Headless Playwright renderer crash (RuntimeError) during ADD_NODE
-            with patch.object(renderer_daemon, "render_b64_png", side_effect=RuntimeError("Playwright Chromium daemon crashed or restarted")):
+            with patch.object(session_manager.renderer_daemon, "render_b64_png", side_effect=RuntimeError("Playwright Chromium daemon crashed or restarted")):
                 ws.send_json({
                     "eventType": "pinchCommand",
                     "action": "ADD_NODE",
@@ -467,7 +467,7 @@ def test_gemini_post_routes_rate_limited_per_client():
     """11th POST /ask within a minute from one client returns 429 + Retry-After; GET routes stay open."""
     answer = AsyncMock(return_value={"answer": "stub"})
     limiter.reset()
-    memory_store["meetings"]["rl-1"] = {"id": "rl-1", "title": "rl"}
+    session_manager.memory_store["meetings"]["rl-1"] = {"id": "rl-1", "title": "rl"}
     try:
         with patch.object(session_manager.spec_generator, "answer_question", answer):
             with TestClient(app, headers=AUTH_HEADERS) as client:
@@ -480,7 +480,7 @@ def test_gemini_post_routes_rate_limited_per_client():
                 for _ in range(20):
                     assert client.get("/api/meetings/rl-1/timeline").status_code == 200
     finally:
-        memory_store["meetings"].pop("rl-1", None)
+        session_manager.memory_store["meetings"].pop("rl-1", None)
         limiter.reset()
 
 
@@ -521,7 +521,7 @@ def test_websocket_rejected_without_valid_token():
                 with client.websocket_connect(url):
                     pass
             assert exc.value.code == 4401
-    assert "auth-ws-1" not in live_sessions
+    assert "auth-ws-1" not in session_manager.live_sessions
 
 
 def test_websocket_accepts_valid_token():
@@ -581,7 +581,7 @@ def test_websocket_rejects_non_uuid_meeting_id(monkeypatch):
                 with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}"):
                     pass
             assert exc.value.code == 4400
-    assert "not-a-uuid" not in live_sessions
+    assert "not-a-uuid" not in session_manager.live_sessions
 
 
 def test_websocket_demo_id_maps_to_fixed_uuid_in_demo_mode(monkeypatch):
@@ -592,8 +592,8 @@ def test_websocket_demo_id_maps_to_fixed_uuid_in_demo_mode(monkeypatch):
     with TestClient(app) as client:
         with client.websocket_connect(f"/ws/meeting/demo-session-01?token={TEST_API_TOKEN}") as ws:
             ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
-            assert DEMO_MEETING_UUID in live_sessions
-    live_sessions.pop(DEMO_MEETING_UUID, None)
+            assert DEMO_MEETING_UUID in session_manager.live_sessions
+    session_manager.live_sessions.pop(DEMO_MEETING_UUID, None)
 
 
 @pytest.mark.asyncio
@@ -696,15 +696,15 @@ def test_unknown_meeting_routes_404_and_create_no_session(monkeypatch):
     monkeypatch.setattr(session_manager, "supabase_client", None)
     mid = "00000000-0000-4000-8000-000000000231"
     limiter.reset()
-    sessions_before = set(live_sessions)
-    meetings_before = set(memory_store["meetings"])
+    sessions_before = set(session_manager.live_sessions)
+    meetings_before = set(session_manager.memory_store["meetings"])
     with TestClient(app, headers=AUTH_HEADERS) as client:
         assert client.get(f"/api/meetings/{mid}/timeline").status_code == 404
         assert client.post(f"/api/meetings/{mid}/finalize").status_code == 404
         assert client.post(f"/api/meetings/{mid}/proactive-critique").status_code == 404
         assert client.post(f"/api/meetings/{mid}/ask", json={"question": "q"}).status_code == 404
-    assert set(live_sessions) == sessions_before
-    assert set(memory_store["meetings"]) == meetings_before
+    assert set(session_manager.live_sessions) == sessions_before
+    assert set(session_manager.memory_store["meetings"]) == meetings_before
     limiter.reset()
 
 
@@ -717,15 +717,13 @@ def test_idle_session_evicted_after_last_disconnect_with_zero_ttl(monkeypatch):
             ws.send_json(_HANDSHAKE)
             assert _receive_json_bounded(ws)["event"] == "HANDSHAKE_ACK"
             session_manager.raising_hand_agent._history[mid] = {"x"}
-            session_manager.raising_hand_agent._last_intervention_time[mid] = 5
-            assert mid in live_sessions
+            assert mid in session_manager.live_sessions
             assert session_manager.evict(mid) is False  # live socket: refused
-            assert mid in live_sessions
-    assert mid not in live_sessions
-    assert mid not in memory_store["meetings"]
+            assert mid in session_manager.live_sessions
+    assert mid not in session_manager.live_sessions
+    assert mid not in session_manager.memory_store["meetings"]
     assert mid not in session_manager.active_connections
     assert mid not in session_manager.raising_hand_agent._history
-    assert mid not in session_manager.raising_hand_agent._last_intervention_time
     assert mid not in session_manager.raising_hand_agent._active_loops
 
 
@@ -738,25 +736,25 @@ def test_session_kept_within_ttl_and_swept_after(monkeypatch):
     try:
         session_manager.get_or_create_session(mid)
         assert session_manager.sweep_idle_sessions() == 0
-        assert mid in live_sessions
+        assert mid in session_manager.live_sessions
         session_manager.active_connections[mid].add(object())  # a live socket blocks eviction
         now[0] += 500
         assert session_manager.sweep_idle_sessions() == 0
-        assert mid in live_sessions
+        assert mid in session_manager.live_sessions
         session_manager.active_connections.pop(mid)
         assert session_manager.sweep_idle_sessions() == 1
-        assert mid not in live_sessions
+        assert mid not in session_manager.live_sessions
     finally:
         session_manager.active_connections.pop(mid, None)
-        live_sessions.pop(mid, None)
-        memory_store["meetings"].pop(mid, None)
+        session_manager.live_sessions.pop(mid, None)
+        session_manager.memory_store["meetings"].pop(mid, None)
 
 
 def test_session_cap_rejects_new_websocket_with_4429(monkeypatch):
     first = "00000000-0000-4000-8000-000000000234"
     second = "00000000-0000-4000-8000-000000000235"
     monkeypatch.setattr(session_manager, "supabase_client", None)
-    monkeypatch.setenv("SPECSCRIBE_MAX_SESSIONS", str(len(live_sessions) + 1))
+    monkeypatch.setenv("SPECSCRIBE_MAX_SESSIONS", str(len(session_manager.live_sessions) + 1))
     try:
         with TestClient(app) as client:
             with client.websocket_connect(f"/ws/meeting/{first}?token={TEST_API_TOKEN}") as ws:
@@ -766,7 +764,7 @@ def test_session_cap_rejects_new_websocket_with_4429(monkeypatch):
                     with client.websocket_connect(f"/ws/meeting/{second}?token={TEST_API_TOKEN}"):
                         pass
                 assert exc.value.code == 4429
-                assert second not in live_sessions
+                assert second not in session_manager.live_sessions
                 # an existing meeting may still take another socket
                 with client.websocket_connect(f"/ws/meeting/{first}?token={TEST_API_TOKEN}") as ws2:
                     ws2.send_json(_HANDSHAKE)
