@@ -1,3 +1,5 @@
+import { NodeType } from "./nodeRegistry";
+
 export interface Meeting {
   id: string;
   title: string;
@@ -83,7 +85,7 @@ export interface ParsedVertex {
   id: string;
   label: string;
   style: string;
-  type: "service" | "decision" | "database" | "terminal" | "default";
+  type: NodeType | "default";
   x: number;
   y: number;
   width: number;

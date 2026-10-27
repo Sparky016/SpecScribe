@@ -13,6 +13,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { DiagramSnapshot, ParsedGraph, ParsedVertex } from "../lib/types";
+import { NODE_REGISTRY, NodeDefinition, NodeType } from "../lib/nodeRegistry";
 import { parseDrawioXml } from "../lib/xmlParser";
 import { formatTimestamp } from "../lib/api";
 
@@ -273,7 +274,7 @@ export const DrawioCanvas: React.FC<DrawioCanvasProps> = ({
                         y="-4"
                         width={node.width + 8}
                         height={node.height + 8}
-                        rx={node.type === "terminal" ? "40" : "14"}
+                        rx={shapeOf(node.type) === "ellipse" ? "40" : "14"}
                         fill="none"
                         stroke={node.strokeColor || "#00FF66"}
                         strokeWidth="2"
@@ -354,10 +355,15 @@ export const DrawioCanvas: React.FC<DrawioCanvasProps> = ({
   );
 };
 
+function shapeOf(type: ParsedVertex["type"]): NodeDefinition["shape"] | undefined {
+  return type in NODE_REGISTRY ? NODE_REGISTRY[type as NodeType].shape : undefined;
+}
+
 function renderNodeShape(node: ParsedVertex, isHighlighted: boolean) {
   const { width, height, type, fillColor, strokeColor } = node;
+  const shape = shapeOf(type);
 
-  if (type === "database") {
+  if (shape === "cylinder") {
     // Render Cylinder
     const capHeight = 16;
     return (
@@ -397,7 +403,7 @@ function renderNodeShape(node: ParsedVertex, isHighlighted: boolean) {
     );
   }
 
-  if (type === "decision") {
+  if (shape === "rhombus") {
     // Render Rhombus (Diamond)
     const points = `${width / 2},0 ${width},${height / 2} ${width / 2},${height} 0,${height / 2}`;
     return (
@@ -410,7 +416,7 @@ function renderNodeShape(node: ParsedVertex, isHighlighted: boolean) {
     );
   }
 
-  if (type === "terminal") {
+  if (shape === "ellipse") {
     // Render Ellipse / Pill
     return (
       <rect

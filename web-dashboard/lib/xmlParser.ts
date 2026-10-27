@@ -127,7 +127,7 @@ export function parseDrawioXml(xmlString: string): ParsedGraph {
   return { vertices, edges };
 }
 
-function detectNodeType(style: string, label: string): "service" | "decision" | "database" | "terminal" | "default" {
+function detectNodeType(style: string, label: string): NodeType | "default" {
   const s = style.toLowerCase();
   const l = label.toLowerCase();
   const order: NodeType[] = ["database", "decision", "terminal", "service"];
@@ -145,7 +145,7 @@ function detectNodeType(style: string, label: string): "service" | "decision" | 
   return "service";
 }
 
-function extractColors(style: string, type: "service" | "decision" | "database" | "terminal" | "default") {
+function extractColors(style: string, type: NodeType | "default") {
   const fillMatch = style.match(/fillColor=([^;]+)/);
   const strokeMatch = style.match(/strokeColor=([^;]+)/);
 

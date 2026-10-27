@@ -80,3 +80,4 @@ temp_*
 spectacles-lens/scripts/*.jpg
 
 .mcp.json
+backend/node_registry.json
