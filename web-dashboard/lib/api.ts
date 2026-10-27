@@ -55,47 +55,41 @@ export async function getMeetingTimeline(
         pagination: data.pagination,
       };
     }
+    throw new Error(`Timeline request failed with status ${res.status}`);
   } catch (err) {
-    console.warn("Backend timeline fetch unavailable, falling back to demo data:", err);
+    console.warn("Backend timeline fetch failed:", err);
+    throw err instanceof Error ? err : new Error("Timeline request failed");
   }
-
-  // Graceful fallback to demo dataset with adjusted ID
-  return {
-    ...DEMO_TIMELINE,
-    meeting: {
-      ...DEMO_TIMELINE.meeting,
-      id: meetingId,
-      title: `Meeting ${meetingId.slice(0, 8)}: Architecture Review`,
-    },
-  };
 }
 
 export const fetchMeetingTimeline = getMeetingTimeline;
 
 
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
-  // 1. Try FastAPI endpoint first if available
-  try {
-    const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/ask`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.answer) {
-        return data as RAGResponse;
-      }
-    }
-  } catch {
-    // Backend offline or call failed, execute deterministic grounded RAG locally
+  // Canned grounded answers exist only for the offline demo meeting.
+  if (meetingId === DEMO_MEETING_ID) {
+    return demoRAGAnswer(meetingId, question, timeline);
   }
 
-  // 2. Client-Side Grounded RAG with Keyword Matching & Timestamp Citations
+  const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) {
+    throw new Error(`Ask request failed with status ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.answer) {
+    throw new Error("Ask response contained no answer");
+  }
+  return data as RAGResponse;
+}
+
+// Keyword-matched canned answers with citations into DEMO_TIMELINE; demo meeting only.
+function demoRAGAnswer(meetingId: string, question: string, timeline: TimelineData): RAGResponse {
   const qLower = question.toLowerCase();
   const chunks = timeline.knowledge_chunks || [];
-  const interventions = timeline.agent_interventions || [];
-  const snapshots = timeline.diagram_snapshots || [];
 
   // Question matching heuristics
   if (qLower.includes("redis") || qLower.includes("cache") || qLower.includes("stampede")) {
@@ -178,12 +172,14 @@ export function downloadFile(content: string, filename: string, mimeType: string
 }
 
 export function exportDrawioXml(timeline: TimelineData, currentSnapshotXml?: string) {
-  const xml = currentSnapshotXml || timeline.meeting.latest_drawio_xml || DEMO_TIMELINE.meeting.latest_drawio_xml || "";
+  const xml = currentSnapshotXml || timeline.meeting.latest_drawio_xml;
+  if (!xml) return;
   downloadFile(xml, `${timeline.meeting.id}-architecture.drawio`, "application/xml");
 }
 
 export function exportTechSpecMd(timeline: TimelineData) {
-  const spec = timeline.meeting.generated_spec_md || DEMO_TIMELINE.meeting.generated_spec_md || `# Architecture Review: ${timeline.meeting.title}`;
+  const spec = timeline.meeting.generated_spec_md;
+  if (!spec) return;
   downloadFile(spec, `${timeline.meeting.id}-tech-spec.md`, "text/markdown");
 }
 

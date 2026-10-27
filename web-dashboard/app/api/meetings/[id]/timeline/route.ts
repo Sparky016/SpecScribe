@@ -26,17 +26,10 @@ export async function GET(
       const data = await res.json();
       return NextResponse.json(data);
     }
+    console.warn(`Backend timeline returned status ${res.status}`);
   } catch (err) {
-    console.warn("Backend timeline route proxy error, falling back to demo:", err);
+    console.warn("Backend timeline route proxy error:", err);
   }
 
-  return NextResponse.json({
-    ...DEMO_TIMELINE,
-    meeting: {
-      ...DEMO_TIMELINE.meeting,
-      id,
-      title: `Meeting ${id.slice(0, 8)}: Architecture Review`,
-    },
-  });
+  return NextResponse.json({ error: "Backend unavailable" }, { status: 502 });
 }
-

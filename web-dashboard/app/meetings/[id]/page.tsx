@@ -8,7 +8,6 @@ import { TemporalScrubber } from "../../../components/TemporalScrubber";
 import { RAGDrawer } from "../../../components/RAGDrawer";
 import { fetchMeetingTimeline } from "../../../lib/api";
 import { DiagramSnapshot, TimelineData } from "../../../lib/types";
-import { DEMO_TIMELINE } from "../../../lib/demoData";
 
 interface MeetingPageProps {
   params: Promise<{ id: string }>;
@@ -18,7 +17,9 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
   const resolvedParams = use(params);
   const meetingId = resolvedParams.id || "demo-session-01";
 
-  const [timeline, setTimeline] = useState<TimelineData>(DEMO_TIMELINE);
+  const [timeline, setTimeline] = useState<TimelineData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [currentTimeMs, setCurrentTimeMs] = useState<number>(36000); // Start at milestone [00:36]
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -30,6 +31,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
     let isMounted = true;
     async function loadData() {
       setLoading(true);
+      setError(null);
       try {
         const data = await fetchMeetingTimeline(meetingId);
         if (isMounted) {
@@ -40,7 +42,11 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
           }
         }
       } catch (err) {
-        console.warn("Error loading timeline, using demo fallback:", err);
+        console.warn("Error loading timeline:", err);
+        if (isMounted) {
+          setTimeline(null);
+          setError("Could not load this meeting. The backend may be unavailable.");
+        }
       } finally {
         if (isMounted) setLoading(false);
       }
@@ -49,10 +55,11 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
     return () => {
       isMounted = false;
     };
-  }, [meetingId]);
+  }, [meetingId, reloadKey]);
 
   // Total duration calculation
   const totalDurationMs = useMemo(() => {
+    if (!timeline) return 150000;
     const lastTurn = timeline.transcript_turns[timeline.transcript_turns.length - 1];
     const lastSnap = timeline.diagram_snapshots[timeline.diagram_snapshots.length - 1];
     const lastInterv = timeline.agent_interventions[timeline.agent_interventions.length - 1];
@@ -66,7 +73,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
 
   // Compute active diagram snapshot for currentTimeMs
   const activeSnapshot = useMemo(() => {
-    if (!timeline.diagram_snapshots || timeline.diagram_snapshots.length === 0) {
+    if (!timeline || !timeline.diagram_snapshots || timeline.diagram_snapshots.length === 0) {
       return undefined;
     }
     // Find the latest snapshot at or before currentTimeMs
@@ -75,7 +82,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
       .find((s) => s.timestamp_ms <= currentTimeMs);
 
     return candidate || timeline.diagram_snapshots[0];
-  }, [timeline.diagram_snapshots, currentTimeMs]);
+  }, [timeline, currentTimeMs]);
 
   // Playback timer loop
   useEffect(() => {
@@ -129,6 +136,30 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
   const handleSelectSnapshot = (snapshot: DiagramSnapshot) => {
     setCurrentTimeMs(snapshot.timestamp_ms);
   };
+
+  if (!timeline) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#070a0f] text-gray-100 gap-4">
+        {error ? (
+          <div role="alert" className="flex flex-col items-center gap-3 px-6 py-5 rounded-xl border border-red-500/40 bg-red-500/10 text-sm">
+            <span>{error}</span>
+            <button
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="px-3 py-1.5 rounded-lg bg-[#141b26] hover:bg-[#1a2332] border border-white/15 text-xs font-medium"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <div role="status" aria-label="Loading meeting" className="w-72 flex flex-col gap-3 animate-pulse">
+            <div className="h-5 rounded bg-white/10" />
+            <div className="h-40 rounded bg-white/5" />
+            <div className="h-3 w-2/3 rounded bg-white/10" />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen w-screen bg-[#070a0f] text-gray-100 overflow-hidden select-none">

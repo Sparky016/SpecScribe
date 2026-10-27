@@ -47,6 +47,9 @@ export const TopBar: React.FC<TopBarProps> = ({
     150000
   );
 
+  const hasDrawio = Boolean(currentSnapshotXml || timeline.meeting.latest_drawio_xml);
+  const hasSpec = Boolean(timeline.meeting.generated_spec_md);
+
   const handleExport = (type: "drawio" | "md" | "json") => {
     if (type === "drawio") {
       exportDrawioXml(timeline, currentSnapshotXml);
@@ -140,7 +143,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
               <button
                 onClick={() => handleExport("drawio")}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00FF66] transition-colors"
+                disabled={!hasDrawio}
+                title={hasDrawio ? undefined : "No diagram available to export"}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00FF66] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <Layers className="w-4 h-4 text-[#00FF66]" />
                 <div className="flex flex-col">
@@ -150,7 +155,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
               <button
                 onClick={() => handleExport("md")}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00E5FF] transition-colors"
+                disabled={!hasSpec}
+                title={hasSpec ? undefined : "No tech spec generated yet"}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00E5FF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <FileText className="w-4 h-4 text-[#00E5FF]" />
                 <div className="flex flex-col">
