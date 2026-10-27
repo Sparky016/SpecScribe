@@ -2,7 +2,7 @@
 # SpecScribe AR — Production Dockerfile for Google Cloud Run
 # ==============================================================================
 # Base image with Python 3.11 Debian slim
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # Prevent Python from writing .pyc files and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -21,9 +21,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python requirements
-COPY requirements.txt .
+COPY requirements.lock .
 RUN pip install --no-cache-dir -U pip setuptools wheel \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.lock
 
 # Install Playwright Chromium and its required Linux OS runtime dependencies
 RUN playwright install --with-deps chromium \
