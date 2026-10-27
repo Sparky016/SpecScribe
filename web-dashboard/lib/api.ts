@@ -1,6 +1,6 @@
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "./demoData";
 import { backendFetch } from "./backend";
-import { RAGResponse, TimelineData } from "./types";
+import { RAGResponse, TimelineData, TranscriptTurn } from "./types";
 
 // Browser calls go to the same-origin /api route handlers, which attach the backend token.
 // Server-side calls go straight to the backend through backendFetch.
@@ -22,6 +22,9 @@ export interface TimelinePaginationOptions {
   to_ms?: number;
 }
 
+// Safety cap on transcript pages fetched per timeline load.
+const MAX_TIMELINE_PAGES = 50;
+
 export async function getMeetingTimeline(
   meetingId: string,
   options?: TimelinePaginationOptions
@@ -33,29 +36,43 @@ export async function getMeetingTimeline(
 
   // Attempt to fetch from FastAPI backend
   try {
-    const queryParams = new URLSearchParams();
-    if (options?.limit !== undefined) queryParams.set("limit", options.limit.toString());
-    if (options?.offset !== undefined) queryParams.set("offset", options.offset.toString());
-    if (options?.from_ms !== undefined) queryParams.set("from_ms", options.from_ms.toString());
-    if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
+    // Transcript turns are paged by the backend; keep requesting pages while has_more is set.
+    const pageLimit = options?.limit ?? 100;
+    let offset = options?.offset ?? 0;
+    let data: any = null;
+    const transcriptTurns: TranscriptTurn[] = [];
 
-    const qs = queryParams.toString();
-    const endpoint = `api/meetings/${encodeURIComponent(meetingId)}/timeline${qs ? `?${qs}` : ""}`;
-    const res = await apiFetch(endpoint, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        meeting: data.meeting || { id: meetingId, title: `Meeting ${meetingId.slice(0, 8)}`, created_at: new Date().toISOString() },
-        transcript_turns: data.transcript_turns || [],
-        diagram_snapshots: data.diagram_snapshots || [],
-        agent_interventions: data.agent_interventions || [],
-        knowledge_chunks: data.knowledge_chunks || [],
-        pagination: data.pagination,
-      };
+    for (let page = 0; page < MAX_TIMELINE_PAGES; page++) {
+      const queryParams = new URLSearchParams();
+      queryParams.set("limit", pageLimit.toString());
+      queryParams.set("offset", offset.toString());
+      if (options?.from_ms !== undefined) queryParams.set("from_ms", options.from_ms.toString());
+      if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
+
+      const endpoint = `api/meetings/${encodeURIComponent(meetingId)}/timeline?${queryParams.toString()}`;
+      const res = await apiFetch(endpoint, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        throw new Error(`Timeline request failed with status ${res.status}`);
+      }
+      const pageData = await res.json();
+      if (data === null) data = pageData;
+
+      const turns: TranscriptTurn[] = pageData.transcript_turns || [];
+      transcriptTurns.push(...turns);
+      if (!pageData.pagination?.has_more || turns.length === 0) break;
+      offset += turns.length;
     }
-    throw new Error(`Timeline request failed with status ${res.status}`);
+
+    return {
+      meeting: data.meeting || { id: meetingId, title: `Meeting ${meetingId.slice(0, 8)}`, created_at: new Date().toISOString() },
+      transcript_turns: transcriptTurns,
+      diagram_snapshots: data.diagram_snapshots || [],
+      agent_interventions: data.agent_interventions || [],
+      knowledge_chunks: data.knowledge_chunks || [],
+      pagination: data.pagination,
+    };
   } catch (err) {
     console.warn("Backend timeline fetch failed:", err);
     throw err instanceof Error ? err : new Error("Timeline request failed");
