@@ -25,6 +25,7 @@ import {
 interface TopBarProps {
   timeline: TimelineData;
   currentSnapshotXml?: string;
+  totalDurationMs: number;
   onOpenRAG: () => void;
   isRAGOpen: boolean;
 }
@@ -32,20 +33,12 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   timeline,
   currentSnapshotXml,
+  totalDurationMs,
   onOpenRAG,
   isRAGOpen,
 }) => {
   const [exportOpen, setExportOpen] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
-
-  // Compute meeting duration from the last event
-  const lastTurn = timeline.transcript_turns[timeline.transcript_turns.length - 1];
-  const lastSnap = timeline.diagram_snapshots[timeline.diagram_snapshots.length - 1];
-  const durationMs = Math.max(
-    lastTurn ? lastTurn.timestamp_ms : 0,
-    lastSnap ? lastSnap.timestamp_ms : 0,
-    150000
-  );
 
   // Distinct speakers, in order of first appearance
   const speakerLabels = Array.from(
@@ -98,7 +91,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-gray-400 font-mono">
             <span className="text-gray-300">ID: {timeline.meeting.id.slice(0, 15)}</span>
             <span>•</span>
-            <span className="text-[#00E5FF]">Duration: {formatTimestamp(durationMs)}</span>
+            <span className="text-[#00E5FF]">Duration: {formatTimestamp(totalDurationMs)}</span>
           </div>
         </div>
       </div>

@@ -167,6 +167,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
       <TopBar
         timeline={timeline}
         currentSnapshotXml={activeSnapshot?.drawio_xml}
+        totalDurationMs={totalDurationMs}
         onOpenRAG={() => setIsRAGOpen(true)}
         isRAGOpen={isRAGOpen}
       />
