@@ -200,6 +200,8 @@ function ensureLayout(vertices: ParsedVertex[], edges: ParsedEdge[]) {
     const currLayer = layer[curr];
     const neighbors = outgoing[curr] || [];
     for (const next of neighbors) {
+      // An acyclic graph never needs more layers than vertices; capping here stops cycles from re-queuing forever.
+      if (currLayer + 1 >= vertices.length) continue;
       if (layer[next] === undefined || layer[next] <= currLayer) {
         layer[next] = currLayer + 1;
         queue.push(next);
