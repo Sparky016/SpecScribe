@@ -1,6 +1,6 @@
 /**
- * Canonical Node Registry for Web Dashboard
- * Source: SPEC_DOC.md §4.5 (Finding #10)
+ * GENERATED — do not edit. Source: shared/node_registry.json
+ * Regenerate with: node scripts/gen_node_registry.mjs
  */
 
 export type NodeType = "service" | "decision" | "database" | "terminal";

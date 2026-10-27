@@ -7,6 +7,9 @@ on:
     paths:
       - 'backend/**'
       - 'spectacles-lens/**'
+      - 'web-dashboard/**'
+      - 'shared/**'
+      - 'scripts/**'
       - '.github/workflows/deploy.yml'
   workflow_dispatch:
     inputs:
@@ -57,6 +60,11 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: 'spectacles-lens/package-lock.json'
+
+      - name: Check Node Registry Codegen Is Up To Date
+        run: |
+          node scripts/gen_node_registry.mjs
+          git diff --exit-code -- web-dashboard/lib/nodeRegistry.ts spectacles-lens/Assets/Scripts/NodeRegistry.ts
 
       - name: Install Backend Dependencies & Playwright
         working-directory: backend
@@ -113,6 +121,9 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: |
           gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Stage shared node registry into Docker context
+        run: cp shared/node_registry.json backend/node_registry.json
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

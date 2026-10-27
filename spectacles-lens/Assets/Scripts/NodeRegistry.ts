@@ -1,6 +1,6 @@
 /**
- * Canonical Node Registry for Lens Studio 5.15 Spatial Client
- * Source: SPEC_DOC.md §4.5 (Finding #10)
+ * GENERATED — do not edit. Source: shared/node_registry.json
+ * Regenerate with: node scripts/gen_node_registry.mjs
  */
 
 export interface LensNodeDefinition {

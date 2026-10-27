@@ -2,7 +2,9 @@
 Node Registry Specification for Draw.io / mxGraph Architecture Elements
 Source: SPEC_DOC.md §4.5 (Finding #10)
 """
+import json
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Tuple
 
 
@@ -16,37 +18,29 @@ class NodeDefinition:
     label_prefix: str
 
 
-NODE_REGISTRY: Dict[str, NodeDefinition] = {
-    "service": NodeDefinition(
-        type_name="service",
-        drawio_style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
-        default_dimensions=(140.0, 60.0),
-        fill_color="#107C41",
-        stroke_color="#00FF66",
-        label_prefix="Svc",
-    ),
-    "decision": NodeDefinition(
-        type_name="decision",
-        drawio_style="rhombus;whiteSpace=wrap;html=1;fillColor=#004D40;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;",
-        default_dimensions=(120.0, 80.0),
-        fill_color="#004D40",
-        stroke_color="#00E5FF",
-        label_prefix="Dec",
-    ),
-    "database": NodeDefinition(
-        type_name="database",
-        drawio_style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;",
-        default_dimensions=(120.0, 80.0),
-        fill_color="#0D47A1",
-        stroke_color="#00E5FF",
-        label_prefix="DB",
-    ),
-    "terminal": NodeDefinition(
-        type_name="terminal",
-        drawio_style="ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
-        default_dimensions=(100.0, 60.0),
-        fill_color="#311B92",
-        stroke_color="#00FF66",
-        label_prefix="Client",
-    ),
-}
+def _registry_path() -> Path:
+    here = Path(__file__).resolve().parent
+    # Repo checkout uses shared/; the Docker image (context = backend/) gets a copy beside this file.
+    for candidate in (here.parent / "shared" / "node_registry.json", here / "node_registry.json"):
+        if candidate.is_file():
+            return candidate
+    raise FileNotFoundError("node_registry.json not found (expected shared/ or backend/)")
+
+
+def _load_registry() -> Dict[str, NodeDefinition]:
+    nodes = json.loads(_registry_path().read_text(encoding="utf-8"))["nodes"]
+    return {
+        n["typeName"]: NodeDefinition(
+            type_name=n["typeName"],
+            drawio_style=n["drawioStyle"],
+            default_dimensions=(float(n["width"]), float(n["height"])),
+            fill_color=n["fillColor"],
+            stroke_color=n["strokeColor"],
+            label_prefix=n["labelPrefix"],
+        )
+        for n in nodes
+    }
+
+
+# Single source: shared/node_registry.json (regenerate TS with scripts/gen_node_registry.mjs)
+NODE_REGISTRY: Dict[str, NodeDefinition] = _load_registry()

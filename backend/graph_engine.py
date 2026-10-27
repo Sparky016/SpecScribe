@@ -39,6 +39,8 @@ try:
 except ImportError:
     from backend import llm
 
+NodeTypeLiteral = Literal[tuple(NODE_REGISTRY)]  # type: ignore[valid-type]
+
 # Waveguide-Optimized drawio-mcp Styling Matrix (Snap Spectacles 2024 additive waveguides)
 STYLE_MAP: Dict[str, str] = {k: v.drawio_style for k, v in NODE_REGISTRY.items()}
 
@@ -55,7 +57,7 @@ EDGE_STYLE = (
 class VertexAddition(BaseModel):
     temp_id: str = Field(description="Unique identifier or existing vertex ID")
     label: str = Field(description="Concise label written inside the whiteboard shape")
-    node_type: Literal["service", "decision", "database", "terminal"]
+    node_type: NodeTypeLiteral
 
 
 class EdgeAddition(BaseModel):
