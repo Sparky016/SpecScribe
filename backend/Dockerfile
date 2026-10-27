@@ -1,7 +1,7 @@
 # ==============================================================================
 # SpecScribe AR — Production Dockerfile for Google Cloud Run
 # ==============================================================================
-# Base image with Python 3.11 Debian slim
+# Base image with Python 3.12 Debian slim
 FROM python:3.12-slim
 
 # Prevent Python from writing .pyc files and enable unbuffered output
