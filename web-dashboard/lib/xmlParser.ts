@@ -131,9 +131,14 @@ function detectNodeType(style: string, label: string): "service" | "decision" | 
   const s = style.toLowerCase();
   const l = label.toLowerCase();
   const order: NodeType[] = ["database", "decision", "terminal", "service"];
+  // Explicit style pass first; label keywords are only a fallback so 'Backend API' (rounded=1) is a service.
   for (const typeKey of order) {
-    const def = NODE_REGISTRY[typeKey];
-    if (def.styleKeywords.some((kw) => s.includes(kw)) || def.labelKeywords.some((kw) => l.includes(kw))) {
+    if (NODE_REGISTRY[typeKey].styleKeywords.some((kw) => s.includes(kw))) {
+      return typeKey;
+    }
+  }
+  for (const typeKey of order) {
+    if (NODE_REGISTRY[typeKey].labelKeywords.some((kw) => l.includes(kw))) {
       return typeKey;
     }
   }
