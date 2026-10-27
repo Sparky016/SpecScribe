@@ -55,8 +55,8 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
     // Dynamic import of compiled modules
     const capturerMod = await import('../dist/Assets/Scripts/PeriodicCameraCapturer.js');
     PeriodicCameraCapturer = capturerMod.PeriodicCameraCapturer;
-    CompressionQuality = capturerMod.CompressionQuality;
-    EncodingType = capturerMod.EncodingType;
+    CompressionQuality = global.CompressionQuality;
+    EncodingType = global.EncodingType;
 
     const socketMod = await import('../dist/Assets/Scripts/PersistentStreamSocketClient.js');
     PersistentStreamSocketClient = socketMod.PersistentStreamSocketClient;
@@ -138,7 +138,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       capturer._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.6 });
       assert.equal(frameReceived, 'data:image/jpeg;base64,mockframe');
       assert.ok(timestampReceived > 0);
-      assert.equal(encodeQuality, CompressionQuality.Low);
+      assert.equal(encodeQuality, CompressionQuality.LowQuality);
       assert.equal(encodeType, EncodingType.Jpg);
     });
 
@@ -169,7 +169,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       mockAsrCallbacks = [];
       global._mockSocket = mockSocket;
       global._mockAsrHandler = (opts) => {
-        mockAsrCallbacks.push(opts.onTranscriptionUpdate);
+        mockAsrCallbacks.push(opts.onTranscriptionUpdateEvent);
       };
     });
 
@@ -486,12 +486,14 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(cardObj.enabled, false);
 
       // First pinch: expands critique card
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
       assert.equal(controller.isExpanded(), true);
       assert.equal(cardObj.enabled, true);
       assert.equal(controller.getState(), AgentState.HAND_RAISED);
 
       // Second pinch: dismisses critique card and returns to IDLE
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
       assert.equal(controller.isExpanded(), false);
       assert.equal(cardObj.enabled, false);
@@ -525,6 +527,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(controller.getState(), AgentState.IDLE);
 
       // Pinch orb in IDLE
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
 
       assert.equal(controller.getState(), AgentState.RESEARCHING);

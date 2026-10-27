@@ -37,6 +37,12 @@ export class MockQuat {
     const s = Math.sin(half);
     return new MockQuat(axis.x * s, axis.y * s, axis.z * s, Math.cos(half));
   }
+  static fromEulerVec(eulerAngles) {
+    const qx = MockQuat.angleAxis(eulerAngles.x, new MockVec3(1, 0, 0));
+    const qy = MockQuat.angleAxis(eulerAngles.y, new MockVec3(0, 1, 0));
+    const qz = MockQuat.angleAxis(eulerAngles.z, new MockVec3(0, 0, 1));
+    return qz.multiply(qy).multiply(qx);
+  }
   multiply(other) {
     return new MockQuat(
       this.w * other.x + this.x * other.w + this.y * other.z - this.z * other.y,
@@ -54,6 +60,7 @@ export class MockSceneObject {
     this.transform = new MockTransform();
   }
   getTransform() { return this.transform; }
+  getComponent() { return null; }
 }
 
 export class MockTexture {
@@ -196,6 +203,15 @@ export function setupLensGlobalMocks() {
   global.vec3 = MockVec3;
   global.quat = MockQuat;
   global.Audio = { PlaybackMode: { LowLatency: 0, HighQuality: 1 } };
+  global.CompressionQuality = {
+    MaximumCompression: 0,
+    LowQuality: 1,
+    IntermediateQuality: 2,
+    HighQuality: 3,
+    MaximumQuality: 4
+  };
+  global.EncodingType = { Png: 0, Jpg: 1 };
+  global.requireAsset = (name) => ({ name });
   global.RenderMeshVisual = MockRenderMeshVisual;
   global.Text = MockText;
   global.SceneObject = MockSceneObject;
@@ -229,7 +245,7 @@ export function setupLensGlobalMocks() {
         return {
           mode: 0,
           silenceUntilTerminationMs: 1000,
-          onTranscriptionUpdate: {
+          onTranscriptionUpdateEvent: {
             add: (cb) => cbs.push(cb),
             remove: (cb) => {
               const idx = cbs.indexOf(cb);
