@@ -17,7 +17,13 @@ export async function GET(
   }
 
   try {
-    const res = await backendFetch(`api/meetings/${encodeURIComponent(id)}/timeline`, {
+    const query = new URLSearchParams();
+    for (const key of ["limit", "offset", "from_ms", "to_ms"]) {
+      const value = request.nextUrl.searchParams.get(key);
+      if (value !== null) query.set(key, value);
+    }
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const res = await backendFetch(`api/meetings/${encodeURIComponent(id)}/timeline${suffix}`, {
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
     });
