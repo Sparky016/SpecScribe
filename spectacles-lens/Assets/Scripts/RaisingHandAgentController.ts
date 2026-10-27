@@ -60,6 +60,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   // Local offset in camera space: top right of view at 1.15m optical comfort depth
   private readonly cameraAnchorOffset: vec3 = new vec3(26.0, 15.0, -115.0);
   private readonly cameraAnchorRotation: quat = quat.fromEulerVec(new vec3(4 * Math.PI / 180, -10 * Math.PI / 180, 0));
+  // Lazy-follow: damping rate (1/s) toward the camera-relative target, and max lag (cm) before snapping
+  private readonly followRatePerSec: number = 6.0;
+  private readonly maxFollowLagCm: number = 60.0;
 
   onAwake(): void {
     try {
@@ -305,13 +308,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   private onUpdate(deltaTime: number): void {
     this.animTime += deltaTime;
 
-    // Maintain persistent view anchoring to camera in every frame
+    // Lazy-follow the camera-relative target pose in world space (parented once in anchorToCamera)
     if (this.agentRootObject && this.cameraObject) {
-      if (this.agentRootObject.getParent() !== this.cameraObject) {
-        this.agentRootObject.setParent(this.cameraObject);
-      }
-      this.agentRootObject.getTransform().setLocalPosition(this.cameraAnchorOffset);
-      this.agentRootObject.getTransform().setLocalRotation(this.cameraAnchorRotation);
+      this.followCameraTarget(deltaTime);
     }
 
     // State 1: IDLE subtle pulse
@@ -358,17 +357,65 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       this.cameraObject = this.findCameraObject() || undefined;
     }
     if (this.agentRootObject && this.cameraObject) {
-      if (this.agentRootObject.getParent() !== this.cameraObject) {
-        this.agentRootObject.setParent(this.cameraObject);
+      // Parent once, to the camera's own parent, so the orb is not head-locked; per-frame follow is in world space
+      const worldParent = this.cameraObject.getParent();
+      if (worldParent && this.agentRootObject.getParent() !== worldParent) {
+        this.agentRootObject.setParent(worldParent);
       }
-      this.agentRootObject.getTransform().setLocalPosition(this.cameraAnchorOffset);
-      this.agentRootObject.getTransform().setLocalRotation(this.cameraAnchorRotation);
+      const target = this.computeCameraTargetPose();
+      if (target) {
+        this.agentRootObject.getTransform().setWorldPosition(target.pos);
+        this.agentRootObject.getTransform().setWorldRotation(target.rot);
+      }
       this.agentRootObject.getTransform().setLocalScale(new vec3(2.2, 2.2, 2.2));
-      print(`[RaisingHandAgentController] AI Orb anchored to Camera view at optical comfort depth (${this.cameraAnchorOffset.x}, ${this.cameraAnchorOffset.y}, ${this.cameraAnchorOffset.z})`);
+      print(`[RaisingHandAgentController] AI Orb following Camera view at optical comfort depth (${this.cameraAnchorOffset.x}, ${this.cameraAnchorOffset.y}, ${this.cameraAnchorOffset.z})`);
     } else if (this.agentRootObject) {
       this.agentRootObject.getTransform().setWorldPosition(new vec3(26.0, 15.0, -115.0));
       this.agentRootObject.getTransform().setWorldScale(new vec3(2.2, 2.2, 2.2));
     }
+  }
+
+  // Camera-relative target pose in world space: offset rotated by camera axes, rotation composed with anchor rotation
+  private computeCameraTargetPose(): { pos: vec3; rot: quat } | null {
+    if (!this.cameraObject) {
+      return null;
+    }
+    const cam = this.cameraObject.getTransform();
+    const camPos = cam.getWorldPosition();
+    const right = cam.right;
+    const up = cam.up;
+    const forward = cam.forward;
+    const o = this.cameraAnchorOffset;
+    // Offset z is negative in front of the camera, so forward distance is -o.z
+    const pos = new vec3(
+      camPos.x + right.x * o.x + up.x * o.y + forward.x * -o.z,
+      camPos.y + right.y * o.x + up.y * o.y + forward.y * -o.z,
+      camPos.z + right.z * o.x + up.z * o.y + forward.z * -o.z
+    );
+    const rot = cam.getWorldRotation().multiply(this.cameraAnchorRotation);
+    return { pos, rot };
+  }
+
+  // Damped pursuit of the target pose; snaps if the orb falls further behind than maxFollowLagCm
+  private followCameraTarget(deltaTime: number): void {
+    const target = this.computeCameraTargetPose();
+    if (!target || !this.agentRootObject) {
+      return;
+    }
+    const root = this.agentRootObject.getTransform();
+    const current = root.getWorldPosition();
+    const dx = target.pos.x - current.x;
+    const dy = target.pos.y - current.y;
+    const dz = target.pos.z - current.z;
+    const lag = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (lag > this.maxFollowLagCm) {
+      root.setWorldPosition(target.pos);
+      root.setWorldRotation(target.rot);
+      return;
+    }
+    const t = 1.0 - Math.exp(-this.followRatePerSec * deltaTime);
+    root.setWorldPosition(new vec3(current.x + dx * t, current.y + dy * t, current.z + dz * t));
+    root.setWorldRotation(quat.slerp(root.getWorldRotation(), target.rot, t));
   }
 
   private findCameraObject(): SceneObject | null {
