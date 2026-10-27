@@ -73,9 +73,28 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   public setWebsocketUrl(url: string): void {
     this.websocketUrl = url;
     if (this.activeSocket) {
-      this.activeSocket.close();
+      this.retireActiveSocket();
       this.initializeWebSocket();
     }
+  }
+
+  /**
+   * Detaches handlers from the current socket before closing it, so its onclose cannot schedule a reconnect.
+   */
+  private retireActiveSocket(): void {
+    const socket = this.activeSocket;
+    if (!socket) {
+      return;
+    }
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onerror = null;
+    socket.onclose = null;
+    socket.close();
+  }
+
+  private isSocketOpenOrConnecting(): boolean {
+    return !!this.activeSocket && (this.activeSocket.readyState === 0 || this.activeSocket.readyState === 1);
   }
 
   private initializeWebSocket(): void {
@@ -126,7 +145,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   }
 
   private scheduleReconnect(): void {
-    if (this.isDestroyed) {
+    if (this.isDestroyed || this.isSocketOpenOrConnecting()) {
       return;
     }
     const delaySec = Math.min(10.0, 2.0 * Math.pow(1.5, this.reconnectAttempt));
@@ -136,7 +155,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     if (!this.reconnectEvent) {
       this.reconnectEvent = this.createEvent('DelayedCallbackEvent');
       this.reconnectEvent.bind(() => {
-        if (!this.isConnected() && !this.isDestroyed) {
+        if (!this.isSocketOpenOrConnecting() && !this.isDestroyed) {
           print('[PersistentStreamSocketClient] Attempting WebSocket reconnect via DelayedCallbackEvent...');
           this.initializeWebSocket();
         }
