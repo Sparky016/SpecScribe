@@ -4,10 +4,10 @@ Gemini is mocked throughout; no network calls are made.
 """
 
 import json
-from types import SimpleNamespace
 
 import pytest
 
+import llm
 from graph_engine import extract_graph_delta_from_gemini, GraphDeltaSchema
 
 
@@ -19,19 +19,17 @@ def _gemini_env(monkeypatch):
 
 
 def _install_fake_gemini(monkeypatch, text=None, error=None):
-    from google import genai
+    """Mocks llm.generate_structured; error simulates every model failing (the helper returns None)."""
+    calls = []
 
-    class FakeModels:
-        async def generate_content(self, **kwargs):
-            if error is not None:
-                raise error
-            return SimpleNamespace(text=text)
+    async def fake_generate_structured(prompt, schema=None, contents=None, api_key=None):
+        calls.append({"prompt": prompt, "schema": schema, "contents": contents, "api_key": api_key})
+        if error is not None:
+            return None
+        return text
 
-    class FakeClient:
-        def __init__(self, api_key=None):
-            self.aio = SimpleNamespace(models=FakeModels())
-
-    monkeypatch.setattr(genai, "Client", FakeClient)
+    monkeypatch.setattr(llm, "generate_structured", fake_generate_structured)
+    return calls
 
 
 def _assert_no_change(delta: GraphDeltaSchema):
@@ -70,12 +68,15 @@ async def test_valid_change_response_is_returned(monkeypatch):
         "added_edges": [],
         "diff_summary": "+ API Gateway",
     }
-    _install_fake_gemini(monkeypatch, text=json.dumps(change))
+    calls = _install_fake_gemini(monkeypatch, text=json.dumps(change))
 
     delta = await extract_graph_delta_from_gemini(b"img", [], api_key="test-key")
 
     assert delta.has_meaningful_change is True
     assert [v.label for v in delta.added_vertices] == ["API Gateway"]
+    assert calls[0]["schema"] is GraphDeltaSchema
+    assert calls[0]["api_key"] == "test-key"
+    assert len(calls[0]["contents"]) == 1  # the image part, sent before the prompt
 
 
 @pytest.mark.asyncio
@@ -97,6 +98,8 @@ async def test_client_construction_exception_returns_empty_no_change(monkeypatch
         raise RuntimeError("client init failed")
 
     monkeypatch.setattr(genai, "Client", _raise)
+    monkeypatch.setattr(llm, "_client", None)
+    monkeypatch.setattr(llm, "_client_key", None)
 
     delta = await extract_graph_delta_from_gemini(b"img", [], api_key="test-key")
 

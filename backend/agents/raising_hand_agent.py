@@ -15,6 +15,8 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Set
 
 from pydantic import BaseModel, Field
 
+import llm
+
 logger = logging.getLogger("specscribe.raising_hand")
 
 
@@ -52,7 +54,6 @@ class RaisingHandAgent:
         self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
-        self._genai_client = None
 
         # Tracking per meeting: meeting_id -> Set of triggered short_titles (to avoid duplicates)
         self._history: Dict[str, Set[str]] = {}
@@ -62,14 +63,6 @@ class RaisingHandAgent:
         self._active_loops: Dict[str, asyncio.Task] = {}
         # Structured health telemetry: meeting_id -> telemetry dict
         self._loop_telemetry: Dict[str, Dict[str, Any]] = {}
-
-        if self.api_key:
-            try:
-                from google import genai
-
-                self._genai_client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning("Could not initialize Google GenAI Client: %s", e)
 
     def _truncate_title(self, title: str, max_chars: int = 28) -> str:
         """Enforces strict character limit for Snap Spectacles AR waveguide pill display."""
@@ -175,16 +168,14 @@ class RaisingHandAgent:
     ) -> RaisingHandEvaluation:
         """
         Asynchronously evaluates current whiteboard architecture and recent speech using Gemini.
-        Uses client.aio to prevent blocking the asyncio event loop (Fixes #1).
+        Uses the shared async llm helper to prevent blocking the asyncio event loop (Fixes #1).
         """
         turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
         xml_content = drawio_xml or ""
         history = self._history.setdefault(meeting_id, set())
 
-        if self._genai_client:
+        if self.api_key:
             try:
-                from google.genai import types
-
                 turns_formatted = "\n".join([
                     f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
                     for t in turns
@@ -206,29 +197,9 @@ class RaisingHandAgent:
                     "4. detailed_body must contain 2-3 crisp bullet points with direct technical mitigations."
                 )
 
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                response = None
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=RaisingHandEvaluation,
-                            ),
-                        )
-                        if response:
-                            break
-                    except Exception as m_err:
-                        logger.debug("Async proactive model %s failed: %s; trying next", model_name, m_err)
-
-                if response and response.text:
-                    parsed = json.loads(response.text)
+                text = await llm.generate_structured(prompt, schema=RaisingHandEvaluation, api_key=self.api_key)
+                if text:
+                    parsed = json.loads(text)
                     evaluation = RaisingHandEvaluation.model_validate(parsed)
                     evaluation.short_title = self._truncate_title(evaluation.short_title)
                     # Gemini's verdict is authoritative: a duplicate title is suppressed, never re-raised.
@@ -243,77 +214,6 @@ class RaisingHandAgent:
         evaluation.short_title = self._truncate_title(evaluation.short_title)
         return evaluation
 
-    def evaluate_proactive(
-        self,
-        meeting_id: str,
-        timestamp_ms: int,
-        drawio_xml: Optional[str] = None,
-        recent_turns: Optional[List[Dict[str, Any]]] = None,
-    ) -> RaisingHandEvaluation:
-        """
-        Evaluates current whiteboard architecture and recent speech using Gemini (synchronous wrapper).
-        """
-        turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
-        xml_content = drawio_xml or ""
-        history = self._history.setdefault(meeting_id, set())
-
-        # If Gemini client is available, call Gemini
-        if self._genai_client:
-            try:
-                from google.genai import types
-
-                turns_formatted = "\n".join([
-                    f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
-                    for t in turns
-                ]) or "(No recent speech recorded)"
-
-                history_formatted = ", ".join(f"'{h}'" for h in history) or "None"
-
-                prompt = (
-                    "You are SpecScribe's 'Raising-Hand' Proactive Architecture Critic on Snap Spectacles AR.\n"
-                    "Your goal is to catch critical system vulnerabilities, logic flaws, and architectural risks "
-                    "in real-time before bad design decisions become permanent.\n\n"
-                    f"Current Live Draw.io XML Architecture:\n{xml_content}\n\n"
-                    f"Recent Meeting Dialogue (last 60s):\n{turns_formatted}\n\n"
-                    f"Issues already flagged in this meeting (DO NOT repeat these): {history_formatted}\n\n"
-                    "CRITICAL CONSTRAINTS:\n"
-                    "1. Only set trigger=True if there is an actionable, high-severity issue (VULNERABILITY, LOGIC_FLAW, or ALTERNATIVE_IDEA).\n"
-                    "2. If everything is acceptable or already discussed, set trigger=False.\n"
-                    "3. short_title MUST NOT exceed 28 characters (for AR waveguide display). Example: '🚩 Cache Stampede Risk'.\n"
-                    "4. detailed_body must contain 2-3 crisp bullet points with direct technical mitigations."
-                )
-
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = self._genai_client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=RaisingHandEvaluation,
-                            ),
-                        )
-                        if response and response.text:
-                            parsed = json.loads(response.text)
-                            evaluation = RaisingHandEvaluation.model_validate(parsed)
-                            evaluation.short_title = self._truncate_title(evaluation.short_title)
-                            if evaluation.trigger and evaluation.short_title not in history:
-                                return evaluation
-                    except Exception as m_err:
-                        logger.debug("Sync proactive model %s failed: %s; trying next", model_name, m_err)
-            except Exception as e:
-                logger.warning("Gemini proactive evaluation error: %s; falling back to heuristic", e)
-
-        # Fallback to heuristic evaluation
-        evaluation = self._evaluate_heuristic_proactive(meeting_id, xml_content, turns)
-        evaluation.short_title = self._truncate_title(evaluation.short_title)
-        return evaluation
-
     async def evaluate_research_pull_async(
         self,
         meeting_id: str,
@@ -323,15 +223,13 @@ class RaisingHandAgent:
         recent_turns: Optional[List[Dict[str, Any]]] = None,
     ) -> RaisingHandEvaluation:
         """
-        Mode B: Asynchronous On-Demand Research Pull via client.aio (Fixes #1).
+        Mode B: Asynchronous On-Demand Research Pull via the shared async llm helper (Fixes #1).
         """
         turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
         xml_content = drawio_xml or ""
 
-        if self._genai_client:
+        if self.api_key:
             try:
-                from google.genai import types
-
                 turns_formatted = "\n".join([
                     f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
                     for t in turns
@@ -350,29 +248,9 @@ class RaisingHandAgent:
                     "- trigger: must be True."
                 )
 
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                response = None
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=RaisingHandEvaluation,
-                            ),
-                        )
-                        if response:
-                            break
-                    except Exception as m_err:
-                        logger.debug("Async research model %s failed: %s; trying next", model_name, m_err)
-
-                if response and response.text:
-                    parsed = json.loads(response.text)
+                text = await llm.generate_structured(prompt, schema=RaisingHandEvaluation, api_key=self.api_key)
+                if text:
+                    parsed = json.loads(text)
                     evaluation = RaisingHandEvaluation.model_validate(parsed)
                     evaluation.short_title = self._truncate_title(evaluation.short_title)
                     evaluation.trigger = True
@@ -414,70 +292,6 @@ class RaisingHandAgent:
             short_title=self._truncate_title(title),
             detailed_body=body,
         )
-
-    def evaluate_research_pull(
-        self,
-        meeting_id: str,
-        query: str,
-        timestamp_ms: int,
-        drawio_xml: Optional[str] = None,
-        recent_turns: Optional[List[Dict[str, Any]]] = None,
-    ) -> RaisingHandEvaluation:
-        """
-        Mode B: On-Demand Research Pull (synchronous wrapper).
-        """
-        turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
-        xml_content = drawio_xml or ""
-
-        if self._genai_client:
-            try:
-                from google.genai import types
-
-                turns_formatted = "\n".join([
-                    f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
-                    for t in turns
-                ]) or "(No recent speech recorded)"
-
-                prompt = (
-                    "You are SpecScribe's Senior Research Sub-Agent.\n"
-                    "The wearer just pinched the AR AI Teammate Orb to ask an on-demand architectural research question.\n"
-                    f"User Spoken Question: '{query}'\n\n"
-                    f"Current Live Diagram Architecture (.drawio XML):\n{xml_content}\n\n"
-                    f"Recent Conversation Context:\n{turns_formatted}\n\n"
-                    "Task: Provide a concrete, high-signal architectural recommendation.\n"
-                    "- category: 'RESEARCH' or 'ALTERNATIVE_IDEA'\n"
-                    "- short_title: max 28 characters starting with an icon (e.g. '🔍 Redis Eviction (LRU)').\n"
-                    "- detailed_body: 2-3 concise bullet points answering the question directly with trade-offs.\n"
-                    "- trigger: must be True."
-                )
-
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = self._genai_client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=RaisingHandEvaluation,
-                            ),
-                        )
-                        if response and response.text:
-                            parsed = json.loads(response.text)
-                            evaluation = RaisingHandEvaluation.model_validate(parsed)
-                            evaluation.short_title = self._truncate_title(evaluation.short_title)
-                            evaluation.trigger = True
-                            return evaluation
-                    except Exception as m_err:
-                        logger.debug("Sync research model %s failed: %s; trying next", model_name, m_err)
-            except Exception as e:
-                logger.warning("Gemini sync research pull failed: %s; falling back to heuristic", e)
-
-        return self._heuristic_research_fallback(query)
 
     async def persist_and_broadcast(
         self,

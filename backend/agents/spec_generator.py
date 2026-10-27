@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
+import llm
 from agents.decision_linker import (
     generate_text_embedding,
     get_embedding_model,
@@ -131,15 +132,6 @@ class SpecGeneratorAgent:
         self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
-        self._genai_client = None
-
-        if self.api_key:
-            try:
-                from google import genai
-
-                self._genai_client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning("Could not initialize Google GenAI Client: %s", e)
 
     def _generate_deterministic_spec(
         self,
@@ -253,12 +245,12 @@ class SpecGeneratorAgent:
         agent_interventions: List[Dict[str, Any]],
     ) -> str:
         """
-        Asynchronously synthesizes a production-grade Markdown Technical Specification using client.aio.
-        Non-blocking to the FastAPI event loop (Fixes #1).
+        Asynchronously synthesizes a production-grade Markdown Technical Specification via the shared
+        async llm helper. Non-blocking to the FastAPI event loop (Fixes #1).
         """
         created_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-        if self._genai_client:
+        if self.api_key:
             try:
                 decisions_text = "\n".join([
                     f"- [{format_timestamp_ms(s.get('timestamp_ms', 0))}] {s.get('diff_summary', '')} | Rationale: {s.get('decision_rationale', 'N/A')}"
@@ -298,99 +290,13 @@ class SpecGeneratorAgent:
                     f"```xml\n{drawio_xml}\n```\n"
                 )
 
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                        )
-                        if response and response.text and len(response.text.strip()) > 100:
-                            return response.text.strip()
-                    except Exception as m_err:
-                        logger.debug("Async spec model %s failed: %s; trying next", model_name, m_err)
+                text = await llm.generate_structured(prompt, api_key=self.api_key)
+                if text and len(text.strip()) > 100:
+                    return text.strip()
+                if text:
+                    logger.warning("Gemini spec response too short (%d chars); using deterministic template", len(text.strip()))
             except Exception as e:
                 logger.warning("Gemini async spec generation error: %s; falling back to deterministic template", e)
-
-        return self._generate_deterministic_spec(
-            meeting_id, meeting_title, drawio_xml, transcript_turns, diagram_snapshots, agent_interventions, created_time
-        )
-
-    def compile_markdown_spec(
-        self,
-        meeting_id: str,
-        meeting_title: str,
-        drawio_xml: str,
-        transcript_turns: List[Dict[str, Any]],
-        diagram_snapshots: List[Dict[str, Any]],
-        agent_interventions: List[Dict[str, Any]],
-    ) -> str:
-        """
-        Synthesizes a production-grade Markdown Technical Specification (synchronous wrapper for tests).
-        """
-        created_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-        if self._genai_client:
-            try:
-                decisions_text = "\n".join([
-                    f"- [{format_timestamp_ms(s.get('timestamp_ms', 0))}] {s.get('diff_summary', '')} | Rationale: {s.get('decision_rationale', 'N/A')}"
-                    for s in diagram_snapshots
-                ]) or "No explicit decision logs."
-
-                interventions_text = "\n".join([
-                    f"- [{format_timestamp_ms(i.get('timestamp_ms', 0))}] [{i.get('category', 'ALERT')}] {i.get('short_title', '')}: {i.get('detailed_body', '')}"
-                    for i in agent_interventions
-                ]) or "No agent interventions triggered."
-
-                transcripts_summary = "\n".join([
-                    f"[{format_timestamp_ms(t.get('timestamp_ms', 0))}] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
-                    for t in transcript_turns[:30]
-                ]) or "No speech recorded."
-
-                prompt = (
-                    "You are a Principal Software Architect generating a complete, professional Technical Specification document.\n"
-                    f"Meeting ID: {meeting_id}\n"
-                    f"Title: {meeting_title}\n"
-                    f"Date: {created_time}\n\n"
-                    "=== Architectural Decisions ===\n"
-                    f"{decisions_text}\n\n"
-                    "=== AI Raising-Hand Audits & Interventions ===\n"
-                    f"{interventions_text}\n\n"
-                    "=== Key Conversation Snippets ===\n"
-                    f"{transcripts_summary}\n\n"
-                    "Generate a thorough Markdown Technical Specification with the following sections:\n"
-                    "# Technical Specification: <Title>\n"
-                    "## 1. Executive Summary & Architectural Goals\n"
-                    "## 2. System Architecture Overview & Component Responsibilities\n"
-                    "## 3. Architecture Model (.drawio XML)\n"
-                    "## 4. Chronological Decision Log & Rationale Matrix\n"
-                    "## 5. Security, Reliability & Failure Modes (Audit Findings)\n"
-                    "## 6. Action Items & Implementation Roadmap\n\n"
-                    "IMPORTANT: In Section 3, embed the exact Draw.io XML inside a ```xml ... ``` code block:\n"
-                    f"```xml\n{drawio_xml}\n```\n"
-                )
-
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = self._genai_client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                        )
-                        if response and response.text and len(response.text.strip()) > 100:
-                            return response.text.strip()
-                    except Exception as m_err:
-                        logger.debug("Sync spec model %s failed: %s; trying next", model_name, m_err)
-            except Exception as e:
-                logger.warning("Gemini sync spec generation error: %s; falling back to deterministic template", e)
 
         return self._generate_deterministic_spec(
             meeting_id, meeting_title, drawio_xml, transcript_turns, diagram_snapshots, agent_interventions, created_time
@@ -679,7 +585,7 @@ class SpecGeneratorAgent:
         if not matched_chunks and self.memory_store and query_vec is not None:
             meeting_chunks = self.memory_store.get("knowledge_chunks", {}).get(meeting_id, [])
             scored: List[Tuple[float, Dict[str, Any]]] = []
-            is_mock = self._genai_client is None
+            is_mock = not self.api_key
 
             stopwords = {
                 "what", "is", "the", "of", "a", "an", "to", "in", "for", "and", "or",
@@ -743,10 +649,8 @@ class SpecGeneratorAgent:
         # Ensure temporal citations with timestamp_ms > 0 are prioritized over 00:00 document headers
         citations.sort(key=lambda c: (1 if c["timestamp_ms"] > 0 else 0), reverse=True)
 
-        if self._genai_client and matched_chunks:
+        if self.api_key and matched_chunks:
             try:
-                from google.genai import types
-
                 chunks_context = "\n---\n".join([
                     f"[{format_timestamp_ms(c.get('timestamp_ms', 0))}] (Type: {c.get('chunk_type')}): {c.get('content')}"
                     for c in matched_chunks
@@ -763,25 +667,9 @@ class SpecGeneratorAgent:
                     f"Retrieved Meeting Knowledge Chunks:\n{chunks_context}\n"
                 )
 
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                response = None
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                        )
-                        if response and response.text:
-                            break
-                    except Exception as m_err:
-                        logger.debug("Async RAG answer model %s failed: %s; trying next", model_name, m_err)
-
-                if response and response.text:
-                    answer_text = response.text.strip()
+                text = await llm.generate_structured(prompt, api_key=self.api_key)
+                if text:
+                    answer_text = text.strip()
                     # Extract timestamp citations from the generated answer
                     found_timestamps = re.findall(r"\[(\d{2}:\d{2})\]", answer_text)
                     refined_citations = []

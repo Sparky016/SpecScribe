@@ -34,6 +34,11 @@ try:
 except ImportError:
     from backend.node_registry import NODE_REGISTRY
 
+try:
+    import llm
+except ImportError:
+    from backend import llm
+
 # Waveguide-Optimized drawio-mcp Styling Matrix (Snap Spectacles 2024 additive waveguides)
 STYLE_MAP: Dict[str, str] = {k: v.drawio_style for k, v in NODE_REGISTRY.items()}
 
@@ -504,10 +509,8 @@ async def extract_graph_delta_from_gemini(
         )
 
     try:
-        from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=key)
         prompt = (
             "Analyze this whiteboard frame from a software architecture brainstorming session.\n"
             f"Already recognized nodes: {[n.get('label') for n in existing_nodes]}\n"
@@ -515,32 +518,14 @@ async def extract_graph_delta_from_gemini(
             "If a person is blocking the diagram view, set person_occluding_board=True."
         )
 
-        candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-        configured_model = os.environ.get("GEMINI_MODEL")
-        if configured_model and configured_model not in candidate_models:
-            candidate_models.insert(0, configured_model)
-
-        response = None
-        for model_name in candidate_models:
-            try:
-                response = await client.aio.models.generate_content(
-                    model=model_name,
-                    contents=[
-                        types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg"),
-                        prompt,
-                    ],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json",
-                        response_schema=GraphDeltaSchema,
-                    ),
-                )
-                if response:
-                    break
-            except Exception as model_err:
-                logger.debug("Model %s failed: %s; trying fallback model", model_name, model_err)
-
-        if response and response.text:
-            data = json.loads(response.text)
+        text = await llm.generate_structured(
+            prompt,
+            schema=GraphDeltaSchema,
+            contents=[types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")],
+            api_key=key,
+        )
+        if text:
+            data = json.loads(text)
             return GraphDeltaSchema.model_validate(data)
         logger.warning("Gemini vision extraction returned no response text")
     except Exception as e:

@@ -57,7 +57,8 @@ def test_cosine_similarity_math():
 # T-09 Unit Tests: Spec Compilation & Chunking
 # ============================================================================
 
-def test_compile_markdown_spec_structure(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_compile_markdown_spec_structure(sample_meeting_id):
     """Verify Markdown Tech Spec includes all required sections, XML codeblock, and decision logs."""
     agent = SpecGeneratorAgent(api_key="")
 
@@ -84,7 +85,7 @@ def test_compile_markdown_spec_structure(sample_meeting_id):
         {"speaker_label": "Speaker 0", "transcript_text": "Adding Redis.", "timestamp_ms": 35000}
     ]
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Auth Architecture Review",
         drawio_xml=test_xml,
@@ -150,11 +151,12 @@ def test_chunk_meeting_artifacts_types(sample_meeting_id):
 # T-09 Unit Tests: Offline Fallback Spec Grounded in Meeting Data
 # ============================================================================
 
-def test_fallback_spec_empty_input_records_no_data(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_fallback_spec_empty_input_records_no_data(sample_meeting_id):
     """Empty input yields 'No data recorded' and no hardcoded architecture claims."""
     agent = SpecGeneratorAgent(api_key="")
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Empty Session",
         drawio_xml="",
@@ -168,7 +170,8 @@ def test_fallback_spec_empty_input_records_no_data(sample_meeting_id):
         assert phrase not in spec_md
 
 
-def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
     """Every labelled node in the input draw.io XML is listed by type; edges are not nodes."""
     agent = SpecGeneratorAgent(api_key="")
     test_xml = (
@@ -182,7 +185,7 @@ def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
         "</root></mxGraphModel></diagram></mxfile>"
     )
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Node Labels",
         drawio_xml=test_xml,
@@ -199,11 +202,12 @@ def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
     assert "uses" not in architecture
 
 
-def test_fallback_spec_malformed_xml_records_no_architecture(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_fallback_spec_malformed_xml_records_no_architecture(sample_meeting_id):
     """Unparseable draw.io XML yields no architecture nodes instead of raising."""
     agent = SpecGeneratorAgent(api_key="")
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Broken XML",
         drawio_xml="<mxfile><mxCell value='Redis'",
@@ -215,7 +219,8 @@ def test_fallback_spec_malformed_xml_records_no_architecture(sample_meeting_id):
     assert "## 2. System Architecture Overview & Component Matrix\nNo data recorded\n" in spec_md
 
 
-def test_fallback_spec_action_items_come_from_interventions(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_fallback_spec_action_items_come_from_interventions(sample_meeting_id):
     """Section 6 action items are the recorded agent interventions, not a fixed roadmap."""
     agent = SpecGeneratorAgent(api_key="")
     interventions = [
@@ -227,7 +232,7 @@ def test_fallback_spec_action_items_come_from_interventions(sample_meeting_id):
         }
     ]
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Action Items",
         drawio_xml="",

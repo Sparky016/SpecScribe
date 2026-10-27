@@ -6,37 +6,44 @@ import asyncio
 import json
 import os
 import sys
-from types import SimpleNamespace
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import llm  # noqa: E402
 from agents.raising_hand_agent import RaisingHandAgent  # noqa: E402
 
 MEETING = "task19-meeting"
 
 
-class _FakeAioModels:
-    def __init__(self, payload=None, exc=None):
+class _FakeLLM:
+    """Stands in for llm.generate_structured: returns the payload as JSON, or None (all models failed)."""
+
+    def __init__(self, payload=None, fail=False):
         self.payload = payload
-        self.exc = exc
+        self.fail = fail
         self.calls = []
 
-    async def generate_content(self, model, contents, config):
-        self.calls.append(model)
-        if self.exc is not None:
-            raise self.exc
-        return SimpleNamespace(text=json.dumps(self.payload))
+    async def __call__(self, prompt, schema=None, contents=None, api_key=None):
+        self.calls.append(schema)
+        if self.fail:
+            return None
+        return json.dumps(self.payload)
 
 
-class _FakeClient:
-    def __init__(self, payload=None, exc=None):
-        self.aio = SimpleNamespace(models=_FakeAioModels(payload=payload, exc=exc))
+@pytest.fixture
+def fake_llm(monkeypatch):
+    def _install(payload=None, fail=False):
+        fake = _FakeLLM(payload=payload, fail=fail)
+        monkeypatch.setattr(llm, "generate_structured", fake)
+        return fake
+
+    return _install
 
 
-def _agent_with_client(client):
-    agent = RaisingHandAgent(api_key="")  # no real client is created
-    agent._genai_client = client
-    return agent
+def _agent_with_llm():
+    return RaisingHandAgent(api_key="test-key")
 
 
 def _eval(agent, xml, turns=None):
@@ -50,31 +57,31 @@ def _eval(agent, xml, turns=None):
     )
 
 
-def test_gemini_trigger_false_suppresses_heuristic_even_with_cache_keyword():
-    client = _FakeClient(payload={
+def test_gemini_trigger_false_suppresses_heuristic_even_with_cache_keyword(fake_llm):
+    fake = fake_llm(payload={
         "trigger": False,
         "category": "LOGIC_FLAW",
         "short_title": "Architecture Sound",
         "detailed_body": "Looks fine.",
     })
-    agent = _agent_with_client(client)
+    agent = _agent_with_llm()
     turns = [{"transcript_text": "We put a cache in front of it.", "timestamp_ms": 1}]
 
     result = _eval(agent, "<mxCell value='Redis Cache'/>", turns)
 
-    assert client.aio.models.calls, "Gemini should have been consulted"
+    assert fake.calls, "Gemini should have been consulted"
     assert result.trigger is False
     assert result.short_title == "Architecture Sound"
 
 
-def test_gemini_duplicate_title_is_not_reraised():
-    client = _FakeClient(payload={
+def test_gemini_duplicate_title_is_not_reraised(fake_llm):
+    fake_llm(payload={
         "trigger": True,
         "category": "VULNERABILITY",
         "short_title": "🚩 Cache Stampede Risk",
         "detailed_body": "Duplicate.",
     })
-    agent = _agent_with_client(client)
+    agent = _agent_with_llm()
     agent._history[MEETING] = {"🚩 Cache Stampede Risk"}
 
     result = _eval(agent, "<mxCell value='Redis Cache'/>")
@@ -82,14 +89,14 @@ def test_gemini_duplicate_title_is_not_reraised():
     assert result.trigger is False
 
 
-def test_gemini_new_finding_is_returned_as_is():
-    client = _FakeClient(payload={
+def test_gemini_new_finding_is_returned_as_is(fake_llm):
+    fake_llm(payload={
         "trigger": True,
         "category": "ALTERNATIVE_IDEA",
         "short_title": "🔁 Use Event Sourcing",
         "detailed_body": "Consider event sourcing.",
     })
-    agent = _agent_with_client(client)
+    agent = _agent_with_llm()
 
     result = _eval(agent, "<mxCell value='Ledger'/>")
 
@@ -98,23 +105,24 @@ def test_gemini_new_finding_is_returned_as_is():
     assert result.category == "ALTERNATIVE_IDEA"
 
 
-def test_heuristic_runs_when_client_is_none():
+def test_heuristic_runs_when_no_api_key(fake_llm):
+    fake = fake_llm(payload={"trigger": False})
     agent = RaisingHandAgent(api_key="")
-    assert agent._genai_client is None
 
     result = _eval(agent, "<mxCell value='Redis Cache'/>")
 
+    assert not fake.calls, "Gemini must not be consulted without an API key"
     assert result.trigger is True
     assert "Stampede" in result.short_title
 
 
-def test_heuristic_runs_when_gemini_call_raises():
-    client = _FakeClient(exc=RuntimeError("quota exhausted"))
-    agent = _agent_with_client(client)
+def test_heuristic_runs_when_gemini_call_fails(fake_llm):
+    fake = fake_llm(fail=True)
+    agent = _agent_with_llm()
 
     result = _eval(agent, "<mxCell value='Redis Cache'/>")
 
-    assert client.aio.models.calls, "Gemini should have been attempted"
+    assert fake.calls, "Gemini should have been attempted"
     assert result.trigger is True
     assert "Stampede" in result.short_title
 

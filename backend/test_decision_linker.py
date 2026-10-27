@@ -5,6 +5,7 @@ import types as pytypes
 
 import pytest
 
+import llm
 from agents.decision_linker import (
     DecisionLinkerAgent,
     generate_text_embedding,
@@ -69,10 +70,18 @@ def online_failing(monkeypatch):
     return client
 
 
+@pytest.fixture(autouse=True)
+def _no_llm(monkeypatch):
+    """Rationale generation fails (heuristic rationale, no network); only embeddings are under test."""
+
+    async def _unavailable(prompt, schema=None, contents=None, api_key=None):
+        return None
+
+    monkeypatch.setattr(llm, "generate_structured", _unavailable)
+
+
 def _linker(store, supabase):
-    agent = DecisionLinkerAgent(api_key="fake-key", supabase_client=supabase, memory_store=store)
-    agent._genai_client = None  # heuristic rationale, no network
-    return agent
+    return DecisionLinkerAgent(api_key="fake-key", supabase_client=supabase, memory_store=store)
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+import llm
+
 logger = logging.getLogger("specscribe.decision_linker")
 
 
@@ -199,15 +201,6 @@ class DecisionLinkerAgent:
         self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
-        self._genai_client = None
-
-        if self.api_key:
-            try:
-                from google import genai
-
-                self._genai_client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning("Could not initialize Google GenAI Client: %s", e)
 
     async def fetch_recent_transcripts(
         self,
@@ -267,12 +260,10 @@ class DecisionLinkerAgent:
         """
         Asynchronously uses Gemini to synthesize a 1-2 sentence decision rationale explaining
         WHY the architectural change was made and WHO proposed it.
-        Uses client.aio to prevent blocking the asyncio event loop (Fixes #1).
+        Uses the shared async llm helper to prevent blocking the asyncio event loop (Fixes #1).
         """
-        if self._genai_client:
+        if self.api_key:
             try:
-                from google.genai import types
-
                 turns_formatted = "\n".join([
                     f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
                     for t in recent_turns
@@ -290,29 +281,9 @@ class DecisionLinkerAgent:
                     "Ensure your output strictly conforms to the JSON schema."
                 )
 
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                response = None
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=DecisionRationaleSchema,
-                            ),
-                        )
-                        if response:
-                            break
-                    except Exception as m_err:
-                        logger.debug("Async rationale model %s failed: %s; trying next", model_name, m_err)
-
-                if response and response.text:
-                    parsed = json.loads(response.text)
+                text = await llm.generate_structured(prompt, schema=DecisionRationaleSchema, api_key=self.api_key)
+                if text:
+                    parsed = json.loads(text)
                     rationale = parsed.get("decision_rationale")
                     if rationale and rationale.strip():
                         return rationale.strip()
@@ -340,62 +311,6 @@ class DecisionLinkerAgent:
                 f"{', '.join(other_speakers)} to support system requirements."
             )
         return f"{primary_speaker} introduced '{diff_summary}' to optimize architecture flow."
-
-    def synthesize_rationale(
-        self,
-        meeting_id: str,
-        diff_summary: str,
-        recent_turns: List[Dict[str, Any]],
-        drawio_xml: Optional[str] = None,
-    ) -> str:
-        """Synchronous wrapper for offline testing or blocking execution contexts."""
-        if self._genai_client:
-            try:
-                from google.genai import types
-
-                turns_formatted = "\n".join([
-                    f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
-                    for t in recent_turns
-                ]) or "(No speech recorded in the 45s window)"
-
-                prompt = (
-                    "You are SpecScribe's Temporal Decision Linker Agent.\n"
-                    "An architectural change was just committed to the live whiteboard diagram:\n"
-                    f"Change Summary: {diff_summary}\n\n"
-                    "Recent Transcript Context (last 45 seconds of conversation):\n"
-                    f"{turns_formatted}\n\n"
-                    "Task: Synthesize a concise 1-2 sentence decision rationale explaining:\n"
-                    "1. WHY this specific architectural change was made.\n"
-                    "2. WHO proposed, advocated for, or agreed to it.\n"
-                    "Ensure your output strictly conforms to the JSON schema."
-                )
-
-                candidate_models = ["gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = self._genai_client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=DecisionRationaleSchema,
-                            ),
-                        )
-                        if response and response.text:
-                            parsed = json.loads(response.text)
-                            rationale = parsed.get("decision_rationale")
-                            if rationale and rationale.strip():
-                                return rationale.strip()
-                    except Exception as m_err:
-                        logger.debug("Sync rationale model %s failed: %s; trying next", model_name, m_err)
-            except Exception as e:
-                logger.warning("Gemini sync rationale synthesis failed: %s; using heuristic fallback", e)
-
-        return self._heuristic_rationale_fallback(diff_summary, recent_turns)
 
     async def process_snapshot(
         self,

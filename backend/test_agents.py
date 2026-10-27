@@ -162,7 +162,8 @@ def test_raising_hand_short_title_constraint():
     assert truncated.endswith("…")
 
 
-def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
+@pytest.mark.asyncio
+async def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
     """Verify Mode A catches cache stampede and SPOF anti-patterns in offline mode."""
     store = {
         "transcript_turns": {
@@ -179,7 +180,7 @@ def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
     agent = RaisingHandAgent(api_key="", memory_store=store)
 
     # 1. First evaluation: should trigger Cache Stampede Risk
-    eval1 = agent.evaluate_proactive(
+    eval1 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=20000,
         drawio_xml="<mxfile><mxCell value='Redis Cache'/><mxCell value='PostgreSQL'/></mxfile>",
@@ -197,7 +198,7 @@ async def test_raising_hand_deduplication(test_meeting_id):
     store = {"agent_interventions": {test_meeting_id: []}, "transcript_turns": {test_meeting_id: []}}
     agent = RaisingHandAgent(api_key="", memory_store=store)
 
-    eval1 = agent.evaluate_proactive(
+    eval1 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=10000,
         drawio_xml="<mxCell value='Redis Cache'/>",
@@ -214,7 +215,7 @@ async def test_raising_hand_deduplication(test_meeting_id):
     assert len(store["agent_interventions"][test_meeting_id]) == 1
 
     # Second evaluation on same diagram state: should be suppressed
-    eval2 = agent.evaluate_proactive(
+    eval2 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=30000,
         drawio_xml="<mxCell value='Redis Cache'/>",
