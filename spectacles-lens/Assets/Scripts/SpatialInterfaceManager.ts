@@ -17,6 +17,11 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   @input
   public isPhysicalHardware: boolean = false;
 
+  // When true, runs the canned recorded-demo flow (pre-baked textures, hardcoded critiques).
+  // When false (default), the overlay changes only on DIAGRAM_UPDATED and hand raises only on HAND_RAISED.
+  @input
+  public demoMode: boolean = false;
+
   @input
   @allowUndefined
   private socketClient?: PersistentStreamSocketClient;
@@ -190,20 +195,24 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
     this.whiteboardState = WhiteboardState.DRAWING_ACTIVE;
     this.diagramStage = 0;
-    this.nodeCount = 4;
 
-    print('[SpatialInterfaceManager] Drawing active: marker sketches and Sugiyama DAG ingested.');
+    print('[SpatialInterfaceManager] Drawing active.');
 
-    // Switch whiteboard to drawn state (marker sketches appear)
-    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
-      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
-    }
-    // Switch overlay to initial Sugiyama DAG
-    if (this.diagramOverlayMesh && this.texInitial) {
-      this.setMeshTexture(this.diagramOverlayMesh, this.texInitial);
-    }
-    if (this.diffToastText) {
-      this.diffToastText.text = 'Ingested Live Whiteboard Sketch: Sugiyama DAG Active (4 nodes, 3 edges)';
+    if (this.demoMode) {
+      this.nodeCount = 4;
+      // Switch whiteboard to drawn state (marker sketches appear)
+      if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+        this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+      }
+      // Switch overlay to initial Sugiyama DAG
+      if (this.diagramOverlayMesh && this.texInitial) {
+        this.setMeshTexture(this.diagramOverlayMesh, this.texInitial);
+      }
+      if (this.diffToastText) {
+        this.diffToastText.text = 'Ingested Live Whiteboard Sketch: Sugiyama DAG Active (4 nodes, 3 edges)';
+      }
+    } else if (this.diffToastText) {
+      this.diffToastText.text = 'Drawing active: waiting for diagram...';
     }
 
     if (this.socketClient) {
@@ -560,7 +569,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
       this.selectWhiteboardArea();
     }
-    if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
+    if (this.demoMode && this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
       this.nodeCount = 4;
       if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
         this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
@@ -576,31 +585,35 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       : undefined;
     if (!spokenLabel || spokenLabel === 'New Component') {
       const def = LENS_NODE_REGISTRY[nodeType.toLowerCase()];
-      if (nodeType === 'service') spokenLabel = 'Auth Gateway Service';
-      else if (nodeType === 'database') spokenLabel = 'Redis Token Cache';
-      else if (nodeType === 'decision') spokenLabel = 'Enforce JWT HMAC Verification';
-      else if (nodeType === 'terminal') spokenLabel = 'Client HTTPS Entrypoint';
+      if (this.demoMode && nodeType === 'service') spokenLabel = 'Auth Gateway Service';
+      else if (this.demoMode && nodeType === 'database') spokenLabel = 'Redis Token Cache';
+      else if (this.demoMode && nodeType === 'decision') spokenLabel = 'Enforce JWT HMAC Verification';
+      else if (this.demoMode && nodeType === 'terminal') spokenLabel = 'Client HTTPS Entrypoint';
       else if (def) spokenLabel = `${def.labelPrefix} Component`;
       else spokenLabel = `New ${nodeType}`;
     }
 
-    const toastMsg = `Injected [${nodeType.toUpperCase()}]: "${spokenLabel}" (Nodes: ${this.nodeCount})`;
+    const toastMsg = this.demoMode
+      ? `Injected [${nodeType.toUpperCase()}]: "${spokenLabel}" (Nodes: ${this.nodeCount})`
+      : `Adding [${nodeType.toUpperCase()}]: "${spokenLabel}"... (pending)`;
     print(`[SpatialInterfaceManager] ${toastMsg}`);
     if (this.diffToastText) {
       this.diffToastText.text = toastMsg;
     }
 
-    // Switch overlay texture to node-added stage
-    if (this.diagramOverlayMesh && this.texNodeAdded) {
-      this.setMeshTexture(this.diagramOverlayMesh, this.texNodeAdded);
-    }
-    // Ensure whiteboard backdrop shows marker drawings
-    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
-      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+    if (this.demoMode) {
+      // Switch overlay texture to node-added stage
+      if (this.diagramOverlayMesh && this.texNodeAdded) {
+        this.setMeshTexture(this.diagramOverlayMesh, this.texNodeAdded);
+      }
+      // Ensure whiteboard backdrop shows marker drawings
+      if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+        this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+      }
     }
 
-    // Trigger AI teammate hand-raise with architectural critique
-    if (this.raisingHandAgent) {
+    // Trigger AI teammate hand-raise with architectural critique (demo only)
+    if (this.demoMode && this.raisingHandAgent) {
       if (nodeType === 'decision') {
         this.raisingHandAgent.triggerHandRaised(
           '⚠️ Auth Token Leak Risk',
@@ -644,27 +657,33 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     this.whiteboardState = WhiteboardState.SNAPSHOT_UPDATED;
-    this.nodeCount = 6;
     this.diagramStage = 2;
+    if (this.demoMode) {
+      this.nodeCount = 6;
+    }
 
-    const toastMsg = 'Snapshot Synced: Multi-tier DAG optimized (6 nodes, 7 edges)';
+    const toastMsg = this.demoMode
+      ? 'Snapshot Synced: Multi-tier DAG optimized (6 nodes, 7 edges)'
+      : 'Snapshot update requested... (pending)';
     print(`[SpatialInterfaceManager] ${toastMsg}`);
     if (this.diffToastText) {
       this.diffToastText.text = toastMsg;
     }
 
-    // Ensure whiteboard backdrop shows marker drawings
-    if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
-      this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+    if (this.demoMode) {
+      // Ensure whiteboard backdrop shows marker drawings
+      if (this.whiteboardBoardMesh && this.texWhiteboardDrawn) {
+        this.setMeshTexture(this.whiteboardBoardMesh, this.texWhiteboardDrawn);
+      }
+
+      // Switch overlay texture to snapshot-updated stage
+      if (this.diagramOverlayMesh && this.texSnapshotUpdated) {
+        this.setMeshTexture(this.diagramOverlayMesh, this.texSnapshotUpdated);
+      }
     }
 
-    // Switch overlay texture to snapshot-updated stage
-    if (this.diagramOverlayMesh && this.texSnapshotUpdated) {
-      this.setMeshTexture(this.diagramOverlayMesh, this.texSnapshotUpdated);
-    }
-
-    // Proactive AI Teammate feedback on updated diagram
-    if (this.raisingHandAgent) {
+    // Proactive AI Teammate feedback on updated diagram (demo only)
+    if (this.demoMode && this.raisingHandAgent) {
       this.raisingHandAgent.triggerHandRaised(
         '💡 Architecture Optimized',
         '• Layout: Sugiyama hierarchical routing stabilized\n• Performance: Redis cache reduces DB load by 42%\n• Security: JWT verification enforced at API Gateway',
@@ -688,8 +707,8 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       this.diffToastText.text = toastMsg;
     }
 
-    // Switch overlay texture to concluded stage
-    if (this.diagramOverlayMesh && this.texConcluded) {
+    // Switch overlay texture to concluded stage (demo only; live mode waits for DIAGRAM_UPDATED)
+    if (this.demoMode && this.diagramOverlayMesh && this.texConcluded) {
       this.setMeshTexture(this.diagramOverlayMesh, this.texConcluded);
     }
     // Ensure whiteboard shows drawn whiteboard rather than calibration reticle
