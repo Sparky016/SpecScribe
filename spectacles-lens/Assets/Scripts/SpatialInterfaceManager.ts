@@ -2,6 +2,7 @@ import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interact
 import { PersistentStreamSocketClient } from './PersistentStreamSocketClient';
 import { RaisingHandAgentController } from './RaisingHandAgentController';
 import { LENS_NODE_REGISTRY } from './NodeRegistry';
+import { PinchAction } from './PinchActions';
 
 export enum WhiteboardState {
   SELECT_AREA = 0,    // Area selection mode: Reticle overlay, no drawings
@@ -77,6 +78,8 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private diagramStage: number = 0; // 0: initial/clean/select, 1: node added, 2: snapshot updated, 3: concluded
   private nodeCount: number = 0;
   private meetingConcluded: boolean = false;
+  private concludeTimeoutEvent: DelayedCallbackEvent | null = null;
+  private readonly concludeTimeoutSec: number = 30;
 
   private texSelectArea?: Texture;
   private texWhiteboardClean?: Texture;
@@ -185,7 +188,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand('CALIBRATE_AREA', 'whiteboard', `Area locked at y=${pos.y.toFixed(1)}`);
+      this.socketClient.sendPinchCommand(PinchAction.CALIBRATE_AREA, 'whiteboard', `Area locked at y=${pos.y.toFixed(1)}`);
     }
   }
 
@@ -216,7 +219,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand('INGEST_DRAWING', 'diagram', 'Initial Sugiyama DAG loaded');
+      this.socketClient.sendPinchCommand(PinchAction.INGEST_DRAWING, 'diagram', 'Initial Sugiyama DAG loaded');
     }
   }
 
@@ -642,7 +645,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand('ADD_NODE', nodeType, spokenLabel);
+      this.socketClient.sendPinchCommand(PinchAction.ADD_NODE, nodeType, spokenLabel);
     }
   }
 
@@ -692,13 +695,55 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     }
 
     if (this.socketClient) {
-      this.socketClient.sendPinchCommand('UPDATE_SNAPSHOT', 'diagram', 'Snapshot refresh');
+      this.socketClient.sendPinchCommand(PinchAction.UPDATE_SNAPSHOT, 'diagram', 'Snapshot refresh');
     }
   }
 
   public triggerConcludeMeeting(): void {
     this.meetingConcluded = true;
     this.whiteboardState = WhiteboardState.CONCLUDED;
+
+    if (this.socketClient) {
+      this.socketClient.sendPinchCommand(PinchAction.CONCLUDE_MEETING, 'session', 'Finalized spec');
+    }
+
+    if (this.demoMode) {
+      // Demo has no backend to wait on; show the canned success immediately.
+      this.showSpecGenerated();
+      return;
+    }
+
+    // Live mode: success UI waits for MEETING_FINALIZED; fall back to an error toast on timeout.
+    const pendingMsg = 'Generating spec...';
+    print(`[SpatialInterfaceManager] ${pendingMsg}`);
+    if (this.diffToastText) {
+      this.diffToastText.text = pendingMsg;
+    }
+    if (!this.concludeTimeoutEvent) {
+      this.concludeTimeoutEvent = this.createEvent('DelayedCallbackEvent');
+      this.concludeTimeoutEvent.bind(() => this.onConcludeTimeout());
+    }
+    this.concludeTimeoutEvent.reset(this.concludeTimeoutSec);
+  }
+
+  private onMeetingFinalized(): void {
+    if (this.concludeTimeoutEvent) {
+      this.concludeTimeoutEvent.enabled = false;
+    }
+    this.showSpecGenerated();
+  }
+
+  private onConcludeTimeout(): void {
+    // Allow the user to retry; the meeting was not confirmed as finalized.
+    this.meetingConcluded = false;
+    const errMsg = 'Spec generation failed: no response from server. Please try again.';
+    print(`[SpatialInterfaceManager] ${errMsg}`);
+    if (this.diffToastText) {
+      this.diffToastText.text = errMsg;
+    }
+  }
+
+  private showSpecGenerated(): void {
     this.diagramStage = 3;
 
     const toastMsg = 'Meeting Concluded: Technical Spec Generated';
@@ -728,10 +773,6 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     } catch (e) {
       // Ignored
     }
-
-    if (this.socketClient) {
-      this.socketClient.sendPinchCommand('CONCLUDE_MEETING', 'session', 'Finalized spec');
-    }
   }
 
   private bindSocketCallbacks(): void {
@@ -743,6 +784,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       if (this.diffToastText) {
         this.diffToastText.text = diffSummary;
       }
+    };
+
+    this.socketClient.onMeetingFinalized = () => {
+      this.onMeetingFinalized();
     };
 
     this.socketClient.onDecisionLogged = (payload: any) => {

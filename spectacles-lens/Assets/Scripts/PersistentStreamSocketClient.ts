@@ -25,6 +25,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   public onDiagramUpdated: (imageB64: string, diffSummary: string) => void = () => {};
   public onHandRaised: (payload: any) => void = () => {};
   public onDecisionLogged: (payload: any) => void = () => {};
+  public onMeetingFinalized: (payload: any) => void = () => {};
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
@@ -142,6 +143,10 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
         this.onHandRaised(msg);
       } else if (msg.event === 'DECISION_LOGGED') {
         this.onDecisionLogged(msg);
+      } else if (msg.event === 'MEETING_FINALIZED') {
+        this.onMeetingFinalized(msg);
+      } else if (msg.event === 'COMMAND_ACK') {
+        // Client-only actions are acknowledged by the backend; nothing to do.
       } else if (msg.event === 'COMMAND_ERROR') {
         print(`[PersistentStreamSocketClient] Command error (${msg.action}): ${msg.message}`);
       }

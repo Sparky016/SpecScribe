@@ -306,7 +306,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
   });
 
   describe('T-11 & T-12: SpatialInterfaceManager', () => {
-    test('binds 4 SIK PinchButtons and emits pinchCommand with latest spoken phrase', { todo: 'blocked by DEV_TASK_30' }, () => {
+    test('binds 4 SIK PinchButtons and emits pinchCommand with latest spoken phrase', () => {
       const manager = createComponentInstance(SpatialInterfaceManager);
 
       const btnDecision = new MockPinchButton();
@@ -319,7 +319,8 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       const socketClient = {
         getLatestSpokenPhrase: () => 'Customer Auth Service',
         sendPinchCommand: (action, type, label) => {
-          sentCommands.push({ action, type, label });
+          // CALIBRATE_AREA (client-only) is emitted by the auto-advance; this test covers ADD_NODE.
+          if (action === 'ADD_NODE') sentCommands.push({ action, type, label });
         },
         onDiagramUpdated: () => {},
         onDecisionLogged: () => {}
@@ -345,7 +346,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
         type: 'decision',
         label: 'Customer Auth Service'
       });
-      assert.equal(toastText.text, 'Adding [DECISION]: "Customer Auth Service"...');
+      assert.equal(toastText.text, 'Adding [DECISION]: "Customer Auth Service"... (pending)');
 
       // 2. Pinch Service
       btnService.simulatePinch();
