@@ -30,6 +30,9 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
 
   onAwake(): void {
     this.createEvent('OnStartEvent').bind(() => {
+      if (!this.websocketUrl) {
+        print('[PersistentStreamSocketClient] onStart failed: required input websocketUrl is empty; socket cannot connect.');
+      }
       this.meetingStartEpochMs = Date.now();
       this.initializeWebSocket();
       this.initializeAsrStream();
@@ -113,7 +116,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
           try {
             this.reconnectEvent.cancel();
           } catch (e) {
-            // Ignored
+            print(`[PersistentStreamSocketClient] onopen reconnect cancel failed: ${e}`);
           }
         }
         this.sendJson({
@@ -139,7 +142,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
         this.scheduleReconnect();
       };
     } catch (e) {
-      print(`[PersistentStreamSocketClient] Exception creating WebSocket: ${e}`);
+      print(`[PersistentStreamSocketClient] initializeWebSocket failed: ${e}`);
       this.scheduleReconnect();
     }
   }
@@ -181,7 +184,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
         print(`[PersistentStreamSocketClient] Command error (${msg.action}): ${msg.message}`);
       }
     } catch (e) {
-      print('[PersistentStreamSocketClient] Failed to parse inbound JSON.');
+      print(`[PersistentStreamSocketClient] routeInboundJson failed: ${e}`);
     }
   }
 
@@ -211,7 +214,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       this.asrModule.startTranscribing(asrOptions);
       print('[PersistentStreamSocketClient] ASR transcription stream started in HighSpeed mode.');
     } catch (e) {
-      print(`[PersistentStreamSocketClient] ASR setup failed: ${e}`);
+      print(`[PersistentStreamSocketClient] initializeAsrStream failed: ${e}`);
     }
   }
 
@@ -226,7 +229,7 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
           }
         }
       } catch (e) {
-        // Ignored
+        print(`[PersistentStreamSocketClient] bindCameraCapturer failed: ${e}`);
       }
     }
     if (!this.cameraCapturer) {
@@ -271,13 +274,13 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       try {
         this.reconnectEvent.cancel();
       } catch (e) {
-        // Ignored
+        print(`[PersistentStreamSocketClient] cleanup reconnect cancel failed: ${e}`);
       }
     }
     try {
       this.asrModule.stopTranscribing();
     } catch (e) {
-      // Ignored
+      print(`[PersistentStreamSocketClient] cleanup stopTranscribing failed: ${e}`);
     }
     if (this.activeSocket) {
       this.activeSocket.close();

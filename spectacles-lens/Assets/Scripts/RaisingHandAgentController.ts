@@ -63,7 +63,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   onAwake(): void {
     try {
       (global as any).SpecScribeRaisingHandAgent = this;
-    } catch (e) {}
+    } catch (e) {
+      print(`[RaisingHandAgentController] onAwake failed: ${e}`);
+    }
 
     this.createEvent('OnStartEvent').bind(() => {
       this.resolveReferences();
@@ -89,7 +91,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
       }
     } catch (e) {
-      // Audio optional in mock / headless
+      // Feature detection: audio is optional in mock / headless runs; silent by design.
     }
   }
 
@@ -146,7 +148,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      // Ignored
+      print(`[RaisingHandAgentController] findSceneObject failed: ${e}`);
     }
     return null;
   }
@@ -170,7 +172,7 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         return interactable;
       }
     } catch (e) {
-      // Ignored
+      print(`[RaisingHandAgentController] findInteractableOnObject failed: ${e}`);
     }
     return undefined;
   }
@@ -280,7 +282,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
       try {
         (this.pillTitleText as any).size = 18;
         (this.pillTitleText as any).renderOrder = 5;
-      } catch (e) {}
+      } catch (e) {
+        print(`[RaisingHandAgentController] setVisualState pill styling failed: ${e}`);
+      }
     }
     if (this.critiqueBodyText) {
       const formattedText = shortTitle && !detailedBody.includes(shortTitle)
@@ -293,7 +297,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         (this.critiqueBodyText as any).horizontalAlignment = 0; // Left
         (this.critiqueBodyText as any).verticalAlignment = 1;   // Center
         (this.critiqueBodyText as any).horizontalOverflow = 3;  // Wrap
-      } catch (e) {}
+      } catch (e) {
+        print(`[RaisingHandAgentController] setVisualState critique styling failed: ${e}`);
+      }
     }
     if (this.researchingRingObject) {
       this.researchingRingObject.enabled = state === AgentState.RESEARCHING;
@@ -392,7 +398,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
           if (cam) return cam;
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      print(`[RaisingHandAgentController] findCameraObject failed: ${e}`);
+    }
     return null;
   }
 
@@ -418,7 +426,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
           sphere.radius = 10.0;
           (col as any).shape = sphere;
         }
-      } catch (e) {}
+      } catch (e) {
+        print(`[RaisingHandAgentController] configureOrbCollider failed: ${e}`);
+      }
     }
   }
 
@@ -431,7 +441,9 @@ export class RaisingHandAgentController extends BaseScriptComponent {
           this.handleOrbPinched();
         }
       });
-    } catch (e) {}
+    } catch (e) {
+      print(`[RaisingHandAgentController] bindPreviewInteractions failed: ${e}`);
+    }
   }
 
   public getState(): AgentState {

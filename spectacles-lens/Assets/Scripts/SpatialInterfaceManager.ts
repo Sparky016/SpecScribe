@@ -96,7 +96,9 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   onAwake(): void {
     try {
       (global as any).SpecScribeSpatialInterfaceManager = this;
-    } catch (e) {}
+    } catch (e) {
+      print(`[SpatialInterfaceManager] onAwake failed: ${e}`);
+    }
 
     this.createEvent('OnStartEvent').bind(() => {
       this.loadTextures();
@@ -123,7 +125,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       this.texSnapshotUpdated = requireAsset('../Textures/Diagram_SnapshotUpdated_1024x683.png') as Texture;
       this.texConcluded = requireAsset('../Textures/Diagram_Concluded_1024x683.png') as Texture;
     } catch (e) {
-      print(`[SpatialInterfaceManager] Note: requireAsset unavailable or error: ${e}`);
+      print(`[SpatialInterfaceManager] loadTextures failed: ${e}`);
     }
   }
 
@@ -248,7 +250,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] setMeshTexture failed: ${e}`);
     }
   }
 
@@ -315,7 +317,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       });
     } catch (e) {
-      print(`[SpatialInterfaceManager] Touch drag binding notice: ${e}`);
+      print(`[SpatialInterfaceManager] bindTouchDragging failed: ${e}`);
     }
   }
 
@@ -347,7 +349,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       });
     } catch (e) {
-      // KeyPressEvent may be absent on device
+      // Feature detection: KeyPressEvent may be absent on device; keyboard controls are optional.
     }
   }
 
@@ -362,7 +364,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
           }
         }
       } catch (e) {
-        // Ignored
+        print(`[SpatialInterfaceManager] resolveReferences socket lookup failed: ${e}`);
       }
     }
 
@@ -376,7 +378,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
           }
         }
       } catch (e) {
-        // Ignored
+        print(`[SpatialInterfaceManager] resolveReferences agent lookup failed: ${e}`);
       }
       if (!this.raisingHandAgent) {
         const agentObj = this.findSceneObject('RaisingHandAgentRoot') || this.findSceneObject('SpecScribeControllers');
@@ -448,7 +450,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] findSceneObject failed: ${e}`);
     }
     return null;
   }
@@ -478,7 +480,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         return interactable;
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] findInteractable failed: ${e}`);
     }
     return undefined;
   }
@@ -532,7 +534,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         print('[SpatialInterfaceManager] Bound onButtonPinched to button');
       }
     } catch (e) {
-      print(`[SpatialInterfaceManager] Error binding button: ${e}`);
+      print(`[SpatialInterfaceManager] bindSingleButton failed: ${e}`);
     }
   }
 
@@ -748,7 +750,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         audioComp.play(1);
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] showSpecGenerated conclude sound failed: ${e}`);
     }
   }
 
@@ -893,7 +895,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] enableWhiteboardManipulation failed: ${e}`);
     }
   }
 
@@ -910,7 +912,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      // Ignored
+      print(`[SpatialInterfaceManager] disableWhiteboardManipulation failed: ${e}`);
     }
   }
 
@@ -928,7 +930,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
         }
       }
     } catch (e) {
-      print(`[SpatialInterfaceManager] Collider configuration notice: ${e}`);
+      print(`[SpatialInterfaceManager] configureWhiteboardCollider failed: ${e}`);
     }
   }
 
