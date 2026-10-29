@@ -1,28 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { askMeetingRAG } from "../../../../../lib/api";
-import { DEMO_TIMELINE } from "../../../../../lib/demoData";
+import { backendFetch } from "../../../../../lib/backend";
+import { DEMO_TIMELINE, DEMO_MEETING_ID } from "../../../../../lib/demoData";
+import { isValidMeetingId } from "../../../../../lib/meetingId";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+  if (!isValidMeetingId(id)) {
+    return NextResponse.json({ error: "Invalid meeting id" }, { status: 400 });
+  }
   const body = await request.json();
   const question = body.question || "";
 
-  // Bound internal service URL injected by Vercel Services, with fallbacks for local dev
-  const backendBase =
-    process.env.BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";
+  // Canned answers are for the offline demo meeting only; no backend call.
+  if (id === DEMO_MEETING_ID) {
+    return NextResponse.json(await askMeetingRAG(id, question, DEMO_TIMELINE));
+  }
 
-  // Try FastAPI backend first
   try {
-    const targetUrl = new URL(
-      `api/meetings/${id}/ask`,
-      backendBase.endsWith("/") ? backendBase : `${backendBase}/`
-    );
-    const res = await fetch(targetUrl, {
+    const res = await backendFetch(`api/meetings/${encodeURIComponent(id)}/ask`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question }),
@@ -32,12 +31,10 @@ export async function POST(
       const data = await res.json();
       return NextResponse.json(data);
     }
+    console.warn(`Backend RAG query returned status ${res.status}`);
   } catch (err) {
-    console.warn("Backend RAG query proxy fallback:", err);
+    console.warn("Backend RAG query proxy error:", err);
   }
 
-  // Local grounded RAG response
-  const localRAG = await askMeetingRAG(id, question, DEMO_TIMELINE);
-  return NextResponse.json(localRAG);
+  return NextResponse.json({ error: "Backend unavailable" }, { status: 502 });
 }
-

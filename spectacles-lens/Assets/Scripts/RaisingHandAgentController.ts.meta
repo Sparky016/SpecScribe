@@ -1,0 +1,70 @@
+- !<AssetImportMetadata/6cac0f32-61d9-4c1b-b7fc-44ec72276c02>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> e8bb8026-0c81-45d4-a011-60c0852abaa2
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> e8bb8026-0c81-45d4-a011-60c0852abaa2
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> e269559b-c71a-4e54-9692-270c2633d001
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/e269559b-c71a-4e54-9692-270c2633d001>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 01b5f3bc-ecb8-4576-8479-1e3e0c43c69f
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    agentAudioComponent: false
+    agentOrbMeshVisual: false
+    agentOrbPinchButton: false
+    critiqueBodyText: false
+    expandedCritiqueCard: false
+    handRaisedPillObject: false
+    pillTitleText: false
+    researchingRingObject: false
+    socketClient: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      agentOrbPinchButton: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      agentOrbMeshVisual: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      researchingRingObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      handRaisedPillObject: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      pillTitleText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      expandedCritiqueCard: !<reference.SceneObject> 00000000-0000-0000-0000-000000000000
+      critiqueBodyText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      agentAudioComponent: !<reference.AudioComponent> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input AssignableType_1 socketClient
+    - // @input AssignableType_2 agentOrbPinchButton
+    - // @input Component.RenderMeshVisual agentOrbMeshVisual
+    - // @input SceneObject researchingRingObject
+    - // @input SceneObject handRaisedPillObject
+    - // @input Component.Text pillTitleText
+    - // @input SceneObject expandedCritiqueCard
+    - // @input Component.Text critiqueBodyText
+    - // @input Component.AudioComponent agentAudioComponent

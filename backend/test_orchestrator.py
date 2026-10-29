@@ -5,9 +5,10 @@ Unit & Integration Test Suite for SpecScribe AR Orchestrator (T-05 & T-06)
 import asyncio
 import base64
 import io
+import threading
 import time
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from PIL import Image, ImageDraw
 from fastapi.testclient import TestClient
 
@@ -22,7 +23,39 @@ from graph_engine import (
     VertexAddition,
     EdgeAddition,
 )
-from main import app, live_sessions, memory_store, renderer_daemon
+from starlette.websockets import WebSocketDisconnect
+from auth import validate_auth_config
+from main import app, limiter, session_manager
+
+TEST_API_TOKEN = "test-token-123"
+AUTH_HEADERS = {"Authorization": f"Bearer {TEST_API_TOKEN}"}
+
+
+@pytest.fixture(autouse=True)
+def _api_token(monkeypatch):
+    """Enable token auth for every test in this module (overrides conftest's disabled default)."""
+    monkeypatch.delenv("SPECSCRIBE_AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("SPECSCRIBE_API_TOKEN", TEST_API_TOKEN)
+
+
+def _receive_json_bounded(ws, timeout=15.0):
+    """ws.receive_json() blocks forever when no event is queued; fail the test instead of hanging."""
+    outcome = {}
+
+    def _recv():
+        try:
+            outcome["msg"] = ws.receive_json()
+        except BaseException as exc:  # re-raised on the test thread below
+            outcome["exc"] = exc
+
+    reader = threading.Thread(target=_recv, daemon=True)
+    reader.start()
+    reader.join(timeout)
+    if reader.is_alive():
+        pytest.fail(f"No WebSocket event received within {timeout}s")
+    if "exc" in outcome:
+        raise outcome["exc"]
+    return outcome["msg"]
 
 
 def test_waveguide_styles_and_node_addition():
@@ -211,7 +244,7 @@ async def test_headless_daemon_mocked_render():
 
 def test_rest_api_lifecycle():
     """Verify REST API meeting creation, timeline retrieval, and finalization."""
-    with TestClient(app) as client:
+    with TestClient(app, headers=AUTH_HEADERS) as client:
         # 1. Create meeting
         resp = client.post("/api/meetings", json={"title": "Cloud Migration Brainstorm"})
         assert resp.status_code == 200
@@ -233,10 +266,10 @@ def test_rest_api_lifecycle():
 
 def test_websocket_pinch_command_and_transcription():
     """Verify WebSocket full-duplex protocol handling handshake, ASR, and pinch commands."""
-    with TestClient(app) as client:
-        meeting_id = "test-ws-session-99"
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        meeting_id = "00000000-0000-4000-8000-000000000099"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -272,16 +305,28 @@ def test_websocket_pinch_command_and_transcription():
             assert len(diagram_update["image_b64"]) > 50
 
             # Verify session state
-            session = live_sessions[meeting_id]
+            session = session_manager.live_sessions[meeting_id]
             assert "kafka event bus" in session.node_by_label
 
 
 def test_websocket_camera_frame_diff_gate():
     """Verify cameraFrame event triggers diff gate, diagram update, and suppresses duplicates."""
-    with TestClient(app) as client:
-        meeting_id = "test-ws-camera-session"
+    # Mock the vision call (looked up in envelope_router) so the delta is meaningful and offline-safe.
+    vision_delta = GraphDeltaSchema(
+        person_occluding_board=False,
+        has_meaningful_change=True,
+        added_vertices=[VertexAddition(temp_id="v-cam-1", label="Camera Whiteboard Node", node_type="service")],
+        added_edges=[],
+        diff_summary="+ Whiteboard camera node",
+    )
+    with patch(
+        "envelope_router.extract_graph_delta_from_gemini",
+        new_callable=AsyncMock,
+        return_value=vision_delta,
+    ) as vision, TestClient(app, headers=AUTH_HEADERS) as client:
+        meeting_id = "00000000-0000-4000-8000-000000000098"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -289,7 +334,7 @@ def test_websocket_camera_frame_diff_gate():
                 "protocolVersion": "1.1.0",
                 "timestamp_ms": 0,
             })
-            ack = ws.receive_json()
+            ack = _receive_json_bounded(ws)
             assert ack["event"] == "HANDSHAKE_ACK"
 
             # Generate synthetic whiteboard frame
@@ -308,7 +353,8 @@ def test_websocket_camera_frame_diff_gate():
             })
 
             # Expect DIAGRAM_UPDATED from vision extractor mutation
-            diagram_update = ws.receive_json()
+            diagram_update = _receive_json_bounded(ws)
+            vision.assert_awaited_once()
             assert diagram_update["event"] == "DIAGRAM_UPDATED"
             assert "Whiteboard" in diagram_update["diff_summary"] or len(diagram_update["image_b64"]) > 50
 
@@ -331,10 +377,10 @@ def test_websocket_camera_frame_diff_gate():
 
 def test_websocket_pinch_command_resilience():
     """Verify pinchCommand unhandled exceptions dispatch COMMAND_ERROR and do not close WebSocket (#2)."""
-    with TestClient(app) as client:
-        meeting_id = "test-ws-resilience-session"
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        meeting_id = "00000000-0000-4000-8000-000000000097"
 
-        with client.websocket_connect(f"/ws/meeting/{meeting_id}") as ws:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
             # 1. Handshake
             ws.send_json({
                 "eventType": "handshake",
@@ -370,7 +416,7 @@ def test_websocket_pinch_command_resilience():
             assert "Could not connect" in err_msg2["message"]
 
             # 4. Simulate Headless Playwright renderer crash (RuntimeError) during ADD_NODE
-            with patch.object(renderer_daemon, "render_b64_png", side_effect=RuntimeError("Playwright Chromium daemon crashed or restarted")):
+            with patch.object(session_manager.renderer_daemon, "render_b64_png", side_effect=RuntimeError("Playwright Chromium daemon crashed or restarted")):
                 ws.send_json({
                     "eventType": "pinchCommand",
                     "action": "ADD_NODE",
@@ -405,3 +451,323 @@ def test_websocket_pinch_command_resilience():
             assert "Resilient DocStore" in diagram_update["diff_summary"]
             assert len(diagram_update["image_b64"]) > 50
 
+
+def test_rest_requires_bearer_token():
+    """Unauthenticated / wrong-token REST calls return 401; valid token succeeds."""
+    with TestClient(app) as client:
+        assert client.get("/api/meetings/m1/timeline").status_code == 401
+        assert client.post("/api/meetings", json={"title": "x"}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers={"Authorization": "Bearer wrong"}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers={"Authorization": TEST_API_TOKEN}).status_code == 401
+        assert client.get("/api/meetings/m1/timeline", headers=AUTH_HEADERS).status_code != 401
+        assert client.post("/api/meetings", json={"title": "x"}, headers=AUTH_HEADERS).status_code == 200
+
+
+def test_gemini_post_routes_rate_limited_per_client():
+    """11th POST /ask within a minute from one client returns 429 + Retry-After; GET routes stay open."""
+    answer = AsyncMock(return_value={"answer": "stub"})
+    limiter.reset()
+    session_manager.memory_store["meetings"]["rl-1"] = {"id": "rl-1", "title": "rl"}
+    try:
+        with patch.object(session_manager.spec_generator, "answer_question", answer):
+            with TestClient(app, headers=AUTH_HEADERS) as client:
+                for _ in range(10):
+                    assert client.post("/api/meetings/rl-1/ask", json={"question": "q"}).status_code == 200
+                limited = client.post("/api/meetings/rl-1/ask", json={"question": "q"})
+                assert limited.status_code == 429
+                assert int(limited.headers["Retry-After"]) > 0
+                assert answer.await_count == 10
+                for _ in range(20):
+                    assert client.get("/api/meetings/rl-1/timeline").status_code == 200
+    finally:
+        session_manager.memory_store["meetings"].pop("rl-1", None)
+        limiter.reset()
+
+
+def test_health_is_public(monkeypatch):
+    monkeypatch.setattr(session_manager.renderer_daemon, "is_ready", lambda: True)
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 200
+    assert resp.json()["renderer_ready"] is True
+
+
+def test_health_returns_503_when_renderer_not_ready(monkeypatch):
+    monkeypatch.setattr(session_manager.renderer_daemon, "is_ready", lambda: False)
+    with TestClient(app) as client:
+        resp = client.get("/api/health")
+    assert resp.status_code == 503
+    body = resp.json()
+    assert body["renderer_ready"] is False
+    assert "proactive_telemetry" in body["active_agents"]
+
+
+def test_websocket_ignores_non_object_and_binary_frames():
+    mid = "00000000-0000-4000-8000-000000000251"
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}") as ws:
+            ws.send_text("[1, 2, 3]")
+            ws.send_text('"just a string"')
+            ws.send_bytes(b"\x00\x01\x02")
+            ws.send_json(_HANDSHAKE)
+            assert _receive_json_bounded(ws)["event"] == "HANDSHAKE_ACK"
+
+
+def test_websocket_rejected_without_valid_token():
+    """Missing or wrong ?token= closes with 4401 before accept."""
+    with TestClient(app) as client:
+        for url in ("/ws/meeting/auth-ws-1", "/ws/meeting/auth-ws-1?token=wrong"):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect(url):
+                    pass
+            assert exc.value.code == 4401
+    assert "auth-ws-1" not in session_manager.live_sessions
+
+
+def test_websocket_accepts_valid_token():
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/00000000-0000-4000-8000-000000000096?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+
+
+class _FakeSupabase:
+    """Records table calls in order; no network."""
+
+    def __init__(self, fail_on=None):
+        self.calls = []
+        self.fail_on = fail_on
+
+    def table(self, name):
+        outer = self
+
+        class _Q:
+            def __init__(self):
+                self.op = None
+
+            def _rec(self, op, *a, **k):
+                self.op = op
+                outer.calls.append((name, op, a, k))
+                return self
+
+            def upsert(self, *a, **k):
+                return self._rec("upsert", *a, **k)
+
+            def insert(self, *a, **k):
+                return self._rec("insert", *a, **k)
+
+            def update(self, *a, **k):
+                return self._rec("update", *a, **k)
+
+            def eq(self, *a, **k):
+                return self
+
+            def execute(self):
+                if outer.fail_on == self.op:
+                    raise RuntimeError("boom")
+
+                class _R:
+                    data = []
+
+                return _R()
+
+        return _Q()
+
+
+def test_websocket_rejects_non_uuid_meeting_id(monkeypatch):
+    monkeypatch.delenv("SPECSCRIBE_DEMO_MODE", raising=False)
+    with TestClient(app) as client:
+        for mid in ("not-a-uuid", "demo-session-01"):
+            with pytest.raises(WebSocketDisconnect) as exc:
+                with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}"):
+                    pass
+            assert exc.value.code == 4400
+    assert "not-a-uuid" not in session_manager.live_sessions
+
+
+def test_websocket_demo_id_maps_to_fixed_uuid_in_demo_mode(monkeypatch):
+    from session_manager import DEMO_MEETING_UUID
+
+    monkeypatch.setenv("SPECSCRIBE_DEMO_MODE", "1")
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/demo-session-01?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+            assert DEMO_MEETING_UUID in session_manager.live_sessions
+    session_manager.live_sessions.pop(DEMO_MEETING_UUID, None)
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_upserts_meeting_before_child_insert():
+    from session_manager import SessionManager
+
+    fake = _FakeSupabase()
+    mgr = SessionManager(supabase_client=fake)
+    mid = "00000000-0000-4000-8000-000000000095"
+    await mgr.ensure_session(mid)
+    await mgr.db_save_transcript_turn(mid, "Speaker 0", "hello", 10)
+    assert fake.calls[0][:2] == ("meetings", "upsert")
+    assert fake.calls[0][3] == {"on_conflict": "id"}
+    assert fake.calls[0][2][0]["id"] == mid and fake.calls[0][2][0]["title"]
+    assert fake.calls[1][:2] == ("transcript_turns", "insert")
+
+
+@pytest.mark.asyncio
+async def test_ensure_session_rejects_non_uuid():
+    from session_manager import SessionManager
+
+    with pytest.raises(ValueError):
+        await SessionManager(supabase_client=_FakeSupabase()).ensure_session("nope")
+
+
+@pytest.mark.asyncio
+async def test_persistence_failures_log_at_error(caplog):
+    from session_manager import SessionManager
+
+    mid = "00000000-0000-4000-8000-000000000094"
+    mgr = SessionManager(supabase_client=_FakeSupabase(fail_on="upsert"))
+    with caplog.at_level("ERROR", logger="specscribe.session_manager"):
+        await mgr.ensure_session(mid)
+    assert any(r.levelname == "ERROR" and r.exc_info for r in caplog.records)
+    caplog.clear()
+    mgr = SessionManager(supabase_client=_FakeSupabase(fail_on="insert"))
+    with caplog.at_level("ERROR", logger="specscribe.session_manager"):
+        await mgr.db_save_transcript_turn(mid, "s", "t", 1)
+        await mgr.db_save_diagram_snapshot(mid, 1, "<x/>", "d", None, "VISION_DIFF")
+    assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 2
+
+
+def test_startup_refuses_without_token_unless_disabled(monkeypatch, caplog):
+    monkeypatch.delenv("SPECSCRIBE_API_TOKEN", raising=False)
+    monkeypatch.delenv("SPECSCRIBE_AUTH_DISABLED", raising=False)
+    with pytest.raises(RuntimeError):
+        validate_auth_config()
+    with pytest.raises(RuntimeError):
+        with TestClient(app):
+            pass
+    monkeypatch.setenv("SPECSCRIBE_AUTH_DISABLED", "1")
+    with caplog.at_level("WARNING"):
+        validate_auth_config()
+    assert "DISABLED" in caplog.text
+    with TestClient(app) as client:
+        assert client.post("/api/meetings", json={"title": "x"}).status_code == 200
+
+
+def test_pinch_conclude_meeting_finalizes_and_stops_loop():
+    """CONCLUDE_MEETING finalizes, stops the proactive loop and emits MEETING_FINALIZED."""
+    meeting_id = "00000000-0000-4000-8000-000000000141"
+    finalize = AsyncMock(return_value={"spec_md": "# spec", "chunks_created": 3})
+    with patch.object(session_manager.spec_generator, "finalize_meeting", finalize), \
+            patch.object(session_manager.raising_hand_agent, "stop_proactive_loop") as stop_loop:
+        with TestClient(app, headers=AUTH_HEADERS) as client:
+            with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
+                ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+                assert ws.receive_json()["event"] == "HANDSHAKE_ACK"
+                ws.send_json({"eventType": "pinchCommand", "action": "CONCLUDE_MEETING", "timestamp_ms": 9000})
+                msg = ws.receive_json()
+    assert msg["event"] == "MEETING_FINALIZED"
+    assert msg["type"] == "MEETING_FINALIZED"
+    assert msg["meeting_id"] == meeting_id
+    assert msg["chunks_created"] == 3
+    finalize.assert_awaited_once()
+    assert finalize.await_args.kwargs["meeting_id"] == meeting_id
+    stop_loop.assert_any_call(meeting_id)
+
+
+@pytest.mark.parametrize("action", ["CALIBRATE_AREA", "INGEST_DRAWING", "UPDATE_SNAPSHOT"])
+def test_pinch_client_only_actions_are_acked_not_errors(action):
+    """Client-only actions get COMMAND_ACK, never COMMAND_ERROR, and log no warning."""
+    meeting_id = "00000000-0000-4000-8000-000000000142"
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        with client.websocket_connect(f"/ws/meeting/{meeting_id}?token={TEST_API_TOKEN}") as ws:
+            ws.send_json({"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0})
+            assert ws.receive_json()["event"] == "HANDSHAKE_ACK"
+            ws.send_json({"eventType": "pinchCommand", "action": action, "timestamp_ms": 100})
+            msg = ws.receive_json()
+    assert msg["event"] == "COMMAND_ACK"
+    assert msg["action"] == action
+
+
+# ---- Task 23: session eviction, cap, 404 unknown meetings
+
+_HANDSHAKE = {"eventType": "handshake", "device": "Spectacles-2024", "protocolVersion": "1.1.0", "timestamp_ms": 0}
+
+
+def test_unknown_meeting_routes_404_and_create_no_session(monkeypatch):
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    mid = "00000000-0000-4000-8000-000000000231"
+    limiter.reset()
+    sessions_before = set(session_manager.live_sessions)
+    meetings_before = set(session_manager.memory_store["meetings"])
+    with TestClient(app, headers=AUTH_HEADERS) as client:
+        assert client.get(f"/api/meetings/{mid}/timeline").status_code == 404
+        assert client.post(f"/api/meetings/{mid}/finalize").status_code == 404
+        assert client.post(f"/api/meetings/{mid}/proactive-critique").status_code == 404
+        assert client.post(f"/api/meetings/{mid}/ask", json={"question": "q"}).status_code == 404
+    assert set(session_manager.live_sessions) == sessions_before
+    assert set(session_manager.memory_store["meetings"]) == meetings_before
+    limiter.reset()
+
+
+def test_idle_session_evicted_after_last_disconnect_with_zero_ttl(monkeypatch):
+    mid = "00000000-0000-4000-8000-000000000232"
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    monkeypatch.setenv("SPECSCRIBE_SESSION_TTL_SECONDS", "0")
+    with TestClient(app) as client:
+        with client.websocket_connect(f"/ws/meeting/{mid}?token={TEST_API_TOKEN}") as ws:
+            ws.send_json(_HANDSHAKE)
+            assert _receive_json_bounded(ws)["event"] == "HANDSHAKE_ACK"
+            session_manager.raising_hand_agent._history[mid] = {"x"}
+            assert mid in session_manager.live_sessions
+            assert session_manager.evict(mid) is False  # live socket: refused
+            assert mid in session_manager.live_sessions
+    assert mid not in session_manager.live_sessions
+    assert mid not in session_manager.memory_store["meetings"]
+    assert mid not in session_manager.active_connections
+    assert mid not in session_manager.raising_hand_agent._history
+    assert mid not in session_manager.raising_hand_agent._active_loops
+
+
+def test_session_kept_within_ttl_and_swept_after(monkeypatch):
+    mid = "00000000-0000-4000-8000-000000000233"
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    monkeypatch.setenv("SPECSCRIBE_SESSION_TTL_SECONDS", "100")
+    now = [1000.0]
+    monkeypatch.setattr(session_manager, "_clock", lambda: now[0])
+    try:
+        session_manager.get_or_create_session(mid)
+        assert session_manager.sweep_idle_sessions() == 0
+        assert mid in session_manager.live_sessions
+        session_manager.active_connections[mid].add(object())  # a live socket blocks eviction
+        now[0] += 500
+        assert session_manager.sweep_idle_sessions() == 0
+        assert mid in session_manager.live_sessions
+        session_manager.active_connections.pop(mid)
+        assert session_manager.sweep_idle_sessions() == 1
+        assert mid not in session_manager.live_sessions
+    finally:
+        session_manager.active_connections.pop(mid, None)
+        session_manager.live_sessions.pop(mid, None)
+        session_manager.memory_store["meetings"].pop(mid, None)
+
+
+def test_session_cap_rejects_new_websocket_with_4429(monkeypatch):
+    first = "00000000-0000-4000-8000-000000000234"
+    second = "00000000-0000-4000-8000-000000000235"
+    monkeypatch.setattr(session_manager, "supabase_client", None)
+    monkeypatch.setenv("SPECSCRIBE_MAX_SESSIONS", str(len(session_manager.live_sessions) + 1))
+    try:
+        with TestClient(app) as client:
+            with client.websocket_connect(f"/ws/meeting/{first}?token={TEST_API_TOKEN}") as ws:
+                ws.send_json(_HANDSHAKE)
+                assert _receive_json_bounded(ws)["event"] == "HANDSHAKE_ACK"
+                with pytest.raises(WebSocketDisconnect) as exc:
+                    with client.websocket_connect(f"/ws/meeting/{second}?token={TEST_API_TOKEN}"):
+                        pass
+                assert exc.value.code == 4429
+                assert second not in session_manager.live_sessions
+                # an existing meeting may still take another socket
+                with client.websocket_connect(f"/ws/meeting/{first}?token={TEST_API_TOKEN}") as ws2:
+                    ws2.send_json(_HANDSHAKE)
+                    assert _receive_json_bounded(ws2)["event"] == "HANDSHAKE_ACK"
+    finally:
+        session_manager.evict(first)

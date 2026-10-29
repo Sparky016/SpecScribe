@@ -1,0 +1,97 @@
+- !<AssetImportMetadata/fdaf14ac-71fe-4ae6-9923-3230ae7ba4ae>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> c6a9746b-40a4-4870-98fc-be92460e1f90
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> c6a9746b-40a4-4870-98fc-be92460e1f90
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 2f8190b9-402d-4e53-8d93-7ab9461cab29
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/2f8190b9-402d-4e53-8d93-7ab9461cab29>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: f29d9e56-b405-4d5b-9c01-4db66a971195
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    btnAddDatabase: false
+    btnAddDecision: false
+    btnAddService: false
+    btnAddTerminal: false
+    btnConcludeMeeting: false
+    btnUpdateSnapshot: false
+    demoMode: false
+    diagramOverlayMesh: false
+    diagramOverlayView: false
+    diffToastText: false
+    isPhysicalHardware: false
+    paletteController: false
+    previewInputAdapter: false
+    raisingHandAgent: false
+    socketClient: false
+    whiteboardBoardMesh: false
+    whiteboardCalibrator: false
+    whiteboardInteractable: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - isPhysicalHardware: false
+      demoMode: false
+      socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      whiteboardCalibrator: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      paletteController: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      diagramOverlayView: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
+      previewInputAdapter: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
+      btnAddDecision: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
+      btnAddService: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
+      btnAddDatabase: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+      btnAddTerminal: !<MappingBased.AssignableType_10> 00000000-0000-0000-0000-000000000000
+      btnUpdateSnapshot: !<MappingBased.AssignableType_11> 00000000-0000-0000-0000-000000000000
+      btnConcludeMeeting: !<MappingBased.AssignableType_12> 00000000-0000-0000-0000-000000000000
+      whiteboardInteractable: !<MappingBased.AssignableType_13> 00000000-0000-0000-0000-000000000000
+      diagramOverlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      whiteboardBoardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      diffToastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input bool isPhysicalHardware
+    - // @input bool demoMode
+    - // @input AssignableType_1 socketClient
+    - // @input AssignableType_2 raisingHandAgent
+    - // @input AssignableType_3 whiteboardCalibrator
+    - // @input AssignableType_4 paletteController
+    - // @input AssignableType_5 diagramOverlayView
+    - // @input AssignableType_6 previewInputAdapter
+    - // @input AssignableType_7 btnAddDecision
+    - // @input AssignableType_8 btnAddService
+    - // @input AssignableType_9 btnAddDatabase
+    - // @input AssignableType_10 btnAddTerminal
+    - // @input AssignableType_11 btnUpdateSnapshot
+    - // @input AssignableType_12 btnConcludeMeeting
+    - // @input AssignableType_13 whiteboardInteractable
+    - // @input Component.RenderMeshVisual diagramOverlayMesh
+    - // @input Component.RenderMeshVisual whiteboardBoardMesh
+    - // @input Component.Text diffToastText

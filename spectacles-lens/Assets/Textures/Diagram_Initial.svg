@@ -1,0 +1,64 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="glowGreen" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#00FF66" flood-opacity="0.9"/>
+    </filter>
+    <filter id="glowCyan" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="6" flood-color="#00E5FF" flood-opacity="0.9"/>
+    </filter>
+  </defs>
+  
+  <!-- Digital Overlay Badge -->
+  <g filter="url(#glowCyan)">
+    <rect x="70" y="140" width="440" height="40" rx="10" fill="#020617" stroke="#00E5FF" stroke-width="2" fill-opacity="0.85"/>
+    <text x="90" y="166" font-family="sans-serif" font-size="15" font-weight="700" fill="#00E5FF" letter-spacing="1">DIGITAL OVERLAY // 4 NODES • 3 EDGES (SUGIYAMA DAG)</text>
+  </g>
+  
+  <!-- Directed DAG Edges -->
+  <g stroke="#00E5FF" stroke-width="4" fill="none" filter="url(#glowCyan)">
+    <path d="M 270 285 L 355 285"/>
+    <polygon points="365,285 350,277 350,293" fill="#00E5FF"/>
+    
+    <path d="M 575 285 L 660 285"/>
+    <polygon points="670,285 655,277 655,293" fill="#00E5FF"/>
+    
+    <path d="M 890 285 L 965 285"/>
+    <polygon points="975,285 960,277 960,293" fill="#00E5FF"/>
+  </g>
+  
+  <!-- Node 1: Client Entrypoint -->
+  <g filter="url(#glowCyan)">
+    <rect x="75" y="235" width="190" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00E5FF" stroke-width="3.5"/>
+    <rect x="85" y="245" width="90" height="22" rx="6" fill="#00E5FF" fill-opacity="0.2"/>
+    <text x="95" y="261" font-family="sans-serif" font-size="12" font-weight="800" fill="#00E5FF">TERMINAL</text>
+    <text x="90" y="295" font-family="sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">Client HTTPS</text>
+    <text x="90" y="318" font-family="sans-serif" font-size="13" fill="#94A3B8">React / Mobile</text>
+  </g>
+
+  <!-- Node 2: API Gateway -->
+  <g filter="url(#glowGreen)">
+    <rect x="370" y="235" width="200" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00FF66" stroke-width="3.5"/>
+    <rect x="380" y="245" width="80" height="22" rx="6" fill="#00FF66" fill-opacity="0.2"/>
+    <text x="390" y="261" font-family="sans-serif" font-size="12" font-weight="800" fill="#00FF66">SERVICE</text>
+    <text x="385" y="295" font-family="sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">API Gateway</text>
+    <text x="385" y="318" font-family="sans-serif" font-size="13" fill="#94A3B8">Reverse Proxy / TLS</text>
+  </g>
+
+  <!-- Node 3: Core Microservice -->
+  <g filter="url(#glowGreen)">
+    <rect x="675" y="235" width="210" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00FF66" stroke-width="3.5"/>
+    <rect x="685" y="245" width="80" height="22" rx="6" fill="#00FF66" fill-opacity="0.2"/>
+    <text x="695" y="261" font-family="sans-serif" font-size="12" font-weight="800" fill="#00FF66">SERVICE</text>
+    <text x="690" y="295" font-family="sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">Core Engine</text>
+    <text x="690" y="318" font-family="sans-serif" font-size="13" fill="#94A3B8">Transaction Logic</text>
+  </g>
+
+  <!-- Node 4: Database -->
+  <g filter="url(#glowCyan)">
+    <rect x="980" y="235" width="160" height="100" rx="14" fill="#030712" fill-opacity="0.9" stroke="#00E5FF" stroke-width="3.5"/>
+    <rect x="990" y="245" width="90" height="22" rx="6" fill="#00E5FF" fill-opacity="0.2"/>
+    <text x="1000" y="261" font-family="sans-serif" font-size="12" font-weight="800" fill="#00E5FF">DATABASE</text>
+    <text x="995" y="295" font-family="sans-serif" font-size="17" font-weight="700" fill="#FFFFFF">Postgres DB</text>
+    <text x="995" y="318" font-family="sans-serif" font-size="13" fill="#94A3B8">Relational Store</text>
+  </g>
+</svg>

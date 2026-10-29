@@ -20,7 +20,7 @@ from agents.raising_hand_agent import (
     RaisingHandAgent,
     RaisingHandEvaluation,
 )
-from main import app, live_sessions, memory_store, db_save_transcript_turn, db_save_diagram_snapshot
+from main import app
 
 
 @pytest.fixture
@@ -45,7 +45,8 @@ def test_generate_text_embedding_dimensions():
     assert vec == vec2
 
 
-def test_transcript_window_filtering(test_meeting_id):
+@pytest.mark.asyncio
+async def test_transcript_window_filtering(test_meeting_id):
     """Verify fetch_recent_transcripts extracts turns strictly within the 45-second window."""
     store = {
         "transcript_turns": {
@@ -62,9 +63,9 @@ def test_transcript_window_filtering(test_meeting_id):
         }
     }
 
-    linker = DecisionLinkerAgent(memory_store=store)
+    linker = DecisionLinkerAgent(api_key="", memory_store=store)
     # Snapshot taken at 70,000ms (window: [25,000ms, 70,000ms])
-    recent = linker.fetch_recent_transcripts(test_meeting_id, timestamp_ms=70000, window_ms=45000)
+    recent = await linker.fetch_recent_transcripts(test_meeting_id, timestamp_ms=70000, window_ms=45000)
 
     turn_ids = [t["id"] for t in recent]
     assert "t2" in turn_ids
@@ -116,7 +117,7 @@ async def test_decision_linker_process_snapshot(test_meeting_id):
     async def mock_broadcast(meeting_id, payload):
         broadcast_events.append(payload)
 
-    linker = DecisionLinkerAgent(memory_store=store)
+    linker = DecisionLinkerAgent(api_key="", memory_store=store)
     res = await linker.process_snapshot(
         meeting_id=test_meeting_id,
         snapshot_id="snap-123",
@@ -161,7 +162,8 @@ def test_raising_hand_short_title_constraint():
     assert truncated.endswith("…")
 
 
-def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
+@pytest.mark.asyncio
+async def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
     """Verify Mode A catches cache stampede and SPOF anti-patterns in offline mode."""
     store = {
         "transcript_turns": {
@@ -175,10 +177,10 @@ def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
         },
         "agent_interventions": {test_meeting_id: []},
     }
-    agent = RaisingHandAgent(memory_store=store)
+    agent = RaisingHandAgent(api_key="", memory_store=store)
 
     # 1. First evaluation: should trigger Cache Stampede Risk
-    eval1 = agent.evaluate_proactive(
+    eval1 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=20000,
         drawio_xml="<mxfile><mxCell value='Redis Cache'/><mxCell value='PostgreSQL'/></mxfile>",
@@ -194,9 +196,9 @@ def test_raising_hand_heuristic_anti_pattern_detection(test_meeting_id):
 async def test_raising_hand_deduplication(test_meeting_id):
     """Verify Raising-Hand Agent does not repeatedly trigger duplicate alerts for the same issue."""
     store = {"agent_interventions": {test_meeting_id: []}, "transcript_turns": {test_meeting_id: []}}
-    agent = RaisingHandAgent(memory_store=store)
+    agent = RaisingHandAgent(api_key="", memory_store=store)
 
-    eval1 = agent.evaluate_proactive(
+    eval1 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=10000,
         drawio_xml="<mxCell value='Redis Cache'/>",
@@ -213,7 +215,7 @@ async def test_raising_hand_deduplication(test_meeting_id):
     assert len(store["agent_interventions"][test_meeting_id]) == 1
 
     # Second evaluation on same diagram state: should be suppressed
-    eval2 = agent.evaluate_proactive(
+    eval2 = await agent.evaluate_proactive_async(
         meeting_id=test_meeting_id,
         timestamp_ms=30000,
         drawio_xml="<mxCell value='Redis Cache'/>",
@@ -230,7 +232,7 @@ async def test_raising_hand_mode_b_on_demand_research_pull(test_meeting_id):
     async def mock_broadcast(meeting_id, payload):
         broadcast_events.append(payload)
 
-    agent = RaisingHandAgent(memory_store=store)
+    agent = RaisingHandAgent(api_key="", memory_store=store)
 
     record = await agent.handle_research_pull(
         meeting_id=test_meeting_id,

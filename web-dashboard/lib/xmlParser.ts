@@ -127,20 +127,25 @@ export function parseDrawioXml(xmlString: string): ParsedGraph {
   return { vertices, edges };
 }
 
-function detectNodeType(style: string, label: string): "service" | "decision" | "database" | "terminal" | "default" {
+function detectNodeType(style: string, label: string): NodeType | "default" {
   const s = style.toLowerCase();
   const l = label.toLowerCase();
   const order: NodeType[] = ["database", "decision", "terminal", "service"];
+  // Explicit style pass first; label keywords are only a fallback so 'Backend API' (rounded=1) is a service.
   for (const typeKey of order) {
-    const def = NODE_REGISTRY[typeKey];
-    if (def.styleKeywords.some((kw) => s.includes(kw)) || def.labelKeywords.some((kw) => l.includes(kw))) {
+    if (NODE_REGISTRY[typeKey].styleKeywords.some((kw) => s.includes(kw))) {
+      return typeKey;
+    }
+  }
+  for (const typeKey of order) {
+    if (NODE_REGISTRY[typeKey].labelKeywords.some((kw) => l.includes(kw))) {
       return typeKey;
     }
   }
   return "service";
 }
 
-function extractColors(style: string, type: "service" | "decision" | "database" | "terminal" | "default") {
+function extractColors(style: string, type: NodeType | "default") {
   const fillMatch = style.match(/fillColor=([^;]+)/);
   const strokeMatch = style.match(/strokeColor=([^;]+)/);
 
@@ -200,6 +205,8 @@ function ensureLayout(vertices: ParsedVertex[], edges: ParsedEdge[]) {
     const currLayer = layer[curr];
     const neighbors = outgoing[curr] || [];
     for (const next of neighbors) {
+      // An acyclic graph never needs more layers than vertices; capping here stops cycles from re-queuing forever.
+      if (currLayer + 1 >= vertices.length) continue;
       if (layer[next] === undefined || layer[next] <= currLayer) {
         layer[next] = currLayer + 1;
         queue.push(next);

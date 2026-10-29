@@ -1,0 +1,70 @@
+- !<AssetImportMetadata/737abfd6-57d3-42b2-bed3-c4ffb11f0019>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 0c603e31-c7d4-427c-bfde-be7f955b5f80
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 0c603e31-c7d4-427c-bfde-be7f955b5f80
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 366ff88c-871d-48a7-a38f-a0a68567d7d8
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/366ff88c-871d-48a7-a38f-a0a68567d7d8>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 55147547-1509-413c-b993-f74a7802283f
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    btnAddDatabase: false
+    btnAddDecision: false
+    btnAddService: false
+    btnAddTerminal: false
+    btnCaptureWhiteboard: false
+    btnConcludeMeeting: false
+    btnToggleCaptureMode: false
+    btnUpdateSnapshot: false
+    whiteboardInteractable: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - btnAddDecision: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
+      btnAddService: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
+      btnAddDatabase: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      btnAddTerminal: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      btnUpdateSnapshot: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
+      btnConcludeMeeting: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
+      whiteboardInteractable: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
+      btnCaptureWhiteboard: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
+      btnToggleCaptureMode: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input AssignableType_1 btnAddDecision
+    - // @input AssignableType_2 btnAddService
+    - // @input AssignableType_3 btnAddDatabase
+    - // @input AssignableType_4 btnAddTerminal
+    - // @input AssignableType_5 btnUpdateSnapshot
+    - // @input AssignableType_6 btnConcludeMeeting
+    - // @input AssignableType_7 whiteboardInteractable
+    - // @input AssignableType_8 btnCaptureWhiteboard
+    - // @input AssignableType_9 btnToggleCaptureMode

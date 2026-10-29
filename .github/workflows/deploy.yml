@@ -1,0 +1,178 @@
+name: CI / CD — Test & Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'backend/**'
+      - 'spectacles-lens/**'
+      - 'web-dashboard/**'
+      - 'shared/**'
+      - 'scripts/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      deploy_env:
+        description: 'Deployment Target Environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+permissions:
+  contents: read
+  id-token: write # Required for GCP Workload Identity Federation (OIDC)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GCP_REGION: ${{ vars.GCP_REGION || 'europe-west1' }}
+  GAR_REPOSITORY: ${{ vars.GAR_REPOSITORY || 'specscribe' }}
+  SERVICE_NAME: ${{ vars.CLOUD_RUN_SERVICE || 'specscribe-backend' }}
+
+jobs:
+  # ============================================================================
+  # 1. Automated Test Gate (Zero-Regression Invariant)
+  # ============================================================================
+  test:
+    name: Run Automated Test Suites
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: 'backend/requirements-dev.lock'
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: 'spectacles-lens/package-lock.json'
+
+      - name: Check Node Registry Codegen Is Up To Date
+        run: |
+          node scripts/gen_node_registry.mjs
+          git diff --exit-code -- web-dashboard/lib/nodeRegistry.ts spectacles-lens/Assets/Scripts/NodeRegistry.ts
+
+      - name: Install Backend Dependencies & Playwright
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.lock
+          playwright install --with-deps chromium
+
+      - name: Execute Backend Tests (Pytest)
+        working-directory: backend
+        env:
+          GEMINI_API_KEY: "" # Run against deterministic test fixtures in CI
+          SUPABASE_URL: ""
+          SUPABASE_SERVICE_KEY: ""
+        run: |
+          pytest -v -m "not integration"
+
+      - name: Install Lens Studio Test Dependencies
+        working-directory: spectacles-lens
+        run: |
+          npm ci
+
+      - name: Execute Lens Studio TypeScript Tests
+        working-directory: spectacles-lens
+        run: |
+          npm test
+
+  # ============================================================================
+  # 2. Build Container & Deploy to Google Cloud Run
+  # ============================================================================
+  deploy:
+    name: Build & Deploy to Cloud Run
+    needs: test
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Modern Best Practice: Authenticate via Workload Identity Federation (WIF)
+      # Falls back gracefully to GCP_SA_KEY if WIF is not yet configured
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Stage shared node registry into Docker context
+        run: cp shared/node_registry.json backend/node_registry.json
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construct Image Tags
+        id: meta
+        run: |
+          IMAGE_BASE="${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.SERVICE_NAME }}"
+          echo "IMAGE_TAG=${IMAGE_BASE}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          echo "IMAGE_LATEST=${IMAGE_BASE}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.meta.outputs.IMAGE_TAG }}
+            ${{ steps.meta.outputs.IMAGE_LATEST }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Deploy to Google Cloud Run with persistent session and compute requirements
+      - name: Deploy Container to Google Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ steps.meta.outputs.IMAGE_TAG }}
+          flags: |
+            --min-instances=1
+            --no-cpu-throttling
+            --session-affinity
+            --timeout=3600
+            --concurrency=80
+            --cpu=2
+            --memory=2Gi
+            --allow-unauthenticated
+          env_vars: |
+            SUPABASE_URL=${{ vars.SUPABASE_URL }}
+            ALLOWED_ORIGINS=${{ vars.ALLOWED_ORIGINS }}
+            HOST=0.0.0.0
+            SUPABASE_SERVICE_KEY=${{ secrets.SUPABASE_SERVICE_KEY }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            DEEPGRAM_API_KEY=${{ secrets.DEEPGRAM_API_KEY }}
+
+      - name: Verify Live Service Health
+        run: |
+          echo "Deployed Cloud Run Service URL: ${{ steps.deploy.outputs.url }}"
+          curl -f --retry 3 --retry-delay 5 "${{ steps.deploy.outputs.url }}/api/health"

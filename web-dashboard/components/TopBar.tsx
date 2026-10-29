@@ -25,6 +25,7 @@ import {
 interface TopBarProps {
   timeline: TimelineData;
   currentSnapshotXml?: string;
+  totalDurationMs: number;
   onOpenRAG: () => void;
   isRAGOpen: boolean;
 }
@@ -32,20 +33,20 @@ interface TopBarProps {
 export const TopBar: React.FC<TopBarProps> = ({
   timeline,
   currentSnapshotXml,
+  totalDurationMs,
   onOpenRAG,
   isRAGOpen,
 }) => {
   const [exportOpen, setExportOpen] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState<string | null>(null);
 
-  // Compute meeting duration from the last event
-  const lastTurn = timeline.transcript_turns[timeline.transcript_turns.length - 1];
-  const lastSnap = timeline.diagram_snapshots[timeline.diagram_snapshots.length - 1];
-  const durationMs = Math.max(
-    lastTurn ? lastTurn.timestamp_ms : 0,
-    lastSnap ? lastSnap.timestamp_ms : 0,
-    150000
+  // Distinct speakers, in order of first appearance
+  const speakerLabels = Array.from(
+    new Set(timeline.transcript_turns.map((t) => t.speaker_label).filter(Boolean))
   );
+
+  const hasDrawio =Boolean(currentSnapshotXml || timeline.meeting.latest_drawio_xml);
+  const hasSpec = Boolean(timeline.meeting.generated_spec_md);
 
   const handleExport = (type: "drawio" | "md" | "json") => {
     if (type === "drawio") {
@@ -90,21 +91,26 @@ export const TopBar: React.FC<TopBarProps> = ({
           <div className="flex items-center gap-2 text-[11px] text-gray-400 font-mono">
             <span className="text-gray-300">ID: {timeline.meeting.id.slice(0, 15)}</span>
             <span>•</span>
-            <span className="text-[#00E5FF]">Duration: {formatTimestamp(durationMs)}</span>
+            <span className="text-[#00E5FF]">Duration: {formatTimestamp(totalDurationMs)}</span>
           </div>
         </div>
       </div>
 
       {/* Center/Right: Speaker Badges */}
       <div className="hidden lg:flex items-center gap-2">
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#107C41]/20 border border-[#00FF66]/30 text-xs font-medium text-[#00FF66]">
-          <User className="w-3.5 h-3.5" />
-          <span>Speaker 0 (Ruan)</span>
-        </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0D47A1]/20 border border-[#00E5FF]/30 text-xs font-medium text-[#00E5FF]">
-          <User className="w-3.5 h-3.5" />
-          <span>Speaker 1 (Architect)</span>
-        </div>
+        {speakerLabels.map((label, i) => (
+          <div
+            key={label}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-medium ${
+              i % 2 === 0
+                ? "bg-[#107C41]/20 border-[#00FF66]/30 text-[#00FF66]"
+                : "bg-[#0D47A1]/20 border-[#00E5FF]/30 text-[#00E5FF]"
+            }`}
+          >
+            <User className="w-3.5 h-3.5" />
+            <span>{label}</span>
+          </div>
+        ))}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-xs font-medium text-amber-400">
           <Bot className="w-3.5 h-3.5" />
           <span>Raising-Hand AI</span>
@@ -140,7 +146,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               </div>
               <button
                 onClick={() => handleExport("drawio")}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00FF66] transition-colors"
+                disabled={!hasDrawio}
+                title={hasDrawio ? undefined : "No diagram available to export"}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00FF66] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <Layers className="w-4 h-4 text-[#00FF66]" />
                 <div className="flex flex-col">
@@ -150,7 +158,9 @@ export const TopBar: React.FC<TopBarProps> = ({
               </button>
               <button
                 onClick={() => handleExport("md")}
-                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00E5FF] transition-colors"
+                disabled={!hasSpec}
+                title={hasSpec ? undefined : "No tech spec generated yet"}
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/5 text-left text-gray-200 hover:text-[#00E5FF] transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
               >
                 <FileText className="w-4 h-4 text-[#00E5FF]" />
                 <div className="flex flex-col">

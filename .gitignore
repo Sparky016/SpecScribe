@@ -66,3 +66,18 @@ Thumbs.db
 .vscode/
 *.swp
 *.swo
+.agents
+.agents
+.claude
+agent/
+
+spectacles-lens/recorded_frames/
+
+# Ad-hoc preview / debug screenshots (task 51)
+/*.jpg
+preview_*
+temp_*
+spectacles-lens/scripts/*.jpg
+
+.mcp.json
+backend/node_registry.json

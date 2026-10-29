@@ -12,10 +12,13 @@ import json
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict, Optional
 import uuid
 
 from fastapi import WebSocket
+
+from contracts import PinchAction
 
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
@@ -65,7 +68,7 @@ class HandshakeHandler(BaseEnvelopeHandler):
         # If diagram already has nodes, send current rendered diagram immediately
         if len(session.diagram.cells) > 2:
             try:
-                drawio_xml = session.get_xml()
+                drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
                 await websocket.send_text(
                     json.dumps({
@@ -146,7 +149,20 @@ class CameraFrameHandler(BaseEnvelopeHandler):
         timestamp_ms = msg.get("timestamp_ms", 0)
         session = session_mgr.get_or_create_session(meeting_id)
 
+        # Prevent concurrent vision extractions on the same session
+        if getattr(session, "_vision_in_flight", False):
+            logger.debug("Vision analysis already in-flight; skipping frame.")
+            return
+
+        now = time.time()
+        # Cooldown between vision calls to avoid Gemini 429 quota exhaustion
+        if now - getattr(session, "_last_vision_time", 0) < 5.0:
+            logger.debug("Vision analysis cooldown active; skipping frame.")
+            return
+
+        session._vision_in_flight = True
         try:
+            session._last_vision_time = now
             img_bytes = base64.b64decode(img_b64)
             has_diff, hamming, current_hash = session.check_image_diff(
                 img_bytes, threshold=6
@@ -163,11 +179,20 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             existing_nodes = list(session.node_metadata.values())
             delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes)
 
-            if delta.person_occluding_board:
+            logger.info(
+                "Vision delta result: occluding=%s, meaningful=%s, summary=%s, nodes=%d",
+                delta.person_occluding_board,
+                delta.has_meaningful_change,
+                delta.diff_summary,
+                len(delta.added_vertices),
+            )
+
+            # Step-aside rule: only skip if the person is truly occluding AND no vertices were identified
+            if delta.person_occluding_board and not delta.added_vertices and not delta.added_edges:
                 logger.info("Person occluding whiteboard; skipping diagram mutation.")
                 return
 
-            if delta.has_meaningful_change:
+            if delta.has_meaningful_change or delta.added_vertices or delta.added_edges:
                 session.apply_delta(delta)
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
@@ -194,7 +219,7 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 )
 
                 # Asynchronous Intelligence Sub-Agents (T-07 & T-08)
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.decision_linker.process_snapshot(
                         meeting_id=meeting_id,
                         snapshot_id=snapshot_id,
@@ -204,7 +229,7 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                         broadcast_fn=session_mgr.broadcast_to_meeting,
                     )
                 )
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                         meeting_id=meeting_id,
                         timestamp_ms=timestamp_ms,
@@ -214,6 +239,8 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 )
         except Exception as e:
             logger.error("Error processing cameraFrame: %s", e)
+        finally:
+            session._vision_in_flight = False
 
 
 class PinchCommandHandler(BaseEnvelopeHandler):
@@ -234,12 +261,14 @@ class PinchCommandHandler(BaseEnvelopeHandler):
             node_type = msg.get("node_type", "service")
             label = msg.get("label", f"New {node_type.capitalize()}")
 
-            if action == "ADD_NODE":
+            if action == PinchAction.ADD_NODE:
                 node_id = session.add_node(node_type, label)
+                label = session.node_metadata[node_id]["label"]
+                verb = "~ Updated" if session.last_node_reused else "+ Added"
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
 
-                diff_summary = f"+ Added [{node_type}] {label}"
+                diff_summary = f"{verb} [{node_type}] {label}"
                 snapshot_id = await session_mgr.db_save_diagram_snapshot(
                     meeting_id=meeting_id,
                     timestamp_ms=timestamp_ms,
@@ -262,7 +291,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     },
                 )
 
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.decision_linker.process_snapshot(
                         meeting_id=meeting_id,
                         snapshot_id=snapshot_id,
@@ -272,7 +301,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         broadcast_fn=session_mgr.broadcast_to_meeting,
                     )
                 )
-                asyncio.create_task(
+                session_mgr.spawn(
                     session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                         meeting_id=meeting_id,
                         timestamp_ms=timestamp_ms,
@@ -281,7 +310,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     )
                 )
 
-            elif action == "CONNECT_NODES":
+            elif action == PinchAction.CONNECT_NODES:
                 source = msg.get("source") or msg.get("source_id", "")
                 target = msg.get("target") or msg.get("target_id", "")
                 edge_label = msg.get("edge_label", "")
@@ -310,7 +339,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         },
                     )
 
-                    asyncio.create_task(
+                    session_mgr.spawn(
                         session_mgr.decision_linker.process_snapshot(
                             meeting_id=meeting_id,
                             snapshot_id=snapshot_id,
@@ -320,7 +349,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                             broadcast_fn=session_mgr.broadcast_to_meeting,
                         )
                     )
-                    asyncio.create_task(
+                    session_mgr.spawn(
                         session_mgr.raising_hand_agent.evaluate_proactive_on_change(
                             meeting_id=meeting_id,
                             timestamp_ms=timestamp_ms,
@@ -343,7 +372,7 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                         })
                     )
 
-            elif action == "ASK_AGENT":
+            elif action == PinchAction.ASK_AGENT:
                 query = msg.get("label", "") or msg.get("query", "Architectural feedback")
                 logger.info("User triggered research pull: %s", query)
                 await session_mgr.raising_hand_agent.handle_research_pull(
@@ -352,6 +381,42 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                     timestamp_ms=timestamp_ms,
                     drawio_xml=session.get_xml(),
                     broadcast_fn=session_mgr.broadcast_to_meeting,
+                )
+
+            elif action == PinchAction.CONCLUDE_MEETING:
+                result = await session_mgr.spec_generator.finalize_meeting(
+                    meeting_id=meeting_id,
+                    drawio_xml=session.compile_layout_xml(),
+                    title=session_mgr.memory_store["meetings"].get(meeting_id, {}).get("title"),
+                )
+                session_mgr.raising_hand_agent.stop_proactive_loop(meeting_id)
+                await session_mgr.broadcast_to_meeting(
+                    meeting_id,
+                    {
+                        "type": "MEETING_FINALIZED",
+                        "event": "MEETING_FINALIZED",
+                        "meeting_id": meeting_id,
+                        "timestamp_ms": timestamp_ms,
+                        "chunks_created": result.get("chunks_created"),
+                    },
+                )
+
+            elif action in PinchAction.CLIENT_ONLY:
+                if action == PinchAction.CALIBRATE_AREA and os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
+                    from drawio_mcp.models import DrawioFile
+                    session.file = DrawioFile()
+                    session.diagram = session.file.active_diagram
+                    session.diagram.name = "ARStream"
+                    session.node_by_label.clear()
+                    session.node_by_key.clear()
+                    session.node_metadata.clear()
+                    logger.info("CALIBRATE_AREA: reset session diagram for fresh whiteboard demo ingestion.")
+                await websocket.send_text(
+                    json.dumps({
+                        "event": "COMMAND_ACK",
+                        "action": action,
+                        "timestamp_ms": timestamp_ms,
+                    })
                 )
 
             else:

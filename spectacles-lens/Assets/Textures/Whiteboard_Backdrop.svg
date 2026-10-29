@@ -1,0 +1,48 @@
+<svg width="1200" height="800" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="110%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="metalFrame" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1E293B"/>
+      <stop offset="50%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="boardSurface" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer Board Frame -->
+  <rect x="10" y="10" width="1180" height="780" rx="20" fill="url(#metalFrame)" stroke="#475569" stroke-width="6" filter="url(#shadow)"/>
+  
+  <!-- Board Surface (Clean Whiteboard) -->
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#boardSurface)"/>
+  <rect x="22" y="22" width="1156" height="756" rx="14" fill="url(#grid)" opacity="0.4"/>
+  
+  <!-- Board Header -->
+  <rect x="36" y="34" width="400" height="34" rx="8" fill="#F1F5F9" stroke="#CBD5E1" stroke-width="1.5"/>
+  <circle cx="52" cy="51" r="5" fill="#10B981"/>
+  <text x="66" y="57" font-family="sans-serif" font-size="14" font-weight="700" fill="#334155" letter-spacing="1.2">SPECSCRIBE WHITEBOARD // SESSION 01</text>
+  
+  <!-- Empty Board State Indicator -->
+  <g opacity="0.6">
+    <rect x="450" y="34" width="310" height="34" rx="8" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <text x="466" y="56" font-family="sans-serif" font-size="12" font-weight="600" fill="#64748B">WALL MOUNTED • CLEAN SURFACE READY</text>
+  </g>
+
+  <!-- Bottom Marker Pen Tray -->
+  <rect x="400" y="760" width="400" height="12" rx="4" fill="#334155"/>
+  <!-- Black marker in tray -->
+  <rect x="430" y="756" width="90" height="6" rx="2" fill="#0F172A"/>
+  <!-- Blue marker in tray -->
+  <rect x="540" y="756" width="90" height="6" rx="2" fill="#2563EB"/>
+  <!-- Red marker in tray -->
+  <rect x="650" y="756" width="90" height="6" rx="2" fill="#DC2626"/>
+  <!-- Eraser -->
+  <rect x="750" y="752" width="45" height="10" rx="3" fill="#1E293B"/>
+</svg>

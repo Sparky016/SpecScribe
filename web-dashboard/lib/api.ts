@@ -1,25 +1,15 @@
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "./demoData";
-import { RAGResponse, TimelineData } from "./types";
+import { backendFetch } from "./backend";
+import { RAGResponse, TimelineData, TranscriptTurn } from "./types";
 
-function getTargetApiUrl(path: string): string {
+// Browser calls go to the same-origin /api route handlers, which attach the backend token.
+// Server-side calls go straight to the backend through backendFetch.
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const cleanPath = path.startsWith("/") ? path.slice(1) : path;
   if (typeof window !== "undefined") {
-    // In browser: call same-origin Next.js route handler (proxying to BACKEND_URL)
-    // unless an explicit external NEXT_PUBLIC_API_URL is configured
-    const publicUrl = process.env.NEXT_PUBLIC_API_URL;
-    if (publicUrl && !publicUrl.includes("localhost:8000")) {
-      const base = publicUrl.endsWith("/") ? publicUrl : `${publicUrl}/`;
-      return new URL(cleanPath, base).toString();
-    }
-    return `/${cleanPath}`;
+    return fetch(`/${cleanPath}`, init);
   }
-  // Server-side: use bound internal service URL injected by Vercel Services
-  const backendBase =
-    process.env.BACKEND_URL ||
-    process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000";
-  const base = backendBase.endsWith("/") ? backendBase : `${backendBase}/`;
-  return new URL(cleanPath, base).toString();
+  return backendFetch(cleanPath, init);
 }
 
 import { formatTimestamp, parseTimestamp } from "./formatters";
@@ -32,6 +22,9 @@ export interface TimelinePaginationOptions {
   to_ms?: number;
 }
 
+// Safety cap on transcript pages fetched per timeline load.
+const MAX_TIMELINE_PAGES = 50;
+
 export async function getMeetingTimeline(
   meetingId: string,
   options?: TimelinePaginationOptions
@@ -43,71 +36,77 @@ export async function getMeetingTimeline(
 
   // Attempt to fetch from FastAPI backend
   try {
-    const queryParams = new URLSearchParams();
-    if (options?.limit !== undefined) queryParams.set("limit", options.limit.toString());
-    if (options?.offset !== undefined) queryParams.set("offset", options.offset.toString());
-    if (options?.from_ms !== undefined) queryParams.set("from_ms", options.from_ms.toString());
-    if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
+    // Transcript turns are paged by the backend; keep requesting pages while has_more is set.
+    const pageLimit = options?.limit ?? 100;
+    let offset = options?.offset ?? 0;
+    let data: any = null;
+    const transcriptTurns: TranscriptTurn[] = [];
 
-    const qs = queryParams.toString();
-    const endpoint = `api/meetings/${meetingId}/timeline${qs ? `?${qs}` : ""}`;
-    const targetUrl = getTargetApiUrl(endpoint);
-    const res = await fetch(targetUrl, {
-      cache: "no-store",
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        meeting: data.meeting || { id: meetingId, title: `Meeting ${meetingId.slice(0, 8)}`, created_at: new Date().toISOString() },
-        transcript_turns: data.transcript_turns || [],
-        diagram_snapshots: data.diagram_snapshots || [],
-        agent_interventions: data.agent_interventions || [],
-        knowledge_chunks: data.knowledge_chunks || [],
-        pagination: data.pagination,
-      };
+    for (let page = 0; page < MAX_TIMELINE_PAGES; page++) {
+      const queryParams = new URLSearchParams();
+      queryParams.set("limit", pageLimit.toString());
+      queryParams.set("offset", offset.toString());
+      if (options?.from_ms !== undefined) queryParams.set("from_ms", options.from_ms.toString());
+      if (options?.to_ms !== undefined) queryParams.set("to_ms", options.to_ms.toString());
+
+      const endpoint = `api/meetings/${encodeURIComponent(meetingId)}/timeline?${queryParams.toString()}`;
+      const res = await apiFetch(endpoint, {
+        cache: "no-store",
+      });
+      if (!res.ok) {
+        throw new Error(`Timeline request failed with status ${res.status}`);
+      }
+      const pageData = await res.json();
+      if (data === null) data = pageData;
+
+      const turns: TranscriptTurn[] = pageData.transcript_turns || [];
+      transcriptTurns.push(...turns);
+      if (!pageData.pagination?.has_more || turns.length === 0) break;
+      offset += turns.length;
     }
-  } catch (err) {
-    console.warn("Backend timeline fetch unavailable, falling back to demo data:", err);
-  }
 
-  // Graceful fallback to demo dataset with adjusted ID
-  return {
-    ...DEMO_TIMELINE,
-    meeting: {
-      ...DEMO_TIMELINE.meeting,
-      id: meetingId,
-      title: `Meeting ${meetingId.slice(0, 8)}: Architecture Review`,
-    },
-  };
+    return {
+      meeting: data.meeting || { id: meetingId, title: `Meeting ${meetingId.slice(0, 8)}`, created_at: new Date().toISOString() },
+      transcript_turns: transcriptTurns,
+      diagram_snapshots: data.diagram_snapshots || [],
+      agent_interventions: data.agent_interventions || [],
+      knowledge_chunks: data.knowledge_chunks || [],
+      pagination: data.pagination,
+    };
+  } catch (err) {
+    console.warn("Backend timeline fetch failed:", err);
+    throw err instanceof Error ? err : new Error("Timeline request failed");
+  }
 }
 
 export const fetchMeetingTimeline = getMeetingTimeline;
 
 
 export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
-  // 1. Try FastAPI endpoint first if available
-  try {
-    const targetUrl = getTargetApiUrl(`api/meetings/${meetingId}/ask`);
-    const res = await fetch(targetUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data.answer) {
-        return data as RAGResponse;
-      }
-    }
-  } catch {
-    // Backend offline or call failed, execute deterministic grounded RAG locally
+  // Canned grounded answers exist only for the offline demo meeting.
+  if (meetingId === DEMO_MEETING_ID) {
+    return demoRAGAnswer(meetingId, question, timeline);
   }
 
-  // 2. Client-Side Grounded RAG with Keyword Matching & Timestamp Citations
+  const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
+  if (!res.ok) {
+    throw new Error(`Ask request failed with status ${res.status}`);
+  }
+  const data = await res.json();
+  if (!data.answer) {
+    throw new Error("Ask response contained no answer");
+  }
+  return data as RAGResponse;
+}
+
+// Keyword-matched canned answers with citations into DEMO_TIMELINE; demo meeting only.
+function demoRAGAnswer(meetingId: string, question: string, timeline: TimelineData): RAGResponse {
   const qLower = question.toLowerCase();
   const chunks = timeline.knowledge_chunks || [];
-  const interventions = timeline.agent_interventions || [];
-  const snapshots = timeline.diagram_snapshots || [];
 
   // Question matching heuristics
   if (qLower.includes("redis") || qLower.includes("cache") || qLower.includes("stampede")) {
@@ -190,12 +189,14 @@ export function downloadFile(content: string, filename: string, mimeType: string
 }
 
 export function exportDrawioXml(timeline: TimelineData, currentSnapshotXml?: string) {
-  const xml = currentSnapshotXml || timeline.meeting.latest_drawio_xml || DEMO_TIMELINE.meeting.latest_drawio_xml || "";
+  const xml = currentSnapshotXml || timeline.meeting.latest_drawio_xml;
+  if (!xml) return;
   downloadFile(xml, `${timeline.meeting.id}-architecture.drawio`, "application/xml");
 }
 
 export function exportTechSpecMd(timeline: TimelineData) {
-  const spec = timeline.meeting.generated_spec_md || DEMO_TIMELINE.meeting.generated_spec_md || `# Architecture Review: ${timeline.meeting.title}`;
+  const spec = timeline.meeting.generated_spec_md;
+  if (!spec) return;
   downloadFile(spec, `${timeline.meeting.id}-tech-spec.md`, "text/markdown");
 }
 

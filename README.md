@@ -8,7 +8,7 @@
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20Async-009688?style=for-the-badge&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![Next.js](https://img.shields.io/badge/Dashboard-Next.js%2015-black?style=for-the-badge&logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Supabase](https://img.shields.io/badge/Database-Supabase%20pgvector-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
-[![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tests](https://img.shields.io/badge/Tests-37%2F37%20Passing-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](#testing--verification)
 
@@ -151,7 +151,7 @@ flowchart TB
 
 ```text
 SpecScribe/
-├── backend/                       # Python 3.11+ FastAPI Async Orchestrator
+├── backend/                       # Python 3.12+ FastAPI Async Orchestrator
 │   ├── agents/
 │   │   ├── decision_linker.py     # Links spoken debate to diagram mutations
 │   │   ├── raising_hand_agent.py  # Proactive anti-pattern critic & on-demand researcher
@@ -211,7 +211,7 @@ Before setting up the project, ensure you have the following installed:
 
 | Tool | Recommended Version | Purpose |
 | :--- | :--- | :--- |
-| **Python** | `3.11` or `3.12` | Runs the FastAPI orchestrator and AI agents |
+| **Python** | `3.12` | Runs the FastAPI orchestrator and AI agents |
 | **Node.js** | `v20.x LTS` (or `v18.x+`) | Runs Next.js 15 dashboard & Lens Studio TS build |
 | **Snap Lens Studio** | `5.15.x+` | Lens editing, simulation & Interactive Preview |
 | **Spectacles Interaction Kit** | Built-in / `v0.12+` | Hand tracking & `PinchButton` components |

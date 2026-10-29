@@ -10,11 +10,15 @@ import {
   MockWebSocket,
   MockScriptEvent,
   MockTexture,
-  MockVec3
+  MockVec3,
+  MockBaseScriptComponent
 } from './lens_mock_environment.mjs';
 
 // Setup Lens Studio global environment
 setupLensGlobalMocks();
+// Compiled components extend BaseScriptComponent as a Lens runtime global
+global.BaseScriptComponent = MockBaseScriptComponent;
+global.allowUndefined = () => {};
 
 // Helper to create mock BaseScriptComponent subclass instance
 function createComponentInstance(Cls) {
@@ -49,18 +53,18 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
 
   before(async () => {
     // Dynamic import of compiled modules
-    const capturerMod = await import('../dist/PeriodicCameraCapturer.js');
+    const capturerMod = await import('../dist/Assets/Scripts/PeriodicCameraCapturer.js');
     PeriodicCameraCapturer = capturerMod.PeriodicCameraCapturer;
-    CompressionQuality = capturerMod.CompressionQuality;
-    EncodingType = capturerMod.EncodingType;
+    CompressionQuality = global.CompressionQuality;
+    EncodingType = global.EncodingType;
 
-    const socketMod = await import('../dist/PersistentStreamSocketClient.js');
+    const socketMod = await import('../dist/Assets/Scripts/PersistentStreamSocketClient.js');
     PersistentStreamSocketClient = socketMod.PersistentStreamSocketClient;
 
-    const spatialMod = await import('../dist/SpatialInterfaceManager.js');
+    const spatialMod = await import('../dist/Assets/Scripts/SpatialInterfaceManager.js');
     SpatialInterfaceManager = spatialMod.SpatialInterfaceManager;
 
-    const agentMod = await import('../dist/RaisingHandAgentController.js');
+    const agentMod = await import('../dist/Assets/Scripts/RaisingHandAgentController.js');
     RaisingHandAgentController = agentMod.RaisingHandAgentController;
     AgentState = agentMod.AgentState;
   });
@@ -99,6 +103,18 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(requestedDimension, 480);
     });
 
+    test('prioritizes simulatedTexture over CameraModule when assigned', () => {
+      const mockSimulated = new MockTexture(1920, 1080);
+      const mockCamera = new MockTexture(480, 360);
+      const capturer = createComponentInstance(PeriodicCameraCapturer);
+      capturer.cameraModule = { requestCamera: () => mockCamera };
+      capturer.simulatedTexture = mockSimulated;
+      capturer.onAwake();
+      capturer._testEvents.OnStartEvent.trigger();
+
+      assert.equal(capturer.getCameraTexture(), mockSimulated);
+    });
+
     test('accumulates deltaTime and encodes frame asynchronously at sample interval', () => {
       const mockCamera = new MockTexture(480, 360);
       let encodeQuality = null;
@@ -134,16 +150,17 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       capturer._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.6 });
       assert.equal(frameReceived, 'data:image/jpeg;base64,mockframe');
       assert.ok(timestampReceived > 0);
-      assert.equal(encodeQuality, CompressionQuality.Low);
+      assert.equal(encodeQuality, CompressionQuality.LowQuality);
       assert.equal(encodeType, EncodingType.Jpg);
     });
 
-    test('triggerManualCapture forces frame encoding immediately', () => {
+    test('triggerManualCapture forces frame encoding immediately in MANUAL mode', () => {
       const mockCamera = new MockTexture(480, 360);
       const capturer = createComponentInstance(PeriodicCameraCapturer);
       capturer.cameraModule = { requestCamera: () => mockCamera };
       capturer.onAwake();
       capturer._testEvents.OnStartEvent.trigger();
+      capturer.setCaptureMode('manual');
 
       let manualFrame = null;
       capturer.onEncodedFrameAvailable = (b64) => {
@@ -165,7 +182,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       mockAsrCallbacks = [];
       global._mockSocket = mockSocket;
       global._mockAsrHandler = (opts) => {
-        mockAsrCallbacks.push(opts.onTranscriptionUpdate);
+        mockAsrCallbacks.push(opts.onTranscriptionUpdateEvent);
       };
     });
 
@@ -312,10 +329,16 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       const toastText = new MockText('');
       const overlayMesh = new MockRenderMeshVisual();
 
+      let pendingPhrase = 'Customer Auth Service';
       const socketClient = {
-        getLatestSpokenPhrase: () => 'Customer Auth Service',
+        consumeLatestSpokenPhrase: () => {
+          const phrase = pendingPhrase;
+          pendingPhrase = null;
+          return phrase;
+        },
         sendPinchCommand: (action, type, label) => {
-          sentCommands.push({ action, type, label });
+          // CALIBRATE_AREA (client-only) is emitted by the auto-advance; this test covers ADD_NODE.
+          if (action === 'ADD_NODE') sentCommands.push({ action, type, label });
         },
         onDiagramUpdated: () => {},
         onDecisionLogged: () => {}
@@ -341,7 +364,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
         type: 'decision',
         label: 'Customer Auth Service'
       });
-      assert.equal(toastText.text, 'Adding [DECISION]: "Customer Auth Service"...');
+      assert.equal(toastText.text, 'Adding [DECISION]: "Customer Auth Service"... (pending)');
 
       // 2. Pinch Service
       btnService.simulatePinch();
@@ -454,7 +477,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(pillObj.enabled, true);
       assert.equal(cardObj.enabled, false); // Not expanded yet
       assert.ok(pillText.text.startsWith('🚩 '));
-      assert.ok(pillText.text.length <= 28, `Title length ${pillText.text.length} exceeds 28 chars`);
+      assert.ok(Array.from(pillText.text).length <= 28, `Title length ${Array.from(pillText.text).length} code points exceeds 28`);
       assert.equal(audioComp.playCount, 1); // Audio chime played
     });
 
@@ -482,12 +505,14 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(cardObj.enabled, false);
 
       // First pinch: expands critique card
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
       assert.equal(controller.isExpanded(), true);
       assert.equal(cardObj.enabled, true);
       assert.equal(controller.getState(), AgentState.HAND_RAISED);
 
       // Second pinch: dismisses critique card and returns to IDLE
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
       assert.equal(controller.isExpanded(), false);
       assert.equal(cardObj.enabled, false);
@@ -521,6 +546,7 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(controller.getState(), AgentState.IDLE);
 
       // Pinch orb in IDLE
+      controller._testEvents.UpdateEvent.trigger({ getDeltaTime: () => 0.5 });
       orbButton.simulatePinch();
 
       assert.equal(controller.getState(), AgentState.RESEARCHING);

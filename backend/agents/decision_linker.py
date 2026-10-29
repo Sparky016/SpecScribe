@@ -14,6 +14,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+import llm
+
 logger = logging.getLogger("specscribe.decision_linker")
 
 
@@ -47,144 +49,139 @@ def generate_deterministic_embedding(text: str, dim: int = 1536) -> List[float]:
     return vals
 
 
-def _normalize_embedding_dim(raw_vals: List[float], target_dim: int = 1536) -> List[float]:
-    if len(raw_vals) == target_dim:
-        return raw_vals
-    if len(raw_vals) < target_dim:
-        return raw_vals + [0.0] * (target_dim - len(raw_vals))
-    return raw_vals[:target_dim]
+DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
+OFFLINE_EMBEDDING_MODEL = "offline-deterministic"
+
+
+def get_embedding_model() -> str:
+    """Returns the single pinned embedding model name (env SPECSCRIBE_EMBEDDING_MODEL)."""
+    if offline_embeddings_enabled():
+        return OFFLINE_EMBEDDING_MODEL
+    return os.environ.get("SPECSCRIBE_EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODEL
+
+
+def offline_embeddings_enabled() -> bool:
+    """Deterministic (non-semantic) vectors are allowed only when SPECSCRIBE_OFFLINE_EMBEDDINGS=1."""
+    return os.environ.get("SPECSCRIBE_OFFLINE_EMBEDDINGS") == "1"
+
+
+def _extract_vector(emb: Any, target_dim: int) -> Optional[List[float]]:
+    """Returns the raw vector only if it matches target_dim exactly; never pads or truncates."""
+    vals = list(emb.values) if emb is not None and getattr(emb, "values", None) is not None else []
+    if len(vals) != target_dim:
+        logger.warning(
+            "Embedding dimension mismatch (got %d, expected %d); discarding vector", len(vals), target_dim
+        )
+        return None
+    return vals
 
 
 def generate_text_embedding(
     text: str,
     api_key: Optional[str] = None,
     target_dim: int = 1536,
-) -> List[float]:
+) -> Optional[List[float]]:
     """
-    Generates a vector embedding for the given text using Google GenAI embedding models.
-    Guarantees an exact vector length matching target_dim (default: 1536 for pgvector schema).
+    Generates a vector embedding with the pinned model. Returns None on any failure
+    (no fabricated vectors). Deterministic vectors only when SPECSCRIBE_OFFLINE_EMBEDDINGS=1.
     """
+    if offline_embeddings_enabled():
+        return generate_deterministic_embedding(text, dim=target_dim)
+
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
-        return generate_deterministic_embedding(text, dim=target_dim)
+        logger.warning("No GEMINI_API_KEY; skipping embedding")
+        return None
 
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=key)
-        candidate_models = ["gemini-embedding-001", "text-embedding-004"]
-        configured_model = os.environ.get("GEMINI_EMBED_MODEL")
-        if configured_model and configured_model not in candidate_models:
-            candidate_models.insert(0, configured_model)
-
-        for model_name in candidate_models:
-            try:
-                response = client.models.embed_content(
-                    model=model_name,
-                    contents=text,
-                    config=types.EmbedContentConfig(output_dimensionality=target_dim),
-                )
-                if response.embeddings and len(response.embeddings) > 0:
-                    raw_vals = list(response.embeddings[0].values)
-                    return _normalize_embedding_dim(raw_vals, target_dim)
-            except Exception as m_err:
-                logger.debug("Sync embedding model %s failed: %s; trying next", model_name, m_err)
+        response = client.models.embed_content(
+            model=get_embedding_model(),
+            contents=text,
+            config=types.EmbedContentConfig(output_dimensionality=target_dim),
+        )
+        if response.embeddings:
+            return _extract_vector(response.embeddings[0], target_dim)
+        logger.warning("Embedding response contained no embeddings")
     except Exception as e:
-        logger.warning("Gemini text embedding API error: %s; falling back to deterministic vector", e)
-
-    return generate_deterministic_embedding(text, dim=target_dim)
+        logger.warning("Gemini text embedding failed: %s; skipping embedding", e)
+    return None
 
 
 async def generate_text_embedding_async(
     text: str,
     api_key: Optional[str] = None,
     target_dim: int = 1536,
-) -> List[float]:
+) -> Optional[List[float]]:
     """
-    Asynchronously generates a vector embedding for the given text using client.aio.
-    Non-blocking to the FastAPI asyncio event loop (Fixes #1).
+    Asynchronously generates an embedding with the pinned model via client.aio.
+    Returns None on any failure; deterministic vectors only when SPECSCRIBE_OFFLINE_EMBEDDINGS=1.
     """
+    if offline_embeddings_enabled():
+        return generate_deterministic_embedding(text, dim=target_dim)
+
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
-        return generate_deterministic_embedding(text, dim=target_dim)
+        logger.warning("No GEMINI_API_KEY; skipping embedding")
+        return None
 
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=key)
-        candidate_models = ["gemini-embedding-001", "text-embedding-004"]
-        configured_model = os.environ.get("GEMINI_EMBED_MODEL")
-        if configured_model and configured_model not in candidate_models:
-            candidate_models.insert(0, configured_model)
-
-        for model_name in candidate_models:
-            try:
-                response = await client.aio.models.embed_content(
-                    model=model_name,
-                    contents=text,
-                    config=types.EmbedContentConfig(output_dimensionality=target_dim),
-                )
-                if response.embeddings and len(response.embeddings) > 0:
-                    raw_vals = list(response.embeddings[0].values)
-                    return _normalize_embedding_dim(raw_vals, target_dim)
-            except Exception as m_err:
-                logger.debug("Async embedding model %s failed: %s; trying next", model_name, m_err)
+        response = await client.aio.models.embed_content(
+            model=get_embedding_model(),
+            contents=text,
+            config=types.EmbedContentConfig(output_dimensionality=target_dim),
+        )
+        if response.embeddings:
+            return _extract_vector(response.embeddings[0], target_dim)
+        logger.warning("Embedding response contained no embeddings")
     except Exception as e:
-        logger.warning("Gemini async text embedding API error: %s; falling back to deterministic vector", e)
-
-    return generate_deterministic_embedding(text, dim=target_dim)
+        logger.warning("Gemini async text embedding failed: %s; skipping embedding", e)
+    return None
 
 
 async def generate_text_embeddings_batch_async(
     texts: List[str],
     api_key: Optional[str] = None,
     target_dim: int = 1536,
-) -> List[List[float]]:
+) -> List[Optional[List[float]]]:
     """
-    Asynchronously generates embeddings for a batch of texts in a single non-blocking round trip.
-    Eliminates multi-second serial loops and prevents event loop blocking (Fixes #5).
+    Asynchronously embeds a batch of texts in one round trip with the pinned model.
+    Returns a list aligned with texts; entries are None on failure (callers must skip them).
     """
     if not texts:
         return []
 
+    if offline_embeddings_enabled():
+        return [generate_deterministic_embedding(t, dim=target_dim) for t in texts]
+
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
-        return [generate_deterministic_embedding(t, dim=target_dim) for t in texts]
+        logger.warning("No GEMINI_API_KEY; skipping batch embedding")
+        return [None] * len(texts)
 
     try:
         from google import genai
         from google.genai import types
 
         client = genai.Client(api_key=key)
-        candidate_models = ["gemini-embedding-001", "text-embedding-004"]
-        configured_model = os.environ.get("GEMINI_EMBED_MODEL")
-        if configured_model and configured_model not in candidate_models:
-            candidate_models.insert(0, configured_model)
-
-        for model_name in candidate_models:
-            try:
-                response = await client.aio.models.embed_content(
-                    model=model_name,
-                    contents=texts,
-                    config=types.EmbedContentConfig(output_dimensionality=target_dim),
-                )
-                if response.embeddings and len(response.embeddings) == len(texts):
-                    return [
-                        _normalize_embedding_dim(list(emb.values), target_dim)
-                        for emb in response.embeddings
-                    ]
-            except Exception as m_err:
-                logger.debug("Batch embedding model %s failed: %s; trying next", model_name, m_err)
-
-        # Fallback to parallel asynchronous individual calls if batch API is rejected
-        tasks = [generate_text_embedding_async(t, api_key=key, target_dim=target_dim) for t in texts]
-        return list(await asyncio.gather(*tasks))
+        response = await client.aio.models.embed_content(
+            model=get_embedding_model(),
+            contents=texts,
+            config=types.EmbedContentConfig(output_dimensionality=target_dim),
+        )
+        if response.embeddings and len(response.embeddings) == len(texts):
+            return [_extract_vector(emb, target_dim) for emb in response.embeddings]
+        logger.warning("Batch embedding response size mismatch; skipping batch")
     except Exception as e:
-        logger.warning("Gemini batch text embedding failed: %s; falling back to deterministic vectors", e)
-
-    return [generate_deterministic_embedding(t, dim=target_dim) for t in texts]
+        logger.warning("Gemini batch text embedding failed: %s; skipping embeddings", e)
+    return [None] * len(texts)
 
 
 class DecisionLinkerAgent:
@@ -201,20 +198,11 @@ class DecisionLinkerAgent:
         supabase_client: Any = None,
         memory_store: Optional[Dict[str, Any]] = None,
     ):
-        self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
+        self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
-        self._genai_client = None
 
-        if self.api_key:
-            try:
-                from google import genai
-
-                self._genai_client = genai.Client(api_key=self.api_key)
-            except Exception as e:
-                logger.warning("Could not initialize Google GenAI Client: %s", e)
-
-    def fetch_recent_transcripts(
+    async def fetch_recent_transcripts(
         self,
         meeting_id: str,
         timestamp_ms: int,
@@ -232,8 +220,8 @@ class DecisionLinkerAgent:
         # If memory store is empty and supabase_client is connected, attempt DB query
         if not all_turns and self.supabase_client:
             try:
-                res = (
-                    self.supabase_client.table("transcript_turns")
+                res = await asyncio.to_thread(
+                    lambda: self.supabase_client.table("transcript_turns")
                     .select("*")
                     .eq("meeting_id", meeting_id)
                     .order("timestamp_ms")
@@ -272,12 +260,10 @@ class DecisionLinkerAgent:
         """
         Asynchronously uses Gemini to synthesize a 1-2 sentence decision rationale explaining
         WHY the architectural change was made and WHO proposed it.
-        Uses client.aio to prevent blocking the asyncio event loop (Fixes #1).
+        Uses the shared async llm helper to prevent blocking the asyncio event loop (Fixes #1).
         """
-        if self._genai_client:
+        if self.api_key:
             try:
-                from google.genai import types
-
                 turns_formatted = "\n".join([
                     f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
                     for t in recent_turns
@@ -295,29 +281,9 @@ class DecisionLinkerAgent:
                     "Ensure your output strictly conforms to the JSON schema."
                 )
 
-                candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                response = None
-                for model_name in candidate_models:
-                    try:
-                        response = await self._genai_client.aio.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=DecisionRationaleSchema,
-                            ),
-                        )
-                        if response:
-                            break
-                    except Exception as m_err:
-                        logger.debug("Async rationale model %s failed: %s; trying next", model_name, m_err)
-
-                if response and response.text:
-                    parsed = json.loads(response.text)
+                text = await llm.generate_structured(prompt, schema=DecisionRationaleSchema, api_key=self.api_key)
+                if text:
+                    parsed = json.loads(text)
                     rationale = parsed.get("decision_rationale")
                     if rationale and rationale.strip():
                         return rationale.strip()
@@ -346,62 +312,6 @@ class DecisionLinkerAgent:
             )
         return f"{primary_speaker} introduced '{diff_summary}' to optimize architecture flow."
 
-    def synthesize_rationale(
-        self,
-        meeting_id: str,
-        diff_summary: str,
-        recent_turns: List[Dict[str, Any]],
-        drawio_xml: Optional[str] = None,
-    ) -> str:
-        """Synchronous wrapper for offline testing or blocking execution contexts."""
-        if self._genai_client:
-            try:
-                from google.genai import types
-
-                turns_formatted = "\n".join([
-                    f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label', 'Speaker')}: {t.get('transcript_text', '')}"
-                    for t in recent_turns
-                ]) or "(No speech recorded in the 45s window)"
-
-                prompt = (
-                    "You are SpecScribe's Temporal Decision Linker Agent.\n"
-                    "An architectural change was just committed to the live whiteboard diagram:\n"
-                    f"Change Summary: {diff_summary}\n\n"
-                    "Recent Transcript Context (last 45 seconds of conversation):\n"
-                    f"{turns_formatted}\n\n"
-                    "Task: Synthesize a concise 1-2 sentence decision rationale explaining:\n"
-                    "1. WHY this specific architectural change was made.\n"
-                    "2. WHO proposed, advocated for, or agreed to it.\n"
-                    "Ensure your output strictly conforms to the JSON schema."
-                )
-
-                candidate_models = ["gemini-3.8-flash", "gemini-2.5-flash"]
-                configured_model = os.environ.get("GEMINI_MODEL")
-                if configured_model and configured_model not in candidate_models:
-                    candidate_models.insert(0, configured_model)
-
-                for model_name in candidate_models:
-                    try:
-                        response = self._genai_client.models.generate_content(
-                            model=model_name,
-                            contents=[prompt],
-                            config=types.GenerateContentConfig(
-                                response_mime_type="application/json",
-                                response_schema=DecisionRationaleSchema,
-                            ),
-                        )
-                        if response and response.text:
-                            parsed = json.loads(response.text)
-                            rationale = parsed.get("decision_rationale")
-                            if rationale and rationale.strip():
-                                return rationale.strip()
-                    except Exception as m_err:
-                        logger.debug("Sync rationale model %s failed: %s; trying next", model_name, m_err)
-            except Exception as e:
-                logger.warning("Gemini sync rationale synthesis failed: %s; using heuristic fallback", e)
-
-        return self._heuristic_rationale_fallback(diff_summary, recent_turns)
-
     async def process_snapshot(
         self,
         meeting_id: str,
@@ -419,7 +329,7 @@ class DecisionLinkerAgent:
         4. Generates 1536-dim embedding asynchronously and inserts into knowledge_chunks.
         5. Optionally broadcasts DECISION_LOGGED event to connected WebSockets.
         """
-        recent_turns = self.fetch_recent_transcripts(meeting_id, timestamp_ms, window_ms=45000)
+        recent_turns = await self.fetch_recent_transcripts(meeting_id, timestamp_ms, window_ms=45000)
         rationale = await self.synthesize_rationale_async(meeting_id, diff_summary, recent_turns, drawio_xml)
 
         logger.info(
@@ -455,29 +365,36 @@ class DecisionLinkerAgent:
             target_dim=1536,
         )
 
-        # 4. Insert into knowledge_chunks
-        chunk_id = str(uuid.uuid4())
-        chunk_record = {
-            "id": chunk_id,
-            "meeting_id": meeting_id,
-            "chunk_type": "DECISION",
-            "timestamp_ms": timestamp_ms,
-            "content": chunk_content,
-            "embedding": embedding_vec,
-        }
+        # 4. Insert into knowledge_chunks (skipped entirely if embedding failed: no fabricated vectors)
+        chunk_id: Optional[str] = None
+        if embedding_vec is None:
+            logger.warning(
+                "Embedding failed for snapshot %s; skipping knowledge_chunk persistence", snapshot_id
+            )
+        else:
+            chunk_id = str(uuid.uuid4())
+            chunk_record = {
+                "id": chunk_id,
+                "meeting_id": meeting_id,
+                "chunk_type": "DECISION",
+                "timestamp_ms": timestamp_ms,
+                "content": chunk_content,
+                "embedding": embedding_vec,
+                "embedding_model": get_embedding_model(),
+            }
 
-        if self.memory_store and "knowledge_chunks" in self.memory_store:
-            self.memory_store["knowledge_chunks"][meeting_id].append(chunk_record)
+            if self.memory_store and "knowledge_chunks" in self.memory_store:
+                self.memory_store["knowledge_chunks"][meeting_id].append(chunk_record)
 
-        if self.supabase_client:
-            try:
-                await asyncio.to_thread(
-                    lambda: self.supabase_client.table("knowledge_chunks")
-                    .insert(chunk_record)
-                    .execute()
-                )
-            except Exception as e:
-                logger.warning("Failed to insert knowledge_chunk in Supabase: %s", e)
+            if self.supabase_client:
+                try:
+                    await asyncio.to_thread(
+                        lambda: self.supabase_client.table("knowledge_chunks")
+                        .insert(chunk_record)
+                        .execute()
+                    )
+                except Exception as e:
+                    logger.warning("Failed to insert knowledge_chunk in Supabase: %s", e)
 
         # 5. Broadcast DECISION_LOGGED event if callback provided
         if broadcast_fn:

@@ -1,0 +1,3 @@
+{
+  "query": "{ sceneObjects(filter: {nameContains: \"Whiteboard\"}) { matches { name uniqueId parent { name } transform { worldPosition localPosition } } } }"
+}

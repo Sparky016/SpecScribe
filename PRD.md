@@ -529,5 +529,5 @@ In `/web-dashboard`, build a dark-mode Next.js 15 App Router engineering review 
 | :--- | :--- | :--- | :--- | :--- |
 | `T-17` | Script & Rehearse the $150\text{-Second}$ Demo Scenario in Lens Studio Preview | 2.0h | `[TODO]` | Ruan + Gemini |
 | `T-18` | Record Split-Screen Video ($60\text{ s}\text{--}180\text{ s}$ HD: Lens Studio Preview + Dashboard) | 3.5h | `[TODO]` | Ruan |
-| `T-19` | Generate Standardized Devpost Writeup (Inspiration, What It Does, How We Built It, Challenges, Future Potential) | 1.0h | `[READY_FOR_AGENT]` | Gemini |
+| `T-19` | Generate Standardized Devpost Writeup (Inspiration, What It Does, How We Built It, Challenges, Future Potential) | 1.0h | `[DONE]` | Gemini |
 | `T-20` | Verify Public GitHub Repo (`/docs/scope.md`, `prd.md`, `spec.md`) & Submit Before Nov 9, 2:00 PM PST ($00:00\text{ SAST}$) | 1.0h | `[TODO]` | Ruan |

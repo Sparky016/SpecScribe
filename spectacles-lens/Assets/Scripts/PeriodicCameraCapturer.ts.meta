@@ -1,0 +1,55 @@
+- !<AssetImportMetadata/32489bde-83e8-42d2-86de-39b0cdf1cd95>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> 2a4edddf-af81-4928-8ed6-2c0007ce18b0
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> 2a4edddf-af81-4928-8ed6-2c0007ce18b0
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 61e89e96-988b-4a2e-8ad4-e113d2f72e96
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/61e89e96-988b-4a2e-8ad4-e113d2f72e96>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 41c68d68-180b-4227-8d05-86f2d151291d
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    captureMode: false
+    frameSmallerDimension: false
+    sampleIntervalSeconds: false
+    simulatedTexture: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - sampleIntervalSeconds: !<float> 3.000000
+      captureMode: ""
+      frameSmallerDimension: !<float> 480.000000
+      simulatedTexture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input float sampleIntervalSeconds = 3
+    - // @input string captureMode
+    - // @input float frameSmallerDimension = 480
+    - // @input Asset.Texture simulatedTexture

@@ -13,7 +13,7 @@ import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
@@ -21,13 +21,17 @@ if backend_dir not in sys.path:
 
 
 from dotenv import load_dotenv
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 
+from auth import WS_UNAUTHORIZED_CLOSE_CODE, require_api_token, validate_auth_config, ws_token_ok
 from graph_engine import (
     HeadlessDrawioDaemon,
-    LiveGraphSession,
     extract_graph_delta_from_gemini,
 )
 from agents.decision_linker import DecisionLinkerAgent
@@ -38,16 +42,25 @@ try:
     from session_manager import (
         SessionManager,
         get_session_manager,
-        get_ws_session_manager,
+        resolve_meeting_id,
     )
     from envelope_router import EnvelopeRouter
 except ImportError:
     from backend.session_manager import (
         SessionManager,
         get_session_manager,
-        get_ws_session_manager,
+        resolve_meeting_id,
     )
     from backend.envelope_router import EnvelopeRouter
+
+WS_INVALID_MEETING_ID_CLOSE_CODE = 4400
+WS_SESSION_CAP_CLOSE_CODE = 4429
+
+
+async def _require_meeting(session_mgr: SessionManager, meeting_id: str) -> None:
+    """404 unless the meeting is in memory or Supabase. Never creates a session."""
+    if not await session_mgr.meeting_exists(meeting_id):
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
 
 # Load environment variables from .env if present
@@ -80,52 +93,10 @@ except Exception as e:
 session_manager = SessionManager(supabase_client=supabase_client)
 envelope_router = EnvelopeRouter()
 
-# Module-Level Backward-Compatibility Aliases
-renderer_daemon = session_manager.renderer_daemon
-live_sessions: Dict[str, LiveGraphSession] = session_manager.live_sessions
-active_connections: Dict[str, Set[WebSocket]] = session_manager.active_connections
-memory_store: Dict[str, Dict[str, Any]] = session_manager.memory_store
-decision_linker = session_manager.decision_linker
-raising_hand_agent = session_manager.raising_hand_agent
-spec_generator = session_manager.spec_generator
-
-
-def get_or_create_session(meeting_id: str) -> LiveGraphSession:
-    return session_manager.get_or_create_session(meeting_id)
-
-
-async def broadcast_to_meeting(meeting_id: str, message: Dict[str, Any], exclude: Optional[WebSocket] = None):
-    await session_manager.broadcast_to_meeting(meeting_id, message, exclude=exclude)
-
-
-# Database Persistence Helpers (backward compatibility wrappers)
-async def db_save_transcript_turn(meeting_id: str, speaker_label: str, transcript_text: str, timestamp_ms: int) -> str:
-    return await session_manager.db_save_transcript_turn(meeting_id, speaker_label, transcript_text, timestamp_ms)
-
-
-async def db_save_diagram_snapshot(
-    meeting_id: str,
-    timestamp_ms: int,
-    drawio_xml: str,
-    diff_summary: str,
-    decision_rationale: Optional[str],
-    triggered_by: str,
-    overlay_image_url: Optional[str] = None,
-) -> str:
-    return await session_manager.db_save_diagram_snapshot(
-        meeting_id=meeting_id,
-        timestamp_ms=timestamp_ms,
-        drawio_xml=drawio_xml,
-        diff_summary=diff_summary,
-        decision_rationale=decision_rationale,
-        triggered_by=triggered_by,
-        overlay_image_url=overlay_image_url,
-    )
-
-
 # FastAPI Lifespan Handler
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_auth_config()
     logger.info("Initializing SpecScribe FastAPI Orchestrator lifespan...")
     app.state.session_manager = session_manager
     try:
@@ -133,9 +104,12 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error("Failed to pre-warm HeadlessDrawioDaemon: %s", e)
 
+    session_manager.spawn(session_manager.run_eviction_loop())
+
     yield
 
     logger.info("Shutting down SpecScribe FastAPI Orchestrator...")
+    await session_manager.cancel_background_tasks()
     session_manager.raising_hand_agent.stop_all()
     try:
         await session_manager.renderer_daemon.stop()
@@ -168,6 +142,22 @@ app.add_middleware(
 )
 
 
+# Per-client rate limit for the Gemini-backed POST routes (CWE-770 cost abuse).
+# Cloud Run sits behind a proxy, so the client is keyed on the first X-Forwarded-For entry.
+RATE_LIMIT = os.environ.get("SPECSCRIBE_RATE_LIMIT", "10/minute")
+
+
+def _rate_limit_key(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    first_hop = forwarded_for.split(",", 1)[0].strip()
+    return first_hop or get_remote_address(request)
+
+
+limiter = Limiter(key_func=_rate_limit_key, headers_enabled=True)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
 # REST Schemas
 class CreateMeetingRequest(BaseModel):
     title: Optional[str] = "Spatial Architecture Review"
@@ -180,22 +170,24 @@ class AskQuestionRequest(BaseModel):
 # REST Endpoints
 @app.get("/api/health")
 async def health_check(session_mgr: SessionManager = Depends(get_session_manager)):
-    return {
-        "status": "online",
-        "renderer_ready": session_mgr.renderer_daemon._is_ready,
+    # Intentionally public (no auth). Returns 503 while the renderer is not ready.
+    renderer_ready = session_mgr.renderer_daemon.is_ready()
+    body = {
+        "status": "online" if renderer_ready else "degraded",
+        "renderer_ready": renderer_ready,
         "active_sessions": len(session_mgr.live_sessions),
         "active_agents": {
             "decision_linker": True,
             "raising_hand_agent": True,
             "spec_generator": True,
-            "proactive_loops": len(session_mgr.raising_hand_agent._active_loops),
-            "proactive_telemetry": session_mgr.raising_hand_agent._loop_telemetry,
+            **session_mgr.raising_hand_agent.health(),
         },
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    return JSONResponse(status_code=200 if renderer_ready else 503, content=body)
 
 
-@app.post("/api/meetings")
+@app.post("/api/meetings", dependencies=[Depends(require_api_token)])
 async def create_meeting(
     request: CreateMeetingRequest,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -231,7 +223,7 @@ def filter_by_window(items: List[Dict[str, Any]], from_t: Optional[int], to_t: O
     return res
 
 
-@app.get("/api/meetings/{meeting_id}/timeline")
+@app.get("/api/meetings/{meeting_id}/timeline", dependencies=[Depends(require_api_token)])
 async def get_meeting_timeline(
     meeting_id: str,
     limit: int = Query(default=100, ge=1, le=500),
@@ -240,6 +232,7 @@ async def get_meeting_timeline(
     to_ms: Optional[int] = Query(default=None, ge=0),
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     meeting = session_mgr.memory_store["meetings"].get(meeting_id)
     all_turns: List[Dict[str, Any]] = []
     snapshots: List[Dict[str, Any]] = []
@@ -282,13 +275,7 @@ async def get_meeting_timeline(
         knowledge_chunks = session_mgr.memory_store["knowledge_chunks"].get(meeting_id, [])
 
     if not meeting:
-        # Check if requested demo session
-        meeting = {
-            "id": meeting_id,
-            "title": "Core Architecture Brainstorming: Auth & Real-Time Ingestion",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "latest_drawio_xml": session_mgr.memory_store["meetings"].get(meeting_id, {}).get("latest_drawio_xml"),
-        }
+        raise HTTPException(status_code=404, detail="Meeting not found")
 
     # Time-window filtering
     filtered_turns = filter_by_window(all_turns, from_ms, to_ms)
@@ -329,7 +316,7 @@ async def get_meeting_timeline(
 
 
 
-@app.get("/api/meetings/{meeting_id}/interventions")
+@app.get("/api/meetings/{meeting_id}/interventions", dependencies=[Depends(require_api_token)])
 async def get_meeting_interventions(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -348,7 +335,7 @@ async def get_meeting_interventions(
     return session_mgr.memory_store["agent_interventions"].get(meeting_id, [])
 
 
-@app.get("/api/meetings/{meeting_id}/knowledge")
+@app.get("/api/meetings/{meeting_id}/knowledge", dependencies=[Depends(require_api_token)])
 async def get_meeting_knowledge_chunks(
     meeting_id: str,
     session_mgr: SessionManager = Depends(get_session_manager),
@@ -376,15 +363,19 @@ async def get_meeting_knowledge_chunks(
     ]
 
 
-@app.post("/api/meetings/{meeting_id}/proactive-critique")
+@app.post("/api/meetings/{meeting_id}/proactive-critique", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def trigger_proactive_critique(
     meeting_id: str,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
     """Triggers an immediate Raising-Hand proactive evaluation for the meeting."""
+    await _require_meeting(session_mgr, meeting_id)
     session = session_mgr.get_or_create_session(meeting_id)
     xml = session.get_xml()
-    ts = int(datetime.now(timezone.utc).timestamp() * 1000)
+    ts = session.elapsed_ms()
 
     evaluation = await session_mgr.raising_hand_agent.evaluate_proactive_async(
         meeting_id=meeting_id,
@@ -407,11 +398,15 @@ async def trigger_proactive_critique(
     }
 
 
-@app.post("/api/meetings/{meeting_id}/finalize")
+@app.post("/api/meetings/{meeting_id}/finalize", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def finalize_meeting(
     meeting_id: str,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     session = session_mgr.get_or_create_session(meeting_id)
     final_xml = session.compile_layout_xml()
     meeting_meta = session_mgr.memory_store["meetings"].get(meeting_id, {})
@@ -425,15 +420,19 @@ async def finalize_meeting(
     return result
 
 
-@app.post("/api/meetings/{meeting_id}/ask")
+@app.post("/api/meetings/{meeting_id}/ask", dependencies=[Depends(require_api_token)])
+@limiter.limit(RATE_LIMIT)
 async def ask_meeting_rag(
     meeting_id: str,
-    request: AskQuestionRequest,
+    body: AskQuestionRequest,
+    request: Request,
+    response: Response,
     session_mgr: SessionManager = Depends(get_session_manager),
 ):
+    await _require_meeting(session_mgr, meeting_id)
     return await session_mgr.spec_generator.answer_question(
         meeting_id=meeting_id,
-        question=request.question,
+        question=body.question,
     )
 
 
@@ -441,26 +440,48 @@ async def ask_meeting_rag(
 @app.websocket("/ws/meeting/{meeting_id}")
 async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
     session_mgr = getattr(app.state, "session_manager", session_manager)
+    if not ws_token_ok(websocket):
+        # Close before accept(): the handshake is rejected.
+        await websocket.close(code=WS_UNAUTHORIZED_CLOSE_CODE)
+        return
+    try:
+        meeting_id = resolve_meeting_id(meeting_id)
+    except ValueError:
+        await websocket.close(code=WS_INVALID_MEETING_ID_CLOSE_CODE)
+        return
+    if not session_mgr.can_admit(meeting_id):
+        logger.warning("Session cap reached; rejecting WebSocket for meeting %s", meeting_id)
+        await websocket.close(code=WS_SESSION_CAP_CLOSE_CODE)
+        return
     await websocket.accept()
     session_mgr.active_connections[meeting_id].add(websocket)
-    session = session_mgr.get_or_create_session(meeting_id)
+    session = await session_mgr.ensure_session(meeting_id)
 
-    if meeting_id not in session_mgr.raising_hand_agent._active_loops or session_mgr.raising_hand_agent._active_loops[meeting_id].done():
-        session_mgr.raising_hand_agent.start_proactive_loop(
-            meeting_id=meeting_id,
-            interval_seconds=20.0,
-            get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
-            get_timestamp_fn=lambda mid: int(datetime.now(timezone.utc).timestamp() * 1000),
-            broadcast_fn=session_mgr.broadcast_to_meeting,
-        )
+    # start_proactive_loop is idempotent: it returns the existing task when a loop is already running.
+    session_mgr.raising_hand_agent.start_proactive_loop(
+        meeting_id=meeting_id,
+        interval_seconds=20.0,
+        get_diagram_fn=lambda mid: session_mgr.live_sessions[mid].get_xml() if mid in session_mgr.live_sessions else "",
+        get_timestamp_fn=lambda mid: session_mgr.get_or_create_session(mid).elapsed_ms(),
+        broadcast_fn=session_mgr.broadcast_to_meeting,
+    )
 
     try:
         while True:
-            raw_text = await websocket.receive_text()
+            message = await websocket.receive()
+            if message["type"] == "websocket.disconnect":
+                raise WebSocketDisconnect(message.get("code", 1000))
+            raw_text = message.get("text")
+            if raw_text is None:
+                logger.debug("Ignoring non-text WebSocket frame for meeting %s", meeting_id)
+                continue
             try:
                 msg = json.loads(raw_text)
             except Exception as e:
                 logger.warning("Malformed JSON received: %s", e)
+                continue
+            if not isinstance(msg, dict):
+                logger.debug("Ignoring non-object JSON WebSocket frame for meeting %s", meeting_id)
                 continue
             await envelope_router.dispatch(msg, websocket, session_mgr, meeting_id)
     except WebSocketDisconnect:
@@ -472,6 +493,8 @@ async def meeting_websocket_hub(websocket: WebSocket, meeting_id: str):
         if not session_mgr.active_connections[meeting_id]:
             session_mgr.active_connections.pop(meeting_id, None)
             session_mgr.raising_hand_agent.stop_proactive_loop(meeting_id)
+            session_mgr.touch(meeting_id)
+            session_mgr.evict_if_idle(meeting_id)
 
 
 

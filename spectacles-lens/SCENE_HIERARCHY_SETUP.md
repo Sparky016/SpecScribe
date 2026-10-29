@@ -77,7 +77,10 @@ Scene Root
    * `sampleIntervalSeconds`: `3.0`
    * `frameSmallerDimension`: `480`
 2. **`PersistentStreamSocketClient.ts`:**
-   * `websocketUrl`: `ws://localhost:8000/ws/meeting/demo-session-01`
+   * `backendWsBase`: `ws://localhost:8000` (Preview default; on device set the deployed Cloud Run `wss://` base, no trailing slash)
+   * `meetingId`: `00000000-0000-4000-8000-000000000d0e` (must be a UUID; the default is the backend demo meeting)
+   * `apiToken`: the `SPECSCRIBE_API_TOKEN` value set on the backend. Enter it in the Inspector only. Never commit it to the repo or to `Scene.scene`.
+   * The socket connects to `${backendWsBase}/ws/meeting/${meetingId}?token=${apiToken}`, composed at start.
    * `cameraCapturer`: Link to `PeriodicCameraCapturer`
 3. **`SpatialInterfaceManager.ts`:**
    * `socketClient`: Link to `PersistentStreamSocketClient`
@@ -110,7 +113,7 @@ Scene Root
 2. **Open Lens Studio 5.15:**
    * Open the project or import `spectacles-lens`.
    * Enable the **Interactive Preview Panel** (`Alt + P` or Preview toggle).
-   * Verify the WebSocket connects to `ws://localhost:8000/ws/meeting/demo-session-01`.
+   * Verify the WebSocket connects to `ws://localhost:8000/ws/meeting/00000000-0000-4000-8000-000000000d0e?token=<apiToken>`.
 3. **Trigger Pinch Palette:**
    * Use simulated hand tracking in Preview to pinch `◇ Decision`.
    * Observe HUD toast `"Adding [DECISION]..."`.

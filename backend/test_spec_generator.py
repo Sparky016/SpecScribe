@@ -13,7 +13,7 @@ from agents.spec_generator import (
     format_timestamp_ms,
     parse_timestamp_label,
 )
-from main import app, live_sessions, memory_store, get_or_create_session
+from main import app, session_manager
 
 
 @pytest.fixture
@@ -57,9 +57,10 @@ def test_cosine_similarity_math():
 # T-09 Unit Tests: Spec Compilation & Chunking
 # ============================================================================
 
-def test_compile_markdown_spec_structure(sample_meeting_id):
+@pytest.mark.asyncio
+async def test_compile_markdown_spec_structure(sample_meeting_id):
     """Verify Markdown Tech Spec includes all required sections, XML codeblock, and decision logs."""
-    agent = SpecGeneratorAgent()
+    agent = SpecGeneratorAgent(api_key="")
 
     test_xml = "<mxfile><diagram><mxCell id='v1' value='Ingress'/></diagram></mxfile>"
     snapshots = [
@@ -84,7 +85,7 @@ def test_compile_markdown_spec_structure(sample_meeting_id):
         {"speaker_label": "Speaker 0", "transcript_text": "Adding Redis.", "timestamp_ms": 35000}
     ]
 
-    spec_md = agent.compile_markdown_spec(
+    spec_md = await agent.compile_markdown_spec_async(
         meeting_id=sample_meeting_id,
         meeting_title="Auth Architecture Review",
         drawio_xml=test_xml,
@@ -107,8 +108,8 @@ def test_compile_markdown_spec_structure(sample_meeting_id):
 
 
 def test_chunk_meeting_artifacts_types(sample_meeting_id):
-    """Verify chunk_meeting_artifacts generates all 4 required chunk_types."""
-    agent = SpecGeneratorAgent()
+    """Verify chunk_meeting_artifacts generates the finalize-owned chunk_types (no DECISION)."""
+    agent = SpecGeneratorAgent(api_key="")
 
     spec_md = (
         "# Technical Specification: Test\n\n"
@@ -135,19 +136,113 @@ def test_chunk_meeting_artifacts_types(sample_meeting_id):
     )
 
     types = {c["chunk_type"] for c in raw_chunks}
-    assert "DECISION" in types
+    assert "DECISION" not in types
     assert "TRANSCRIPT_WINDOW" in types
     assert "AGENT_INSIGHT" in types
     assert "TECH_SPEC" in types
 
     # Check timestamps and content
-    dec_chunk = next(c for c in raw_chunks if c["chunk_type"] == "DECISION")
-    assert dec_chunk["timestamp_ms"] == 15000
-    assert "[00:15]" in dec_chunk["content"]
-
     agent_chunk = next(c for c in raw_chunks if c["chunk_type"] == "AGENT_INSIGHT")
     assert agent_chunk["timestamp_ms"] == 20000
     assert "Auth Risk" in agent_chunk["content"]
+
+
+# ============================================================================
+# T-09 Unit Tests: Offline Fallback Spec Grounded in Meeting Data
+# ============================================================================
+
+@pytest.mark.asyncio
+async def test_fallback_spec_empty_input_records_no_data(sample_meeting_id):
+    """Empty input yields 'No data recorded' and no hardcoded architecture claims."""
+    agent = SpecGeneratorAgent(api_key="")
+
+    spec_md = await agent.compile_markdown_spec_async(
+        meeting_id=sample_meeting_id,
+        meeting_title="Empty Session",
+        drawio_xml="",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    assert "No data recorded" in spec_md
+    for phrase in ("Redis", "read replica", "read-replica"):
+        assert phrase not in spec_md
+
+
+@pytest.mark.asyncio
+async def test_fallback_spec_lists_every_drawio_node_label(sample_meeting_id):
+    """Every labelled node in the input draw.io XML is listed by type; edges are not nodes."""
+    agent = SpecGeneratorAgent(api_key="")
+    test_xml = (
+        "<mxfile><diagram><mxGraphModel><root>"
+        "<mxCell id='0'/><mxCell id='1' parent='0'/>"
+        "<mxCell id='2' value='Auth Gateway' vertex='1' style='rounded=1;fillColor=#107C41;'/>"
+        "<mxCell id='3' value='Session Store' vertex='1' style='shape=cylinder3;fillColor=#0D47A1;'/>"
+        "<object id='4' label='Rate Limiter'><mxCell vertex='1' style='rhombus;fillColor=#004D40;'/></object>"
+        "<mxCell id='5' value='Mobile Client' vertex='1' style='ellipse;fillColor=#999999;'/>"
+        "<mxCell id='6' value='uses' edge='1' source='2' target='3'/>"
+        "</root></mxGraphModel></diagram></mxfile>"
+    )
+
+    spec_md = await agent.compile_markdown_spec_async(
+        meeting_id=sample_meeting_id,
+        meeting_title="Node Labels",
+        drawio_xml=test_xml,
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    architecture = spec_md.split("## 2. System Architecture Overview & Component Matrix\n", 1)[1].split("\n## 3.", 1)[0]
+    assert "- **Service:** Auth Gateway" in architecture
+    assert "- **Database:** Session Store" in architecture
+    assert "- **Decision:** Rate Limiter" in architecture
+    assert "- **Other:** Mobile Client" in architecture
+    assert "uses" not in architecture
+
+
+@pytest.mark.asyncio
+async def test_fallback_spec_malformed_xml_records_no_architecture(sample_meeting_id):
+    """Unparseable draw.io XML yields no architecture nodes instead of raising."""
+    agent = SpecGeneratorAgent(api_key="")
+
+    spec_md = await agent.compile_markdown_spec_async(
+        meeting_id=sample_meeting_id,
+        meeting_title="Broken XML",
+        drawio_xml="<mxfile><mxCell value='Redis'",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=[],
+    )
+
+    assert "## 2. System Architecture Overview & Component Matrix\nNo data recorded\n" in spec_md
+
+
+@pytest.mark.asyncio
+async def test_fallback_spec_action_items_come_from_interventions(sample_meeting_id):
+    """Section 6 action items are the recorded agent interventions, not a fixed roadmap."""
+    agent = SpecGeneratorAgent(api_key="")
+    interventions = [
+        {
+            "timestamp_ms": 50000,
+            "category": "VULNERABILITY",
+            "short_title": "Cache Stampede Risk",
+            "detailed_body": "Add mutex lock.",
+        }
+    ]
+
+    spec_md = await agent.compile_markdown_spec_async(
+        meeting_id=sample_meeting_id,
+        meeting_title="Action Items",
+        drawio_xml="",
+        transcript_turns=[],
+        diagram_snapshots=[],
+        agent_interventions=interventions,
+    )
+
+    action_items = spec_md.split("## 6. Action Items & Implementation Roadmap\n", 1)[1]
+    assert action_items.strip() == "- [ ] `[00:50]` Cache Stampede Risk (`VULNERABILITY`): Add mutex lock."
 
 
 # ============================================================================
@@ -199,7 +294,7 @@ async def test_finalize_meeting_pipeline(sample_meeting_id):
         "knowledge_chunks": {sample_meeting_id: []},
     }
 
-    agent = SpecGeneratorAgent(memory_store=store)
+    agent = SpecGeneratorAgent(api_key="", memory_store=store)
     result = await agent.finalize_meeting(
         meeting_id=sample_meeting_id,
         drawio_xml="<mxfile><mxCell value='Redis Cache'/></mxfile>",
@@ -234,6 +329,42 @@ async def test_finalize_meeting_pipeline(sample_meeting_id):
     assert first_cit["timestamp_ms"] >= 0
 
 
+@pytest.mark.asyncio
+async def test_finalize_meeting_is_idempotent(sample_meeting_id):
+    """Finalizing twice replaces finalize-owned chunks and never creates DECISION chunks."""
+    linker_chunk = {"id": "linker-1", "meeting_id": sample_meeting_id, "chunk_type": "DECISION", "content": "linker"}
+    store = {
+        "meetings": {sample_meeting_id: {"id": sample_meeting_id, "title": "T", "latest_drawio_xml": "<mxfile/>"}},
+        "transcript_turns": {sample_meeting_id: [
+            {"speaker_label": "Speaker 0", "transcript_text": "Add Redis.", "timestamp_ms": 1000},
+        ]},
+        "diagram_snapshots": {sample_meeting_id: [
+            {"id": "s1", "timestamp_ms": 2000, "diff_summary": "+ Added Redis", "decision_rationale": "Cache"},
+        ]},
+        "agent_interventions": {sample_meeting_id: [
+            {"id": "i1", "timestamp_ms": 3000, "category": "REVIEW", "short_title": "Risk", "detailed_body": "Body"},
+        ]},
+        "knowledge_chunks": {sample_meeting_id: [dict(linker_chunk)]},
+    }
+    agent = SpecGeneratorAgent(api_key="", memory_store=store)
+
+    def counts():
+        out = {}
+        for c in store["knowledge_chunks"][sample_meeting_id]:
+            out[c["chunk_type"]] = out.get(c["chunk_type"], 0) + 1
+        return out
+
+    await agent.finalize_meeting(sample_meeting_id, "<mxfile/>", "T")
+    first = counts()
+    await agent.finalize_meeting(sample_meeting_id, "<mxfile/>", "T")
+    second = counts()
+
+    assert first == second
+    assert first["DECISION"] == 1  # only the linker-owned chunk
+    assert first["TRANSCRIPT_WINDOW"] >= 1 and first["AGENT_INSIGHT"] >= 1 and first["TECH_SPEC"] >= 1
+    assert any(c["id"] == "linker-1" for c in store["knowledge_chunks"][sample_meeting_id])
+
+
 # ============================================================================
 # FastAPI REST Endpoints Integration Tests
 # ============================================================================
@@ -248,14 +379,14 @@ def test_rest_api_finalize_and_ask_flow():
     mid = create_resp.json()["id"]
 
     # 2. Add transcript turn via session memory
-    memory_store["transcript_turns"][mid].append({
+    session_manager.memory_store["transcript_turns"][mid].append({
         "id": "t1",
         "meeting_id": mid,
         "speaker_label": "Speaker 0 (Ruan)",
         "transcript_text": "Adding Redis to handle peak auth traffic.",
         "timestamp_ms": 36000,
     })
-    memory_store["diagram_snapshots"][mid].append({
+    session_manager.memory_store["diagram_snapshots"][mid].append({
         "id": "s1",
         "meeting_id": mid,
         "timestamp_ms": 36000,

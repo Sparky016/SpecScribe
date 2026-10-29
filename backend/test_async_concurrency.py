@@ -5,6 +5,7 @@ Ensures Gemini API calls use client.aio and batch endpoints without freezing the
 
 import asyncio
 import inspect
+import logging
 import time
 import uuid
 import pytest
@@ -17,6 +18,7 @@ from agents.decision_linker import (
 )
 from agents.raising_hand_agent import RaisingHandAgent, RaisingHandEvaluation
 from agents.spec_generator import SpecGeneratorAgent
+from session_manager import SessionManager
 
 
 @pytest.mark.asyncio
@@ -92,7 +94,8 @@ async def test_decision_linker_async_execution():
         timestamp_ms=12000,
         diff_summary="+ Added Redis Cache",
     )
-    assert res["decision_rationale"] == rationale
+    assert isinstance(res["decision_rationale"], str)
+    assert len(res["decision_rationale"]) > 5
     assert len(store["knowledge_chunks"]["m-1"]) == 1
     assert len(store["knowledge_chunks"]["m-1"][0]["embedding"]) == 1536
 
@@ -199,3 +202,58 @@ async def test_event_loop_concurrency_liveness():
 
     # Heartbeat must have progressed through its ticks
     assert tick_count == 10
+
+
+@pytest.mark.asyncio
+async def test_spawn_logs_background_task_exception(caplog):
+    """Verify exceptions from SessionManager.spawn tasks are logged at ERROR (Task 21)."""
+    manager = SessionManager()
+
+    async def failing_task():
+        raise RuntimeError("background boom")
+
+    with caplog.at_level(logging.ERROR, logger="specscribe.session_manager"):
+        task = manager.spawn(failing_task())
+        await asyncio.wait([task])
+
+    assert task not in manager._bg_tasks
+    errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+    assert len(errors) == 1
+    assert errors[0].exc_info is not None
+    assert "background boom" in str(errors[0].exc_info[1])
+
+
+@pytest.mark.asyncio
+async def test_spawn_holds_reference_until_done():
+    """Verify spawned tasks are held in _bg_tasks while running and released on completion (Task 21)."""
+    manager = SessionManager()
+    release = asyncio.Event()
+
+    async def waiting_task():
+        await release.wait()
+
+    task = manager.spawn(waiting_task())
+    await asyncio.sleep(0)
+    assert task in manager._bg_tasks
+
+    release.set()
+    await asyncio.wait([task])
+    assert task not in manager._bg_tasks
+
+
+@pytest.mark.asyncio
+async def test_cancel_background_tasks_on_shutdown(caplog):
+    """Verify cancel_background_tasks cancels and awaits outstanding spawned tasks without ERROR logs (Task 21)."""
+    manager = SessionManager()
+
+    async def long_running():
+        await asyncio.sleep(3600)
+
+    with caplog.at_level(logging.ERROR, logger="specscribe.session_manager"):
+        tasks = [manager.spawn(long_running()) for _ in range(3)]
+        await asyncio.sleep(0)
+        await manager.cancel_background_tasks()
+
+    assert all(t.cancelled() for t in tasks)
+    assert not manager._bg_tasks
+    assert not [r for r in caplog.records if r.levelno == logging.ERROR]

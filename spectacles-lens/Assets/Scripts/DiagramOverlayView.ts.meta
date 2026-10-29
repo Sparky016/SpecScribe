@@ -1,0 +1,52 @@
+- !<AssetImportMetadata/e06aa1e9-6ce1-46a5-8bf0-92e604b4b8f0>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> a77d7d98-97c3-4e36-8b09-0a72b4f5c808
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> a77d7d98-97c3-4e36-8b09-0a72b4f5c808
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 7d71e70f-8424-4d44-8ed5-21d71c4e874c
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/7d71e70f-8424-4d44-8ed5-21d71c4e874c>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 9909f084-86bd-4c1c-8a0d-7e0b2f484357
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    boardMesh: false
+    overlayMesh: false
+    toastText: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - overlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      boardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
+      toastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input Component.RenderMeshVisual overlayMesh
+    - // @input Component.RenderMeshVisual boardMesh
+    - // @input Component.Text toastText
