@@ -13,17 +13,25 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #3'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - 'cycle 1: worker haiku/medium committed dfd76ea; evaluator sonnet/medium verdict PASS (AC1-AC3 pass, leak check clean)'
+  decisions:
+  - 'Added lib/backend.ts backendFetch(path, init): reads SPECSCRIBE_API_TOKEN, sets Authorization: Bearer, uses BACKEND_URL with the existing fallback chain'
+  - 'Replaced getTargetApiUrl in lib/api.ts with apiFetch (same-origin /api in the browser, backendFetch on the server)'
+  - 'Removed the external NEXT_PUBLIC_API_URL bypass from the browser branch (acceptable: task requires browser calls go through /api routes)'
+  - 'Documented SPECSCRIBE_API_TOKEN= in .env.example with a server-only warning'
+  - 'backendFetch throws when SPECSCRIBE_API_TOKEN is unset; caught by existing fallbacks, so no unauthenticated call is sent'
+  sticking_points:
+  - 'implementation_notes suggest import server-only, but the package is not installed and lib/api.ts is client-bundled; marker skipped. Evaluator accepted: next build then grep of .next/static for a sentinel token found nothing'
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - 'cycle 1 PASS (evaluator sonnet/medium; worker haiku/medium). AC1: only fetches left are backendFetch callers plus same-origin browser fetch in apiFetch and the one in backend.ts. AC2: grep NEXT_PUBLIC_SPECSCRIBE empty. AC3: tsc --noEmit exit 0; npm run build exit 0. Leak check: SPECSCRIBE_API_TOKEN=leakcheck_7f3a9 build, grep -rl on .next/static returned nothing (also nothing in the rest of .next). Scope: 5 files, no meeting-ID validation, no demo-fallback removal. Assumptions 1-6 acceptable.'
 objective: |
   After task 03 the backend rejects unauthenticated calls. The Next.js route handlers must add `Authorization: Bearer ${process.env.SPECSCRIBE_API_TOKEN}` server-side so the token never reaches the browser.
 scope:

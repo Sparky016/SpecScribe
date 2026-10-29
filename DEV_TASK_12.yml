@@ -12,17 +12,28 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #5; docs/prd.md US-04'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  models:
+    worker: sonnet/medium
+    evaluator: sonnet/medium
+  history:
+  - 'worker (sonnet/medium) commit 331dd01: added resolve_meeting_id + async ensure_session, WS 4400 close, ERROR logging, tests'
+  - 'evaluator (sonnet/medium): PASS. Diff touches only session_manager.py, main.py, test_orchestrator.py; auth (4401 before accept, require_api_token) and rate limiting untouched'
+  decisions:
+  - Kept sync get_or_create_session unvalidated; added async ensure_session and resolve_meeting_id, used only by the WS endpoint (acceptable; implementation_notes say keep a sync accessor and scope.in/AC1 only require WS rejection)
+  - Demo IDs (demo, demo-session-01) map to fixed UUID 00000000-0000-4000-8000-000000000d0e only under SPECSCRIBE_DEMO_MODE=1 (consistent with web-dashboard/lib/meetingId.ts demo ID set)
+  - 'Upsert writes {id, title}; fallback title Live meeting <date>; upsert failure logs ERROR and keeps socket open'
+  sticking_points:
+  - 'Worker: full suite exceeded 900s because tests hit real Gemini/Supabase (429) via load_dotenv() in backend/main.py. Resolution: orchestrator/evaluator ran offline with credentials blanked; at 331dd01 in a clean worktree 40 passed, 1 deselected in 43s. AC4 passes.'
+  - 'Evaluator: the main working tree run stalls after 29 tests while other workers have uncommitted edits to graph_engine.py, spec_generator.py, test_spec_generator.py; does not reproduce at 331dd01, so not task 12 fault.'
   repeated_work: []
   iterative_mistakes: []
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - 'cycle 1: PASS. AC1 WS test asserts code 4400 for not-a-uuid and demo-session-01 (demo mode off); AC2 fake supabase order upsert then transcript_turns insert; AC3 no logger.warning on persistence paths (only WS send at line 136 remains), three logger.error with exc_info; AC4 40 passed offline at 331dd01'
 objective: |
   Meetings created via /ws/meeting/{id} never get a meetings row, and the Lens default `demo-session-01` isn't a UUID, so every child insert fails the FK and is swallowed — live meetings exist only in memory. After this task get_or_create_session validates UUIDs and upserts the meetings row, and persistence failures log at ERROR.
 scope:

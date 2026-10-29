@@ -127,12 +127,11 @@ describe('Task 48: SpatialInterfaceManager split into focused components', () =>
     assert.equal(m.getWhiteboardState(), WhiteboardState.CLEAN_BOARD);
     board.simulatePinch(); // CLEAN_BOARD -> drawing
     assert.equal(m.getWhiteboardState(), WhiteboardState.DRAWING_ACTIVE);
-    board.simulatePinch(); // drawing -> service node
+    board.simulatePinch(); // drawing -> whiteboard capture (no-op without a capturer; never an ADD_NODE)
     btnSnapshot.simulatePinch();
     btnConclude.simulatePinch();
     assert.deepEqual(socket.sent.map((s) => s.action),
-      ['CALIBRATE_AREA', 'INGEST_DRAWING', 'ADD_NODE', 'UPDATE_SNAPSHOT', 'CONCLUDE_MEETING']);
-    assert.equal(socket.sent[2].type, 'service');
+      ['CALIBRATE_AREA', 'INGEST_DRAWING', 'UPDATE_SNAPSHOT', 'CONCLUDE_MEETING']);
     assert.match(m.diffToastText.text, /Generating spec/);
   });
 

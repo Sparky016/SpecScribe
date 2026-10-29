@@ -13,17 +13,23 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #9 (backend half); PRD.md §8 T-09'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker sonnet/medium: commit d668b58 added contracts.py PinchAction, CONCLUDE_MEETING and client-only COMMAND_ACK branches, spec.md table, 4 tests"
+  - "evaluator sonnet/medium: verified in clean worktree at d668b58; 49 passed (ref 45 at a65a025, +4 new); scope clean; auth/UUID/idempotency untouched; raising_hand_agent.py not edited"
+  decisions:
+  - "Ack event for client-only actions named COMMAND_ACK, sent to sending socket only (task doc did not prescribe a name; acceptable, task 30 must consume it)"
+  - "MEETING_FINALIZED broadcast with both type and event keys plus meeting_id, timestamp_ms, chunks_created (matches task doc and audit)"
+  - "CONCLUDE_MEETING title read from memory_store meetings, like REST finalize route"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - "PASS: AC1 pass (conclude test), AC2 pass (3 parametrized tests), AC3 pass (grep hits in spec.md and contracts.py), AC4 pass (49 passed). Worker sonnet/medium, evaluator sonnet/medium."
 objective: |
   The Lens sends CALIBRATE_AREA, INGEST_DRAWING, UPDATE_SNAPSHOT and CONCLUDE_MEETING; the backend answers all with COMMAND_ERROR, and finalize is never triggered from the device. After this task the action set is documented once, CONCLUDE_MEETING finalizes the meeting and stops the proactive loop, and client-only actions are acknowledged as no-ops.
 scope:

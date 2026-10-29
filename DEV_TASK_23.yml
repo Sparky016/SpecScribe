@@ -14,17 +14,35 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #23, #35'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker (sonnet/medium) commit f0ed702: session_manager.py, main.py, raising_hand_agent.py, test_orchestrator.py"
+  - "evaluator (sonnet/medium): PASS. Full suite in isolated worktree: 90 passed (ref 86 at d878841, +4 new tests). Only declared files changed; no scope.out bleed; auth/rate-limit/ensure_session/CONCLUDE/spawn/TimedLiveGraphSession/task 19-20 code untouched (diff is additive)."
+  decisions:
+  - "Disconnect eviction goes through evict_if_idle (TTL-aware) rather than unconditional eviction, to keep the reconnect grace period"
+  - "Added RaisingHandAgent.clear_meeting instead of reaching into private dicts from SessionManager"
+  - "Injectable clock (SessionManager._clock) for TTL tests, so no sleeps"
+  - "Evaluator: eviction drops memory_store data; acceptable (task doc mitigation says reconnect recreates from Supabase; persistence beyond Supabase is scope.out)"
+  - "Evaluator: meeting_exists treats Supabase error as not found (404); acceptable per doc, which is silent; a 503 would be nicer but is not required"
+  - "Evaluator: demo path unaffected; dashboard proxy short-circuits demo ids and falls back to fixtures on backend non-ok; REST routes never mapped demo ids"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    worker_model: sonnet/medium
+    evaluator_model: sonnet/medium
+    criteria:
+      AC1: "pass - test_unknown_meeting_routes_404 covers /timeline 404"
+      AC2: "pass - /finalize 404 with live_sessions and memory_store meetings unchanged"
+      AC3: "pass - TTL=0 test evicts session, history, loops after last disconnect; TTL grace test via injected clock"
+      AC4: "pass - cap test: new WS closes 4429, existing meeting still admitted"
+      AC5: "pass - 90 passed in worktree"
+    notes: "Rate-limit test edit only seeds/cleans meeting rl-1; assertions unchanged. Minor: REST get_or_create_session can recreate an evicted meeting's session until TTL sweep (declared)."
 objective: |
   live_sessions, memory_store and agent histories are never evicted, and any meeting ID creates state (combined with no-auth, an OOM vector). /timeline returns 200 with a made-up title for unknown IDs. After this task REST routes 404 unknown meetings, idle sessions are evicted, and a session cap exists.
 scope:

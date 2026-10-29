@@ -13,17 +13,31 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #18'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - 'worker (haiku/medium): commit a65a025 on feature/lens-app-testing. Changed backend/agents/spec_generator.py and backend/test_spec_generator.py only. Self-check AC1/AC2/AC3 pass; 11 offline tests in test_spec_generator.py reported passing.'
+  - 'evaluator (haiku/medium): verified in isolated worktree at a65a025. Full offline suite (-m "not integration") 45 passed, 1 deselected; reference dd3b5c3 was 41, so the 4 new tests account for the delta. Finalize/idempotency code (chunk_meeting_artifacts, FINALIZE_CHUNK_TYPES, delete-before-insert, test at test_spec_generator.py:329) untouched by the diff and passing. Numstat 99+/31- for spec_generator.py, no whole-file diff. Committed blobs are LF in both parent and child (core.autocrlf=true), so no line-ending churn. Markdown header trailing-space lines (spec_generator.py:219-221) preserved. Verdict PASS.'
+  - 'evaluator note: commit trailer reads "Co-Authored-By: Claude Opus 5.5", not the Haiku 5.5 trailer the session attribution rule specifies. Not an AC; recorded for the parent to decide whether to amend.'
+  decisions:
+  - stdlib ElementTree + NODE_REGISTRY fillColor matching for draw.io node extraction
+  - Replaced hardcoded architecture/roadmap/rationale text with 'No data recorded' when input lacks it
+  - Added 4 offline tests (empty input, node labels by type, malformed XML, action items from interventions)
+  - 'evaluator: accepted worker assumption that no reusable draw.io reader exists. graph_engine.py and node_registry.py have no XML parser; drawio_mcp/server.py:2069 has an inline ET.fromstring inside a tool handler, not a reusable function.'
+  - 'evaluator: accepted node definition (non-edge mxCell with non-empty value, or <object label> parent label; vertex=1 not required). Edge labels excluded and verified. Labels with entity escapes and HTML-special characters parse correctly.'
+  - 'evaluator: accepted limitation. <UserObject label=...> wrappers are not handled, so their labels are missed. drawio_mcp emits only <object> wrappers (models.py:218), so backend-generated XML is fully covered. Follow-up only if client-authored draw.io XML ever uses UserObject.'
+  sticking_points:
+  - spec_generator.py uses CRLF line endings; normalised to LF for the splice and restored to CRLF
+  - Write tool dropped the two trailing spaces on Markdown header lines; restored before commit
+  - 'evaluator: committed blob is LF, so the worker''s CRLF restoration is a working-tree concern only and does not show in the commit.'
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - 'verdict: PASS. AC1: pass, empty input yields "No data recorded" (6 occurrences) and none of redis / read replica / read-replica (case-insensitive check). AC2: pass, every label from a drawio_mcp-generated XML, including entity-escaped and HTML-special labels, appears in section 2; edge label excluded. AC3: pass, 45 passed, 1 deselected in the isolated worktree at a65a025. Scope: only declared files changed; no LLM prompt or finalize changes.'
+  - 'Open items (non-blocking): UserObject wrapper not handled (see decisions). Commit trailer names Opus 5.5 rather than Haiku 5.5.'
 objective: |
   When Gemini is unavailable the deterministic spec asserts Redis clusters and read replicas regardless of the meeting, and that text is chunked into RAG. After this task sections derive only from inputs (node labels by type from drawio_xml, agent_interventions as action items) and say 'No data recorded' otherwise.
 scope:

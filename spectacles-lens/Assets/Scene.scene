@@ -8,7 +8,6 @@
     - !<own> 5c3f35aa-d723-4f23-b0f8-d233dedfc2f2
     - !<own> fd2dcb00-e03f-4df7-a432-aaaa628aed49
     - !<own> 7e394714-7a6a-4e46-875f-5b92a6021979
-    - !<own> 51c26207-c8a1-4f0a-aec6-cf9cc722afb4
   layers: !<Layers/267ee9a7-aff2-4f9d-9a49-f71214747d03>
     userLayers:
       - id: 1
@@ -201,7 +200,7 @@
   Enabled: true
   Layers: 1
   LocalTransform: !<TransformEntity>
-    Position: {x: 50.000000, y: 180.000000, z: -230.000000}
+    Position: {x: 50.000000, y: 97.797241, z: -230.000015}
     Rotation: {x: 90.000000, y: 0.000000, z: 0.000000}
     Scale: {x: 140.000000, y: 1.000000, z: 90.000000}
     HasSegmentScaleCompensation: false
@@ -862,15 +861,16 @@
   ScriptAsset: !<reference> 2a4edddf-af81-4928-8ed6-2c0007ce18b0
   ScriptInputsDefault:
     sampleIntervalSeconds: true
+    captureMode: true
     frameSmallerDimension: true
-    simulatedTexture: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
     "":
       sampleIntervalSeconds: !<float> 3.000000
+      captureMode: ""
       frameSmallerDimension: !<float> 480.000000
-      simulatedTexture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      simulatedTexture: !<reference.Texture> 69b2b12f-15b1-44d5-9ca3-1da4b29caef0
   ScriptTypes:
     "":
       {}
@@ -1597,21 +1597,6 @@
   BlendNormals: false
   BlendShapes:
     {}
-- !<SceneObject/51c26207-c8a1-4f0a-aec6-cf9cc722afb4>
-  PrefabRemaps:
-    []
-  Name: LEAF Plugin Bridge
-  Enabled: true
-  Layers: 1
-  LocalTransform: !<TransformEntity>
-    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
-    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
-    Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
-    HasSegmentScaleCompensation: false
-  Children:
-    []
-  Components:
-    - !<own> 617c6197-1072-447c-b4b6-0d45572fa4b2
 - !<SceneObject/51ddf89c-a5d6-4471-932e-5032f3f79204>
   PrefabRemaps:
     []
@@ -1826,22 +1811,6 @@
     - !<own> e94f40ad-5e0b-4c87-b12a-9939be590313
   Components:
     []
-- !<ScriptComponent/617c6197-1072-447c-b4b6-0d45572fa4b2>
-  PrefabRemaps:
-    []
-  Name: MessagingBridge
-  Enabled: true
-  ScriptAsset: !<reference> 9aa407db-2872-4afc-a162-cf7faf2a0f29
-  ScriptInputsDefault:
-    {}
-  ScriptTypesDefault:
-    {}
-  ScriptInputs:
-    "":
-      {}
-  ScriptTypes:
-    "":
-      {}
 - !<SceneObject/640620d5-3116-4c57-a46a-0ce873af42a6>
   PrefabRemaps:
     []
@@ -2362,8 +2331,13 @@
   ScriptAsset: !<reference> c6a9746b-40a4-4870-98fc-be92460e1f90
   ScriptInputsDefault:
     isPhysicalHardware: true
+    demoMode: true
     socketClient: true
     raisingHandAgent: true
+    whiteboardCalibrator: true
+    paletteController: true
+    diagramOverlayView: true
+    previewInputAdapter: true
     btnAddDecision: true
     btnAddService: true
     btnAddDatabase: true
@@ -2379,15 +2353,20 @@
   ScriptInputs:
     "":
       isPhysicalHardware: false
+      demoMode: false
       socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
-      btnAddDecision: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
-      btnAddService: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
-      btnAddDatabase: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
-      btnAddTerminal: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
-      btnUpdateSnapshot: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
-      btnConcludeMeeting: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
-      whiteboardInteractable: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+      whiteboardCalibrator: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      paletteController: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      diagramOverlayView: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
+      previewInputAdapter: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
+      btnAddDecision: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
+      btnAddService: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
+      btnAddDatabase: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+      btnAddTerminal: !<MappingBased.AssignableType_10> 00000000-0000-0000-0000-000000000000
+      btnUpdateSnapshot: !<MappingBased.AssignableType_11> 00000000-0000-0000-0000-000000000000
+      btnConcludeMeeting: !<MappingBased.AssignableType_12> 00000000-0000-0000-0000-000000000000
+      whiteboardInteractable: !<MappingBased.AssignableType_13> 00000000-0000-0000-0000-000000000000
       diagramOverlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       whiteboardBoardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       diffToastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
@@ -3546,14 +3525,18 @@
   Enabled: true
   ScriptAsset: !<reference> 5dcbadd3-971a-453c-aecd-54d435ec6268
   ScriptInputsDefault:
-    websocketUrl: true
+    backendWsBase: true
+    meetingId: true
+    apiToken: true
     cameraCapturer: true
     simulatedSpeechPhrase: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
     "":
-      websocketUrl: "ws://localhost:8000/ws/meeting/demo-session-01"
+      backendWsBase: "ws://localhost:8000"
+      meetingId: 00000000-0000-4000-8000-000000000d0e
+      apiToken: ""
       cameraCapturer: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       simulatedSpeechPhrase: Payment Gateway Microservice
   ScriptTypes:
@@ -3726,8 +3709,8 @@
   Enabled: true
   Layers: 1
   LocalTransform: !<TransformEntity>
-    Position: {x: 0.000000, y: 0.000000, z: 0.000000}
-    Rotation: {x: 0.000000, y: 0.000000, z: 0.000000}
+    Position: {x: 0.000000, y: 86.591385, z: 209.050064}
+    Rotation: {x: -22.500002, y: 0.000000, z: 0.000000}
     Scale: {x: 1.000000, y: 1.000000, z: 1.000000}
     HasSegmentScaleCompensation: false
   Children:

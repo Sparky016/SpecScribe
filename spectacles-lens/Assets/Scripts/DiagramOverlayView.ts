@@ -147,6 +147,11 @@ export class DiagramOverlayView extends BaseScriptComponent {
   /** Applies `tex` to the board surface; no-op when the board or texture is missing. */
   public showBoard(tex?: Texture): void {
     if (this.boardMesh && tex) {
+      // If the board is playing a video texture (e.g. DemoVideo), keep playing the video!
+      const currentTex = this.boardMesh.mainMaterial && this.boardMesh.mainMaterial.mainPass ? this.boardMesh.mainMaterial.mainPass.baseTex : null;
+      if (currentTex && (currentTex as any).control && typeof (currentTex as any).control.play === 'function') {
+        return;
+      }
       this.setMeshTexture(this.boardMesh, tex);
     }
   }
@@ -181,7 +186,9 @@ export class DiagramOverlayView extends BaseScriptComponent {
           this.overlayMesh.mainMaterial &&
           this.overlayMesh.mainMaterial.mainPass
         ) {
+          this.overlayMesh.enabled = true;
           this.overlayMesh.mainMaterial.mainPass.baseTex = decodedTexture;
+          print('[DiagramOverlayView] Decoded and applied server diagram overlay.');
         }
       },
       () => {

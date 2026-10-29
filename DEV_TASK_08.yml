@@ -12,17 +12,36 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #12'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  models:
+    worker: sonnet/medium
+    evaluator: sonnet/low
+  history:
+  - 'worker (sonnet/medium): commit 41d2932, self-check AC1-AC4 pass'
+  - 'evaluator (sonnet/low): PASS. AC1 git grep empty; AC2 ls-files empty, check-ignore ok; AC3 literal grep=7 (<~105) but 103 files use mcpClient which reads env (accepted, see sticking_points); AC4 require ok'
+  decisions:
+  - Lazy authHeader()/getToken() API so require() never throws without the env var (AC4) yet fails fast on first use
+  - mcp_call.js imports call() from the shared client, removing a duplicated request helper
+  - 'Evaluator: AC3 interpretation (token via shared client reading process.env.LS_MCP_TOKEN) accepted, matches objective'
+  - 'Evaluator: extra file docs/reviews/2026-10-25-repo-prd-audit.md redaction accepted, needed for AC1 (truncated token matched regex)'
+  sticking_points:
+  - 'AC3 verify as literally written (grep count of LS_MCP_TOKEN >= affected scripts) yields 7, not >=105, because JS scripts delegate to mcpClient.js. Task doc verify is inconsistent with its scope item "replace with shared client". Consider rewording AC3 to count mcpClient/LS_MCP_TOKEN references.'
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - 'Task 09: rotate the token (still in git history)'
+  - Set LS_MCP_TOKEN in the user env; copy .mcp.example.json to .mcp.json if Lens Studio lacks env interpolation
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    commit: 41d2932
+    criteria:
+      AC1: git grep -nE 'Bearer [A-Za-z0-9]{12,}' empty on HEAD and commit
+      AC2: git ls-files .mcp.json empty; git check-ignore prints .mcp.json
+      AC3: literal 7 files; 103 files import mcpClient (deviation accepted)
+      AC4: node require of mcpClient.js succeeds
 objective: |
   The Lens Studio MCP bearer token is hardcoded in .mcp.json and 103 files under spectacles-lens/scripts/. After this task every script imports one client that reads process.env.LS_MCP_TOKEN, .mcp.json is gitignored, and a token-free .mcp.example.json is committed.
 scope:

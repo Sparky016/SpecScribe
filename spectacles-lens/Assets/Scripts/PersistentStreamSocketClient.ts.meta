@@ -28,9 +28,11 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    apiToken: false
+    backendWsBase: false
     cameraCapturer: false
+    meetingId: false
     simulatedSpeechPhrase: false
-    websocketUrl: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -40,13 +42,17 @@
   Attachments:
     []
   DefaultScriptInputs:
-    - websocketUrl: "ws://localhost:8000/ws/meeting/demo-session-01"
+    - backendWsBase: "ws://localhost:8000"
+      meetingId: 00000000-0000-4000-8000-000000000d0e
+      apiToken: ""
       cameraCapturer: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       simulatedSpeechPhrase: Payment Gateway Microservice
   ScriptTypes:
     -
       {}
   InputLines:
-    - '// @input string websocketUrl = "ws://localhost:8000/ws/meeting/demo-session-01"'
+    - '// @input string backendWsBase = "ws://localhost:8000"'
+    - '// @input string meetingId = "00000000-0000-4000-8000-000000000d0e"'
+    - // @input string apiToken
     - // @input AssignableType_1 cameraCapturer
-    - '// @input string simulatedSpeechPhrase = "Payment Gateway Microservice"'
+    - // @input string simulatedSpeechPhrase

@@ -12,17 +12,41 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #15; docs/prd.md US-03'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: PASS
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - cycle: 1
+    commit: c4c6973
+    worker_model: haiku/medium
+    evaluator_model: haiku/medium
+    verdict: PASS
+    evidence:
+    - "git show c4c6973: only backend/agents/raising_hand_agent.py and backend/test_proactive_fallback.py changed (new file, orchestrator-directed instead of test_agents.py, authorised). No task 20 loop-survival changes. Task 11 monotonic fallback (raising_hand_agent.py loop_started/time.monotonic, session_manager.py elapsed_ms) and task 14 stop_proactive_loop intact."
+    - "Worktree at c4c6973: targeted run test_proactive_fallback.py + test_agents.py + test_proactive_timestamps.py = 21 passed."
+    - "Mutation check: new tests run against pre-change agent file (c4c6973~1) give 3 failures (trigger=False suppression, 'generate' rate-limit, whole-word cache); worktree restored clean afterwards."
+    - "Full backend suite (pytest -m 'not integration', deselect test_orchestrator.py::test_websocket_camera_frame_diff_gate, known task-10 hang): 77 passed, 2 deselected, exit 0. The second deselected item was not separately identified."
+    - "Heuristic probe: 'cached responses', 'authenticate users', 'oauth flow' no longer trigger; 'cache', 'caching', 'database', 'postgresql', 'token(s)', 'authorization', 'rate limiter/ratelimit/rate-limiting' behave as specified."
+    notes:
+    - "Async evaluate_proactive_async is the only production path (main.py, proactive loop). Sync evaluate_proactive retains the trigger-False substring override at raising_hand_agent.py:305 but is called only from test_agents.py; outside scope.in, so not a failure."
+    - "Recall reduction (cached, authenticate, authorize, oauth not matched) follows from the explicit whole-word lists; accepted under the 'fewer demo hand-raises' risk."
+  decisions:
+  - "Duplicate Gemini title returned with trigger=False rather than re-raised (worker)"
+  - "Empty or missing Gemini text falls through to the heuristic and is treated as unavailable (worker)"
+  - "Sync evaluate_proactive left unchanged, outside scope.in (worker; evaluator accepts)"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - cycle: 1
+    verdict: PASS
+    criteria:
+      AC1: "pass - Gemini trigger=False returns trigger=False despite 'cache' (test_gemini_trigger_false_suppresses_heuristic_even_with_cache_keyword passes; fails on pre-change code)"
+      AC2: "pass - heuristic runs when _genai_client is None and when the Gemini call raises (2 tests pass)"
+      AC3: "pass - 'generate' does not trigger rate-limit suppression; 'rate limit' variants do (test_generate_does_not_satisfy_rate_limit_keyword fails on pre-change code)"
+      AC4: "pass - backend suite 77 passed, 2 deselected, exit 0 (documented deselect)"
 objective: |
   When Gemini returns trigger=False the substring heuristic ("cache", "database", "rate" matching 'generate') overrides it and raises the hand anyway. After this task the heuristic runs only when no client exists or the call raised, and uses whole-word regexes.
 scope:

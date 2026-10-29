@@ -12,17 +12,20 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #32'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
+  history:
+    - "2026-10-27 worker (haiku/low): commit 246a38b adds a 2-line guard in ensureLayout BFS (skip enqueue when currLayer + 1 >= vertices.length). No test file committed; cycle and chain checks ran from an uncommitted scratch script."
+    - "2026-10-27 evaluator (haiku/low): verdict PASS. AC1 and AC2 reproduced by compiling xmlParser.ts and running parseDrawioXml on A<->B and A->B->C; AC3 tsc --noEmit exit 0. Pre-fix parent (246a38b^) hangs on A<->B (exit 124); fixed version terminates."
   decisions: []
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+    - "2026-10-27 worker haiku/low; evaluator haiku/low; PASS. AC1 pass (A<->B terminates, x=60/280). AC2 pass (A->B->C gives x=60/280/500, layers 0,1,2). AC3 pass (tsc exit 0). Accepted: scope.in asks for a node script/test, but implementation_notes allow a scratch-script fallback when tsx is absent (confirmed absent), so no test file in repo is non-blocking. Observed out of scope: regex fallback in parseDrawioXml mis-parses self-closing mxCell tags (swallows the following cell); not part of task 36."
 objective: |
   xmlParser.ensureLayout loops forever on cycles when no vertex has geometry, freezing the tab. After this task layering terminates on any graph.
 scope:

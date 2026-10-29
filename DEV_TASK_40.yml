@@ -8,21 +8,34 @@ complexity: low
 effort: low
 eval_effort: low
 depends_on: []
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #39'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "2026-10-27 worker (haiku/low): committed 7d86943 (cherry-picked from d519151). Touched PersistentStreamSocketClient.ts and new tests/task40.test.mjs only. Self-check AC1-AC3 pass; npm test 48/0 before task 32 landed."
+  - "2026-10-27 evaluator (haiku/low): verified in worktree at 7d86943. git show confirms declared files only, components.test.mjs untouched. AC1 and AC2 test cases pass; npm test 50 pass / 0 fail. Task 30 (MEETING_FINALIZED routing), task 27 (consumeLatestSpokenPhrase) and task 32 suites pass. Verdict PASS."
+  decisions:
+  - "Worker: new test file tests/task40.test.mjs instead of editing components.test.mjs. Evaluator: acceptable, per orchestrator instruction."
+  - "Worker: setWebsocketUrl nulls onopen/onmessage/onerror/onclose via retireActiveSocket() before close(). Evaluator: acceptable, stale onclose can no longer call scheduleReconnect."
+  - "Worker: isSocketOpenOrConnecting() (readyState 0 or 1) guards scheduleReconnect and the DelayedCallbackEvent callback; the callback guard was isConnected() (readyState 1 only). Evaluator: acceptable, matches objective. DelayedCallbackEvent backoff unchanged."
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - worker: "haiku/low"
+    evaluator: "haiku/low"
+    verdict: PASS
+    criteria:
+      AC1: "pass - URL change test: old socket handlers null, readyState 3, one live socket, no reconnect scheduled (task40.test.mjs)"
+      AC2: "pass - CONNECTING guard tests: reconnect callback and scheduleReconnect both no-op while readyState 0"
+      AC3: "pass - npm test in worktree: 50 pass, 0 fail"
+    failures: []
 objective: |
   setWebsocketUrl leaves old socket handlers bound and the reconnect timer can open a third socket while one is CONNECTING. After this task old sockets are neutered before replacement and reconnect checks readyState 0/1.
 scope:

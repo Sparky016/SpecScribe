@@ -9,21 +9,27 @@ effort: medium
 eval_effort: medium
 depends_on:
 - '02'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #8; docs/prd.md US-01..US-03; judging: Technical Implementation'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker (sonnet/medium) committed demoMode gating, cherry-picked as 1689a1d; new tests in tests/task29.test.mjs"
+  - "evaluator (sonnet/medium): PASS - npm test in isolated worktree 24 tests, 23 pass, 0 fail, 1 todo (task-30)"
+  decisions:
+  - "Also gated triggerConcludeMeeting texConcluded swap behind demoMode: acceptable, AC2 says overlay changes only in onDiagramUpdated."
+  - "Tests placed in tests/task29.test.mjs instead of components.test.mjs per orchestrator instruction."
+  - "Non-demo toasts use 'pending' wording; nodeCount stays 0 in live mode."
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS: AC1-AC4 verified; demo mode retains canned content (test demoMode=true); remaining setMeshTexture calls are initial/reset states only."
 objective: |
   The Lens shows pre-baked textures and hardcoded critiques instead of backend output, later overwritten by DIAGRAM_UPDATED depending on timing. After this task canned flow runs only when `@input demoMode: boolean` (default false) is true; otherwise overlay changes only on onDiagramUpdated and hand raises only on onHandRaised.
 scope:

@@ -28,6 +28,7 @@
   ExportUid: 00000000-0000-0000-0000-000000000000
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
+    captureMode: false
     frameSmallerDimension: false
     sampleIntervalSeconds: false
     simulatedTexture: false
@@ -41,6 +42,7 @@
     []
   DefaultScriptInputs:
     - sampleIntervalSeconds: !<float> 3.000000
+      captureMode: ""
       frameSmallerDimension: !<float> 480.000000
       simulatedTexture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
@@ -48,5 +50,6 @@
       {}
   InputLines:
     - // @input float sampleIntervalSeconds = 3
+    - // @input string captureMode
     - // @input float frameSmallerDimension = 480
     - // @input Asset.Texture simulatedTexture

@@ -9,21 +9,39 @@ effort: medium
 eval_effort: medium
 depends_on:
 - '02'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #6 (Lens half); docs/prd.md US-02'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: PASS
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - stage: worker
+    model: haiku/medium
+    commit: 5121ebf
+    summary: Added pendingFinalPhrase + consumeLatestSpokenPhrase() (final ASR only, cleared on read); removed hardcoded default; sendPinchCommand omits label when null; non-demo pinch without fresh phrase sends no label, demoMode keeps canned labels; new task27.test.mjs; mocks in task29/task30/components T-11 adapted.
+  - stage: evaluator
+    model: sonnet/medium
+    commit: 5121ebf
+    verdict: PASS
+    evidence: "git show 5121ebf touches only declared files (+task27.test.mjs); no backend or demo-gating change. cd spectacles-lens && npm test -> 45 pass / 0 fail. grep 'Payment Gateway Microservice' in PersistentStreamSocketClient.ts -> no match. task27 tests cover no-label double pinch, distinct labels, consume-once, partial ASR not consumed, demoMode canned labels. Backend envelope_router.py:236 msg.get('label', 'New <Type>') handles a missing key (no crash, no None label); graph dedupe tests cover blank labels."
+  decisions:
+  - Non-demo pinch with no fresh final phrase sends no label (AC1 conflicts with task 29 registry fallback).
+  - Removed the hardcoded 'Payment Gateway Microservice' default from the simulatedSpeechPhrase input.
+  - Added pendingFinalPhrase and consumeLatestSpokenPhrase(); phrase consumed by one pinch and cleared.
+  - "Evaluator: mock edits in task29/task30 (added consume stub) and components T-11 (consume-once mock, assertions unchanged) keep test intent."
+  sticking_points:
+  - AC1 vs task 29 registry fallback label - identical labels per type would violate AC1, so label omitted in non-demo mode.
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - "Clear the serialized simulatedSpeechPhrase value ('Payment Gateway Microservice') in Scene.scene and .virtual-scene.json in Lens Studio (out of task files; verify in task 34)."
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    commit: 5121ebf
+    criteria: {AC1: pass, AC2: pass, AC3: pass, AC4: pass}
 objective: |
   latestSpokenPhrase is overwritten by partial ASR and never cleared, and defaults to 'Payment Gateway Microservice', so successive palette pinches restyle one node. After this task each pinch consumes the phrase (then clears it), and sends no label when no fresh final phrase exists.
 scope:

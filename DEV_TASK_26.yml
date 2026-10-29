@@ -13,17 +13,37 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #38'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: PASS
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - stage: worker
+    model: haiku/low
+    commit: 7b07610
+    summary: get_session_manager raises RuntimeError when app.state.session_manager is missing; lazy main-import and SessionManager() fallbacks removed; get_ws_session_manager deleted (no callers outside main.py import block); main.py touched only to drop that import; new backend/test_session_manager.py added.
+  - stage: evaluator
+    model: haiku/low
+    commit: 7b07610
+    verdict: PASS
+    evidence: "Isolated worktree at 7b07610: pytest -m 'not integration' -q -> 104 passed, 1 deselected (marker filter). test_session_manager.py: 2 passed. app.state.session_manager is assigned at module import (main.py:170) as well as in lifespan (main.py:144), so TestClient(app) without a with-block gets a configured manager; no 500s observed."
+  decisions:
+  - Kept main.py's package-path try/except ImportError import block and removed only get_ws_session_manager from it
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - evaluator: haiku/low
+    verdict: PASS
+    criteria:
+      AC1: "pass - test_missing_app_state_session_manager_raises_runtime_error passes; full suite green in worktree at 7b07610"
+      AC2: "pass - grep 'SessionManager()' backend/*.py hits only tests; production construction is main.py:93 (kwarg form, module level, not lifespan), which is not a fallback and is acceptable against the objective"
+      AC3: "pass - 104 passed, 1 deselected in worktree at 7b07610"
+    scope_check: "commit touches backend/main.py (import removal only), backend/session_manager.py (get_session_manager and get_ws_session_manager region only), backend/test_session_manager.py (new). Within scope.in; no scope.out bleed. Task 23 eviction/meeting_exists code intact."
+    assumptions:
+      - "RuntimeError raised from a FastAPI dependency becomes a 500 for any request when unconfigured: acceptable, the stated intent is fail loudly. Startup sets it before serving (module import and lifespan)."
+      - "main.py package-path ImportError block retained: acceptable."
 objective: |
   get_session_manager silently builds a fresh empty SessionManager when app.state is missing it, splitting data. After this task it raises RuntimeError, and the import fallbacks and unused get_ws_session_manager are removed.
 scope:

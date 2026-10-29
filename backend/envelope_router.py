@@ -6,11 +6,13 @@ Source: SPEC_DOC.md §4.2 (Finding #7)
 """
 
 from abc import ABC, abstractmethod
+import asyncio
 import base64
 import json
 import logging
 import os
 import sys
+import time
 from typing import Any, Dict, Optional
 import uuid
 
@@ -66,7 +68,7 @@ class HandshakeHandler(BaseEnvelopeHandler):
         # If diagram already has nodes, send current rendered diagram immediately
         if len(session.diagram.cells) > 2:
             try:
-                drawio_xml = session.get_xml()
+                drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
                 await websocket.send_text(
                     json.dumps({
@@ -147,7 +149,20 @@ class CameraFrameHandler(BaseEnvelopeHandler):
         timestamp_ms = msg.get("timestamp_ms", 0)
         session = session_mgr.get_or_create_session(meeting_id)
 
+        # Prevent concurrent vision extractions on the same session
+        if getattr(session, "_vision_in_flight", False):
+            logger.debug("Vision analysis already in-flight; skipping frame.")
+            return
+
+        now = time.time()
+        # Cooldown between vision calls to avoid Gemini 429 quota exhaustion
+        if now - getattr(session, "_last_vision_time", 0) < 5.0:
+            logger.debug("Vision analysis cooldown active; skipping frame.")
+            return
+
+        session._vision_in_flight = True
         try:
+            session._last_vision_time = now
             img_bytes = base64.b64decode(img_b64)
             has_diff, hamming, current_hash = session.check_image_diff(
                 img_bytes, threshold=6
@@ -164,11 +179,20 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             existing_nodes = list(session.node_metadata.values())
             delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes)
 
-            if delta.person_occluding_board:
+            logger.info(
+                "Vision delta result: occluding=%s, meaningful=%s, summary=%s, nodes=%d",
+                delta.person_occluding_board,
+                delta.has_meaningful_change,
+                delta.diff_summary,
+                len(delta.added_vertices),
+            )
+
+            # Step-aside rule: only skip if the person is truly occluding AND no vertices were identified
+            if delta.person_occluding_board and not delta.added_vertices and not delta.added_edges:
                 logger.info("Person occluding whiteboard; skipping diagram mutation.")
                 return
 
-            if delta.has_meaningful_change:
+            if delta.has_meaningful_change or delta.added_vertices or delta.added_edges:
                 session.apply_delta(delta)
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
@@ -215,6 +239,8 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 )
         except Exception as e:
             logger.error("Error processing cameraFrame: %s", e)
+        finally:
+            session._vision_in_flight = False
 
 
 class PinchCommandHandler(BaseEnvelopeHandler):
@@ -376,6 +402,15 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                 )
 
             elif action in PinchAction.CLIENT_ONLY:
+                if action == PinchAction.CALIBRATE_AREA and os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
+                    from drawio_mcp.models import DrawioFile
+                    session.file = DrawioFile()
+                    session.diagram = session.file.active_diagram
+                    session.diagram.name = "ARStream"
+                    session.node_by_label.clear()
+                    session.node_by_key.clear()
+                    session.node_metadata.clear()
+                    logger.info("CALIBRATE_AREA: reset session diagram for fresh whiteboard demo ingestion.")
                 await websocket.send_text(
                     json.dumps({
                         "event": "COMMAND_ACK",

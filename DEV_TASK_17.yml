@@ -12,17 +12,26 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #13'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker sonnet/medium: commit 6fee9f9 (decision_linker pinned model, None on failure, 005 migration, tests in test_decision_linker.py)"
+  - "evaluator sonnet/medium: PASS. AC1-AC4 verified in clean worktree at 6fee9f9; 65 passed with test_orchestrator.py::test_websocket_camera_frame_diff_gate deselected"
+  decisions:
+  - "Embedding failure returns None instead of raising, so callers skip persistence"
+  - "Edited spec_generator.py and conftest.py as necessary side effects; both declared"
+  - "Evaluator: default model gemini-embedding-001 at 1536 dims matches vector(1536) in 001/003/004 migrations; assumption accepted"
+  - "Evaluator: conftest autouse offline fixture accepted; failure-path tests delenv SPECSCRIBE_OFFLINE_EMBEDDINGS so they exercise the real path"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - "Apply supabase/migrations/005_embedding_model.sql before deploying this change"
+  - "Pre-existing: test_orchestrator.py::test_websocket_camera_frame_diff_gate hangs with empty API keys (also hangs at parent commit 981b97a, task 10 removed the fabricated-node fallback); not caused by task 17"
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS. AC1 test_embedding_failure_skips_insert; AC2 test_inserted_chunk_includes_embedding_model; AC3 grep returns none; AC4 65 passed (one pre-existing hanging test deselected). Task 16 FINALIZE_CHUNK_TYPES delete-before-insert intact; task 24 untouched. Evaluator models: worker sonnet/medium, evaluator sonnet/medium."
 objective: |
   decision_linker silently stores SHA-256 'embeddings' on failure and mixes 768-dim (zero-padded) and 1536-dim vectors from different models in one pgvector column. After this task one model is pinned, its name is stored per row, and failures skip persistence instead of writing garbage.
 scope:

@@ -12,17 +12,29 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #10; PRD.md §8 T-10..T-13'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
-  escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
-  repeated_work: []
+  escalated: true
+  history:
+  - 'worker haiku/medium commit 6471364: import paths -> dist/Assets/Scripts, clean step in test script, 2 globals added, pinch test todo (blocked by DEV_TASK_30)'
+  - 'evaluator sonnet/low: PASS AC1-AC4; npm test exits 1 with 8 red tests (mock gaps/test bug), 1 todo, 7 pass'
+  decisions:
+  - Did not apply the rootDir/include tsconfig fix (TS6059); used the import-path fallback (allowed by scope)
+  - Inlined the clean step in the test script instead of a pretest/prebuild hook
+  - Added BaseScriptComponent and allowUndefined globals in the test so compiled modules load
+  - Marked the pinch test todo, blocked by DEV_TASK_30
+  sticking_points:
+  - Experimental narrowed-rootDir build wrote 116 .js files into gitignored Cache/.../Leaf.lspkg; identified by timestamp and deleted
+  - 8 remaining failures are not attributable to known open findings (2x CompressionQuality undefined, 5x quat.fromEulerVec missing in mock, 1x ASR test-code bug); mocks live in lens_mock_environment.mjs outside files list
+  repeated_work:
+  - npm test rerun four times to surface missing Lens globals one at a time
   iterative_mistakes: []
-  human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  human_required:
+  - Decide whether the 8 unattributed red tests are fixed in lens_mock_environment.mjs, marked todo, or tracked as a separate harness task
+  escalate:
+  - npm test exits 1 with 8 failures not covered by DEV_TASK_27-30
+  evaluator_verdicts:
+  - 'sonnet/low verdict PASS: AC1 no ERR_MODULE_NOT_FOUND after rm -rf dist; AC2 4 imports resolve to dist/Assets/Scripts (exist); AC3 stale.js removed; AC4 one todo with DEV_TASK_30, no tests deleted. Assumptions 1-5 acceptable.'
 objective: |
   spectacles-lens `npm test` builds to dist/Assets/Scripts/*.js but tests import stale ../dist/*.js from Oct 20, so 16 green tests check code that no longer exists and a clean CI checkout fails with ERR_MODULE_NOT_FOUND. After this task tests import freshly built output, dist is wiped before each build, and the suite reports real results (some tests are EXPECTED to fail until tasks 27–30 land).
 scope:

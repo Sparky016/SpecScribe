@@ -9,21 +9,28 @@ effort: low
 eval_effort: low
 depends_on:
 - '28'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #40'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "2026-10-27 worker (haiku/low) committed ff6789e: onHandRaised delegates to triggerHandRaised; leading emoji stripped when a category icon is applied; Array.from(title).slice(0,28) truncation; existing badge-length test counts code points; new tests/task41.test.mjs (5 tests)."
+  - "2026-10-27 evaluator (haiku/low) verified ff6789e: only declared files changed; npm test 28 pass, 0 fail, 1 todo (DEV_TASK_30, pre-existing); task 41 suite 5/5 pass; AC1, AC2, AC3 pass. Verdict PASS."
+  decisions:
+  - "Strip leading emoji only when a category icon is applied (unknown or missing category leaves title untouched)"
+  - "Changed existing badge-length test to count code points (declared test edit; the visible 28-character cap is kept, and the UTF-16 assertion could not hold for an astral emoji)"
+  - "No surrogate-range fallback regex implemented; Unicode property escape support deferred to on-device check (see human_required)"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - "Confirm the Lens Studio JS runtime on Specs accepts \\p{Extended_Pictographic} with the u flag. The fallback surrogate-range regex from implementation_notes was not implemented. Unverifiable here because the Lens Studio MCP is offline; check in preview or on device when available."
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "worker: haiku/low; evaluator: haiku/low; verdict: PASS; AC1 pass; AC2 pass; AC3 pass; failures: none; open item: human_required entry above."
 objective: |
   Titles get double emoji prefixes and substring(0,28) can split surrogate pairs; the logic is duplicated. After this task onHandRaised delegates to triggerHandRaised, leading emoji are stripped before adding the category icon, and truncation is code-point safe.
 scope:

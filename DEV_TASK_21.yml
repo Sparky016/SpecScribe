@@ -14,17 +14,24 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #20'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker: haiku/medium, commit 3aed89e (4 files, all declared in files:). evaluator: haiku/medium, verified in isolated worktree at 3aed89e (removed after use)."
+  - "evaluation: AC1 grep for asyncio.create_task in backend/envelope_router.py returns no matches. AC2/AC3: test_spawn_logs_background_task_exception, test_spawn_holds_reference_until_done, test_cancel_background_tasks_on_shutdown pass (3 passed). AC4: full backend suite 52 passed, 1 deselected, exit 0 (reference 49 at d668b58 plus 3 new tests)."
+  - "scope check: commit touches only session_manager.py, envelope_router.py, main.py, test_async_concurrency.py. test_async_concurrency.py hunks are all task-21 (no other task content). Auth (03), rate limiting (04), ensure_session/UUID (12), CONCLUDE_MEETING/COMMAND_ACK (14) untouched: diff only adds spawn/cancel code, replaces six create_task calls, and removes the unused asyncio import."
+  decisions:
+  - "spawn() is the only caller of asyncio.create_task in session_manager.py; it holds tasks in self._bg_tasks and logs exceptions through a done callback"
+  - "cancel_background_tasks() cancels the tasks and gathers them with return_exceptions=True; it is called first in lifespan shutdown, before raising_hand_agent.stop_all()"
+  - "Removed the unused asyncio import from envelope_router.py (grep confirms no remaining asyncio references there)"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS. Assumptions audited and acceptable: spawn-only create_task, cancel-first shutdown ordering, removed asyncio import, test file imports. Worker's 'file changed on disk' warning is harmless: the committed test file contains only task-21 hunks. Non-blocking follow-up: backend/agents/raising_hand_agent.py:642 still calls asyncio.create_task(_loop()) for proactive loops. It is outside scope.in (envelope_router.py only) and is stopped via stop_all(), so it is not a failure of this task, but the objective's wording 'all fire-and-forget work goes through SessionManager.spawn' would cover it. Recommend a follow-up task rather than rework here."
 objective: |
   asyncio.create_task results are discarded six times in envelope_router.py, so tasks can be GC'd and exceptions are never seen. After this task all fire-and-forget work goes through SessionManager.spawn, which holds references, logs exceptions, and cancels on shutdown.
 scope:

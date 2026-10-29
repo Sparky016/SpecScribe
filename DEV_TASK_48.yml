@@ -17,18 +17,36 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #25'
 human_action: HUMAN-STEP
 decision_log:
-  outcome: pending
+  outcome: pending-human
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - 'worker (opus/high): committed 6d622b7. Files: SpatialInterfaceManager.ts (937 -> 298 lines), WhiteboardCalibrator.ts, PaletteController.ts, DiagramOverlayView.ts, PreviewInputAdapter.ts (new), tests/task48.test.mjs (new). Self-check AC1 pass, AC2 pass (81/0), AC3 pending-human.'
+  - 'evaluator (opus/high): verified in isolated worktree wt-e48 at 6d622b7. git show --stat: only the 6 declared files; no Scene.scene, .meta or existing test file touched. AC1 pass (wc -l = 298). AC2 pass (npm test rebuilds dist with tsc against the Lens Studio tsconfig (LensifyTS declarations + SIK Cache sources): 81 pass / 0 fail). AC3 pending-human (Lens Studio MCP offline). Line-by-line diff against the pre-split file: OnStart order kept (textures, peers, refs, collider, initial visuals, palette bind in order decision/service/database/terminal/snapshot/conclude/whiteboard, socket callbacks, touch+keyboard); all toast strings, texture side-effect order, demoMode gating (incl. concluded overlay only in demo), consumeLatestSpokenPhrase + live null label (task 27), PinchAction constants, 30 s conclude timeout disabled on MEETING_FINALIZED (task 30), findSceneObject (task 44) kept. No createEvent(TapEvent) anywhere (task 32). Only catch without a log is the pre-existing commented KeyPressEvent feature-detection one, which task 33 AC1 allows. resetForTest resets the same state as before (timeout, meetingConcluded, drag guard via PreviewInputAdapter.reset, initial visuals, last sent command); resizePresetIndex and touch positions were not reset before either. createComponent(X.getTypeName()) / getComponent(X.getTypeName()) is the SIK pattern in Cache (CursorController: createComponent(InteractorCursor.getTypeName())). PaletteController.bind guarded by `bound` and is the only binder, so one pinch gives one command (T-11 and task48 rebind test pass). No circular imports (none of the 4 files imports the manager). Every manager method used by LEAF scenarios/SpecScribeTestHelpers still exists; the new components expose none of the duck-typed keys (getDiagramStage, triggerHandRaised, getLastSentCommand, sendPinchCommand), so helper and peer lookups on SpecScribeControllers still resolve correctly. Verdict PASS on automated criteria; AC3 remains human.'
+  decisions:
+  - 'Demo state machine (whiteboardState/diagramStage/nodeCount, conclude wait + timeout, socket callbacks, peer lookup) stays in SpatialInterfaceManager as the composition root.'
+  - 'Components get references by fill-if-unset from the manager''s legacy inputs each time the manager uses a component; a component''s own @input wins (evaluator: accepted; matches the risk mitigation to keep old @inputs until wired).'
+  - 'Unwired component is reused via getComponent(X.getTypeName()) on the manager SceneObject, else created there with createComponent(X.getTypeName()); new Cls() only in the node harness (evaluator: accepted; same as the SIK CursorController pattern).'
+  - 'PreviewInputAdapter and PaletteController drive narrow target interfaces (PreviewInputTarget / PaletteTarget) that the manager''s public API satisfies, so there is no circular import; handleWhiteboardPinch became public.'
+  - 'PreviewInputAdapter keeps TouchStart/Move/End + KeyPressEvent and binds no TapEvent (task 32); centre-tap lock still comes from TouchEndEvent. New disableTouchDrag/disableKeyboard inputs default to enabled.'
+  - 'Per-transition presentation moved to DiagramOverlayView present* methods with side-effect order kept; node labels and demo critiques moved to PaletteController exports; demo labels still match the exact node type only.'
+  - 'isPhysicalHardware has a single source (the manager input), pushed into DiagramOverlayView. Conclude sound still plays on the manager''s SceneObject AudioComponent.'
+  - 'The 8 former private texture fields kept as private get/set accessors forwarding to DiagramOverlayView, because tests read/assign them on the manager.'
+  - 'Log prefixes in moved code name the owning component; fallback agent lookup now sits inside the same logged try/catch (failure path only) (evaluator: accepted; no test or LEAF scenario asserts on log text).'
+  - 'PaletteController.bind and PreviewInputAdapter.bind ignore a second call.'
+  sticking_points:
+  - 'First faithful split was 405 lines; three compaction passes to reach 298.'
+  - 'Shared MockTransform lacks getWorldScale/setWorldScale; task48.test.mjs patches the prototype locally (shared mock untouched).'
   repeated_work: []
   iterative_mistakes: []
   human_required:
-  - Wire new components in Scene.scene and verify in Preview
+  - 'Open the project in Lens Studio so .meta files are generated for WhiteboardCalibrator.ts, PaletteController.ts, DiagramOverlayView.ts and PreviewInputAdapter.ts; confirm TS compiles in-editor.'
+  - 'On SpecScribeControllers add WhiteboardCalibrator, PaletteController, DiagramOverlayView and PreviewInputAdapter, wire their inputs (board/overlay meshes, toast text, the 6 palette buttons + whiteboard Interactable), and set the 4 component inputs on SpatialInterfaceManager. Until wired, the manager finds or creates them on its own SceneObject and feeds them from its legacy inputs.'
+  - 'AC3: run Preview: calibration, WASD/-/+/drag, lock, drawing, ADD_NODE, snapshot, conclude (live: Generating spec... / demo: success); then the full LEAF suite (DC0-DC6, SelectArea, StartDrawing, FullDemo).'
+  - 'Optional follow-up after Preview passes: remove the legacy manager inputs.'
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - 'evaluator (opus/high): PASS on AC1 and AC2; AC3 pending-human. Evidence: git show 6d622b7 limited to the 6 declared files; wc -l SpatialInterfaceManager.ts = 298; npm test (tsc build + node --test) 81/0 in wt-e48; pre/post diff shows no behaviour change across tasks 27/29/30/32/33/34/44; getTypeName create/get pattern confirmed in SIK Cache; single palette binder; no import cycles; LEAF/test API intact.'
 objective: |
   A 905-line class handles input, calibration, palette, demo state machine, audio and colliders. After this task it is a thin composition root over WhiteboardCalibrator, PaletteController, DiagramOverlayView and PreviewInputAdapter. A human wires the new components in Scene.scene and verifies in Preview.
 scope:

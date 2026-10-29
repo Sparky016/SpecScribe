@@ -12,17 +12,25 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #19'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
-  repeated_work: []
+  history:
+  - "cycle 1: worker sonnet/medium committed dd3b5c3 (spec_generator.py, test_spec_generator.py); evaluator sonnet/medium verified in clean worktree: 41 passed, 1 deselected, offline. PASS"
+  decisions:
+  - "Placed the delete in embed_and_persist_chunks rather than finalize_meeting, so delete and insert happen back to back after embedding succeeds"
+  - "Committed with a partial full-suite run because the hang is in test_orchestrator.py, outside this task's files (evaluator confirmed suite passes in clean worktree)"
+  - "Evaluator: delete-then-insert ordering accepted; task risk section explicitly accepts delete+insert in quick succession, no atomicity AC"
+  sticking_points:
+  - "Full suite hangs at test_orchestrator.py even with offline env vars (suspected cause: another worker's in-flight edits; clean worktree run passed)"
+  - "pkill of its own background pytest was denied by the permission classifier; not retried"
+  repeated_work:
+  - "Re-ran the full suite several times while waiting on the hang"
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS: AC1 test_finalize_meeting_is_idempotent (equal counts across two finalizes); AC2 DECISION absent from chunk_meeting_artifacts and linker chunk preserved; AC3 41 passed in worktree at dd3b5c3. Scope clean, only declared files changed."
 objective: |
   DecisionLinker already writes a DECISION chunk per snapshot, and every /finalize call inserts a full new set of chunks, flooding RAG top-k with duplicates. After this task finalize replaces (not appends) its chunks and does not re-create DECISION chunks the linker already wrote.
 scope:

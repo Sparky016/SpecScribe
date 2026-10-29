@@ -12,17 +12,33 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #3; PRD.md §4'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
-  repeated_work: []
+  history:
+  - 'worker (sonnet/high) commit fc16928: added backend/auth.py, conftest.py (declared extra), main.py deps + WS check, auth tests; self-check AC1-AC6 pass'
+  - 'evaluator (sonnet/high) verdict PASS: all 6 AC verified by execution; full suite 34 passed in one run (103s), baseline fc16928^ 29 passed (65s); no hang reproduced at either commit'
+  decisions:
+  - 'Added backend/conftest.py (autouse AUTH_DISABLED=1) instead of editing test_agents.py and test_spec_generator.py, to keep the touched-file set minimal'
+  - 'WebSocket closes with code 4401 before accept() and returns immediately; no session or connection state is created for a rejected client'
+  - 'Per-route dependencies=[Depends(require_api_token)] on 7 non-health routes; /api/health stays public'
+  - 'Evaluator: conftest extra file accepted (does not mask auth tests; test_orchestrator autouse fixture re-enables token and tests assert 401/4401)'
+  - 'Evaluator: when token set, AUTH_DISABLED=1 is ignored (verified 401); empty-string token treated as unset and startup refuses'
+  sticking_points:
+  - 'The first full-suite pytest run produced no output for over 15 minutes. A rerun with a timeout and -v hung on test_agents.py::test_websocket_ask_agent_research_pull, but that test passed in isolation (4.6s) and on the HEAD baseline (12s), and per-file reruns all passed. Treated as a transient stall; not reproduced'
+  - 'A blanket kill of all python.exe processes was denied by the permission classifier because it would hit other workers processes, so the worker used TaskStop on only its own background task'
+  - 'Evaluator: hang not reproduced at fc16928 (34 passed, 103s) nor at fc16928^ (29 passed, 65s); likely transient'
+  repeated_work:
+  - 'Full suite run twice in the background before switching to per-file runs with timeouts'
   iterative_mistakes: []
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - verdict: PASS
+    worker_model: sonnet/high
+    evaluator_model: sonnet/high
+    criteria: 'AC1-AC6 pass'
+    evidence: 'app.routes enumeration: 7 non-health APIRoutes carry require_api_token, /api/health and WS excluded by design; hmac.compare_digest on utf-8 bytes; empty Bearer and empty env token rejected; token+AUTH_DISABLED=1 still 401; WS closed before accept with no live_sessions entry; lifespan calls validate_auth_config. Note (out of scope): /docs and /openapi.json remain public.'
 objective: |
   No backend route checks credentials and Cloud Run is deployed --allow-unauthenticated, so anyone with a meeting ID can read transcripts, inject into live meetings, and burn Gemini quota. After this task every /api/* route (except /api/health) and /ws/meeting/{id} require a shared secret from env SPECSCRIBE_API_TOKEN.
 scope:

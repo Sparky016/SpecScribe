@@ -12,17 +12,27 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #4; PRD.md §5 (timestamp_ms = offset from meeting start)'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - 'worker (sonnet/medium) commit 295c0c2: TimedLiveGraphSession subclass in session_manager.py, elapsed_ms at main.py proactive endpoint and WS loop, monotonic fallback in raising_hand_agent, migration 004, test_proactive_timestamps.py'
+  - 'evaluator (sonnet/medium): PASS. AC1 grep clean; AC2/AC4 targeted tests 13 pass, other files pass, test_orchestrator 22 pass with test_websocket_camera_frame_diff_gate deselected; that test hangs in isolation at 295c0c2 and at 295c0c2^ (pre-existing); AC3 migration reviewed'
+  decisions:
+  - Subclassed LiveGraphSession in session_manager.py rather than editing off-limits graph_engine.py
+  - Recreated match_knowledge_chunks in migration 004 so its return type matches the widened column (search_path preserved)
+  - 'Evaluator: AC3 bigint count is 5 (4 columns + RPC return type) vs 4 timestamp_ms columns in 001; accepted, the extra is the RPC'
+  - 'Evaluator: WS lambda get_or_create_session cannot reset elapsed time; meeting_id is resolved before ensure_session and nothing evicts live_sessions'
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - verdict: PASS
+    worker_model: sonnet/medium
+    evaluator_model: sonnet/medium
+    hang: pre-existing (test_websocket_camera_frame_diff_gate hangs in isolation at 295c0c2^ too)
 objective: |
   Proactive interventions are stamped with epoch ms (~1.76e12) while every other producer uses ms since meeting start, overflowing the integer column and stretching the dashboard timeline to ~55 years. After this task all backend-generated timestamps use session.elapsed_ms(), and timestamp columns are bigint.
 scope:

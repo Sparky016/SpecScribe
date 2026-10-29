@@ -13,17 +13,25 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #34, #36'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker (haiku/low) commit 76bd61d: truthful /api/health and tolerant WS frames; self-check AC1-AC4 pass; no escalation"
+  - "evaluator (haiku/low) verdict PASS on 76bd61d; isolated worktree at 76bd61d: pytest -m 'not integration' -q gave 110 passed, 1 deselected (prior 0f0e9dc 108 passed plus 2 new tests)"
+  decisions:
+  - "Health returns 503 with status 'degraded' when renderer_daemon.is_ready() is false; body shape otherwise unchanged (worker assumption, accepted)"
+  - "Agent health() reports proactive_loops as count of non-done loops (worker assumption, accepted)"
+  - "WS loop calls start_proactive_loop unconditionally; verified idempotent in raising_hand_agent.py (returns existing non-done task), so reconnect does not start a second loop"
+  - "websocket.disconnect re-raised as WebSocketDisconnect so the finally block (last-disconnect stop_proactive_loop and evict_if_idle, task 23) runs unchanged (verified)"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS on 76bd61d. AC1 pass: test_health_returns_503_when_renderer_not_ready passes. AC2 pass: grep for ._is_ready/._active_loops/._loop_telemetry in main.py returns nothing. AC3 pass: test_websocket_ignores_non_object_and_binary_frames passes. AC4 pass: 110 passed. Scope: diff limited to backend/main.py, backend/agents/raising_hand_agent.py, backend/test_orchestrator.py; auth untouched; /api/health has no auth dependency. Markers from tasks 03, 04, 11, 12, 14, 19, 20, 21, 23, 26 present in main.py, raising_hand_agent.py, session_manager.py."
+  - "Assumption audit: lifespan awaits renderer start() before yield, so no startup 503 window (acceptable). Note for awareness: .github/workflows/deploy.yml:167 (curl -f on /api/health) and Dockerfile HEALTHCHECK now fail when the renderer failed to start, which is the intended truthful behavior; no HTTP liveness probe is configured in the repo (acceptable)."
 objective: |
   /api/health reads private attributes and always reports agents True with HTTP 200 even when the renderer is down; a non-object JSON or binary WS frame closes the wearer's socket. After this task health returns 503 when the renderer is not ready, and malformed frames are logged and skipped.
 scope:

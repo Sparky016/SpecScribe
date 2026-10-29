@@ -9,21 +9,28 @@ effort: medium
 eval_effort: medium
 depends_on:
 - '02'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #7; PRD.md §8 T-13; docs/prd.md US-03; docs/spec.md:480-481'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - 'worker (sonnet/medium): committed 441ab0b - 30s research timeout via DelayedCallbackEvent (reset on RESEARCHING, cancel on leaving), removed hardcoded critique from IDLE branch, new tests/task28.test.mjs'
+  - 'evaluator (sonnet/medium): PASS - only declared files changed; npm test 18 pass/0 fail/1 todo (task 30); IDLE/HAND_RAISED behaviour already present and tested'
+  decisions:
+  - 'Timeout N = 30 s (worker choice); acceptable'
+  - 'No-socket IDLE pinch logs and stays IDLE instead of canned critique; acceptable per AC4 and risks (task 29 demoMode)'
+  - 'Query uses getLatestSpokenPhrase() because task 27 consume API absent; per implementation_notes'
+  - 'Un-todo of ASK_AGENT test already done by 02b; components.test.mjs untouched; new tests in per-task file per orchestrator instruction'
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - 'PASS (sonnet/medium): AC1-AC5 pass. Timeout cancelled via cancel() when leaving RESEARCHING and callback also guards on currentState===RESEARCHING, so no stale flip to IDLE. Note: SpatialInterfaceManager/demo canned critique remains (out of scope).'
 objective: |
   Pinching the IDLE orb shows a hardcoded critique instead of sending ASK_AGENT; RESEARCHING is never shown and HAND_RAISED never returns to IDLE. After this task IDLE pinch → RESEARCHING + ASK_AGENT with the spoken query; second pinch on an open HAND_RAISED card → IDLE.
 scope:

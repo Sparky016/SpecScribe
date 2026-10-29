@@ -11,21 +11,32 @@ depends_on:
 - '46'
 - '29'
 - '13'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #22'
 human_action: none
 decision_log:
-  outcome: pending
-  rework_cycles: 0
+  outcome: pass_after_rework
+  rework_cycles: 1
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "cycle1 worker (sonnet/medium) commit 6c319fb: registry JSON, generator, python loader, Literal, CI drift step done; other hardcoded unions left."
+  - "cycle1 evaluator (sonnet/medium) FAIL: AC1 unmet in dashboard (types.ts:86, xmlParser.ts:130,148, DrawioCanvas.tsx:276,413). AC2, AC3 pass (backend 123 passed, lens 0 fail, tsc OK). SIM if-chain deferred to after task 48 (not a defect)."
+  - "cycle1 rework worker (sonnet/medium) commit 4d34c3c: dashboard types.ts/xmlParser.ts/DrawioCanvas.tsx now derive from NodeType/NODE_REGISTRY (shape-based checks); .gitignore adds backend/node_registry.json."
+  - "cycle2 evaluator (sonnet/medium) PASS: AC1 dashboard fixed; AC2 generator writes LF, regenerated output identical ignoring CR (index is LF, CI clean); AC3 dashboard tsc + npm run build ok; backend/lens results from cycle 1 still valid (rework touched only dashboard files and .gitignore)."
+  decisions:
+  - "Left SpatialInterfaceManager.ts untouched due to the task 48 collision; declared the if-chain item as not done."
+  - "Used a CI cp step to stage the registry JSON into the backend Docker context instead of widening the context to the repo root."
   sticking_points: []
-  repeated_work: []
+  repeated_work:
+  - "First python registry edit was a no-op because of CRLF line endings and a failed heredoc; redid it with a node script and a sed fix."
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - "Follow-up after task 48 lands: replace SpatialInterfaceManager.ts 'terminal' literals (:488, :543) / per-type if-chains with NodeRegistry lookups; SpecScribeDC3Scenario.ts:86 is a test scenario literal (acceptable)."
+  - "Low follow-up: xmlParser.ts:133 detectNodeType order list is hardcoded; consider a registry-provided detection priority."
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "cycle1 FAIL. AC1 fail: dashboard still has hardcoded unions (types.ts:86 ParsedVertex type, xmlParser.ts:130 detectNodeType return, xmlParser.ts:148 extractColors param, DrawioCanvas.tsx:276,413 terminal checks); derive from NodeType in lib/nodeRegistry.ts. AC2 pass (generator rerun, git diff clean). AC3 pass. Docker: missing registry raises FileNotFoundError at import (loud, OK). Suggest gitignoring backend/node_registry.json. CI drift step runs generator then git diff --exit-code on both files (valid)."
+  - "cycle2 PASS. AC1 pass: dashboard has no hardcoded type unions; canvas checks shape ellipse/cylinder/rhombus, matching shared/node_registry.json for terminal/database/decision; task 42 order (style pass then label pass) and task 36 cycle cap intact. SIM if-chain remains the recorded deferral. AC2 pass. AC3 pass (tsc, build). Residual (low): xmlParser.ts:133 detection-order list names the four types explicitly, so a new type still needs adding there to be auto-detected."
 objective: |
   Node types live in a Literal, Lens if-chains, and three hand-synced registries. After this task node_registry.json is the single source; Python builds the Literal from it and a script generates the TS registries for Lens and dashboard.
 scope:

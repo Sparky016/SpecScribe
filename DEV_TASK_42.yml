@@ -9,21 +9,42 @@ effort: low
 eval_effort: low
 depends_on:
 - '36'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #43'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
+  history:
+  - role: worker
+    model: haiku
+    effort: low
+    commit: e0ec2cf
+    summary: 'Two-pass detectNodeType in web-dashboard/lib/xmlParser.ts: style-only pass over database/decision/terminal/service, then label-only pass in the same order, fallback service. Self-reported AC1-AC3 pass.'
+    assumptions: 'Regex fallback tested via throwaway script (DOMParser branch shares the same detectNodeType call). Pre-existing self-closing mxCell regex bug noted as out of scope and untouched.'
+  - role: evaluator
+    model: haiku
+    effort: low
+    commit: e0ec2cf
+    verdict: PASS
+    evidence: 'Commit touches only web-dashboard/lib/xmlParser.ts (7+/2-, detectNodeType only). Task 36 guard intact at xmlParser.ts:208-209. Repro compiled with web-dashboard tsc to scratchpad t42: fixed build gives Backend API rounded=1 -> service, User no style -> terminal, shape=cylinder3 + Backend API -> database; pre-fix build (e0ec2cf^) gives Backend API -> terminal, so the repro discriminates. Assumption audit: regex-only testing acceptable (DOMParser branch unchanged call); self-closing mxCell bug pre-existing and out of scope, acceptable.'
   decisions: []
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - model: haiku
+    effort: low
+    commit: e0ec2cf
+    verdict: PASS
+    criteria:
+      AC1: 'pass - Backend API with rounded=1 detects as service (pre-fix: terminal)'
+      AC2: 'pass - User with no style detects as terminal via label'
+      AC3: 'pass - cd web-dashboard && npx tsc --noEmit exit 0; npm run build exit 0'
+    failures: []
 objective: |
   Label keywords ('end', 'user') beat explicit styles, so 'Backend API' renders as a terminal. After this task a style pass over all types runs first and label keywords are only a fallback.
 scope:

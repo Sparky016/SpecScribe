@@ -11,21 +11,28 @@ depends_on:
 - '28'
 - '29'
 - '30'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #26'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - 'worker sonnet/medium: removed bindTapGesture and RaisingHandAgentController TapEvent block; added tests/task32.test.mjs (commit d86e58b)'
+  - 'evaluator sonnet/medium: PASS. grep TapEvent in Assets/Scripts/*.ts empty; npm test 50 pass / 0 fail; T-11 (components.test.mjs) shows one SIK pinch per palette button yields one ADD_NODE'
+  decisions:
+  - Removed bindTapGesture() and its call in SpatialInterfaceManager, and the TapEvent block in RaisingHandAgentController.bindPreviewInteractions
+  - Put the new tests in tests/task32.test.mjs per orchestrator instruction
+  - No PreviewInputAdapter added (scope says "if required"); keyboard H/O orb shortcut kept (KeyPressEvent, not a tap path)
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - 'Lens Studio MCP offline: confirm in Preview (task 34) that palette, orb and meeting controls fire exactly once through SIK Interactables and no scene wiring depended on the removed TapEvent path'
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - 'task 32 cycle 1: PASS (AC1 pass, AC2 pass via T-11 plus task32 test, AC3 pass 50/0)'
 objective: |
   SpatialInterfaceManager and RaisingHandAgentController both bind global TapEvent, so one tap can toggle the orb AND add a node (and palette taps can add two nodes). After this task actions fire only from SIK Interactables (or a single hit-testing preview adapter), exactly once per tap.
 scope:

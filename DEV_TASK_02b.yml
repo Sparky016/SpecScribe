@@ -1,0 +1,70 @@
+# DEV_TASK_02b — added by /orchestrate on 2026-10-27 (human decision: fix Lens mock gaps before Phase 3 Lens tasks)
+# human_action: none | HUMAN (human-only) | HUMAN-GATE (human decision/approval before dispatch) | HUMAN-STEP (worker codes, human does one step)
+id: 02b
+title: Fill Lens test-mock gaps so the suite is green
+phase: 3
+severity: high
+complexity: low
+effort: medium
+eval_effort: low
+depends_on:
+- '02'
+status: DONE
+source: 'DEV_TASK_02 decision_log (8 red tests from mock gaps/test bug); orchestrator baseline 2026-10-27'
+human_action: none
+decision_log:
+  outcome: pass
+  rework_cycles: 0
+  escalated: false
+  history:
+  - 'worker haiku/medium: commit d015dd4, 2 test files, suite 15 pass/0 fail/1 todo'
+  - 'evaluator sonnet/low: PASS. AC1-3 reproduced; test-side edits judged harness corrections'
+  decisions:
+  - 'Treated RHAC pinch failures as a harness gap (no frame ticks before pinches), added UpdateEvent ticks in three tests instead of changing production code.'
+  - 'Renamed mock ASR option field to onTranscriptionUpdateEvent (real API name, matches StudioLib.d.ts:27229) and updated the test _mockAsrHandler.'
+  - 'Capturer test reads CompressionQuality/EncodingType from globals and asserts LowQuality instead of nonexistent Low.'
+  sticking_points:
+  - 'ASR failure was in the mock (wrong event name); production try/catch hid the TypeError.'
+  - 'scope.in named only the ASR test for test-side edits; capturer and RHAC edits exceed that wording but are harness corrections, assertion intent kept.'
+  repeated_work: []
+  iterative_mistakes: []
+  human_required: []
+  escalate: []
+  evaluator_verdicts:
+  - 'PASS: AC1 npm test pass 15/fail 0/todo 1 (todo output shows its blocked assertion, expected). AC2 only tests/ files changed. AC3 no assert removed; Low->LowQuality matches d.ts enum and production value; UpdateEvent ticks only advance animTime, debounce untouched, pinch assertions unchanged; capturer enum from globals matches mock shape.'
+objective: |
+  `cd spectacles-lens && npm test` reports 7 pass / 8 fail / 1 todo at 0769c66. The failures are gaps in the Lens API mock, not product bugs:
+  - 5 x `TypeError: quat.fromEulerVec is not a function` (RaisingHandAgentController constructor, every RHAC test)
+  - 2 x `ReferenceError: CompressionQuality is not defined` (PeriodicCameraCapturer.encodeFrameAsync)
+  - 1 x `TypeError: Cannot read properties of undefined (reading 'add')` at components.test.mjs ~:199 (ASR streaming test)
+  Every Phase 3 Lens task has "Lens tests pass" as an acceptance check, so the suite must be green first. After this task the suite has 0 failures; the one todo test (blocked by DEV_TASK_30) stays a todo.
+scope:
+  in:
+  - 'Add the missing Lens globals/APIs to tests/lens_mock_environment.mjs (quat.fromEulerVec, CompressionQuality enum, and whatever the ASR test needs for the ".add" access), matching the real Lens Studio API shape'
+  - 'Fix the ASR streaming test if its failure is a test-side bug (e.g. reading an event the mock does not expose)'
+  - Keep the existing assertions' intent; do not weaken or delete assertions to get green
+  out:
+  - Any change under spectacles-lens/Assets/Scripts/ (production code). If a failure is a real product bug, stop and report it instead of patching
+  - 'The todo test "binds 4 SIK PinchButtons..." (blocked by DEV_TASK_30)'
+  - Adding new test files or test frameworks
+files:
+  spectacles-lens/tests/lens_mock_environment.mjs: mock globals
+  spectacles-lens/tests/components.test.mjs: 'ASR test (~:191-210) only if test-side bug'
+implementation_notes: |
+  Look up the real API shapes in the Lens Studio type declarations referenced by spectacles-lens/tsconfig.json (search for `fromEulerVec`, `CompressionQuality`) instead of guessing. The mock exposes globals the compiled dist/Assets/Scripts/*.js read at runtime; follow the existing pattern in lens_mock_environment.mjs for how globals are installed.
+acceptance_criteria:
+- id: AC1
+  behavior: Lens suite has zero failing tests; the single DEV_TASK_30 todo remains
+  verify: cd spectacles-lens && npm test  (expect "fail 0", "todo 1")
+- id: AC2
+  behavior: No production script changed
+  verify: git show --stat <sha> lists only files under spectacles-lens/tests/
+- id: AC3
+  behavior: No assertion removed or weakened
+  verify: git show <sha> -- spectacles-lens/tests/components.test.mjs shows no deleted/loosened assert.* lines
+risks_vulnerabilities:
+- risk: Mock diverges from the real API, so tests pass but devices fail
+  mitigation: Shapes copied from the Lens Studio .d.ts declarations
+knowledge_gaps: []
+commit: |
+  test(task-02b): fill Lens mock gaps so the suite is green

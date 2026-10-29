@@ -528,13 +528,47 @@ async def extract_graph_delta_from_gemini(
         logger.warning("Gemini vision extraction failed: %s", e)
 
     if os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
-        return GraphDeltaSchema(
-            person_occluding_board=False,
-            has_meaningful_change=True,
-            added_vertices=[VertexAddition(temp_id="v-auto", label="Whiteboard Ingress", node_type="service")],
-            added_edges=[],
-            diff_summary="+ Detected Whiteboard Ingress [service]",
-        )
+        existing_labels = {n.get("label", "").lower() for n in existing_nodes}
+        if "whiteboard ingress" not in existing_labels:
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=True,
+                added_vertices=[VertexAddition(temp_id="v-auto", label="Whiteboard Ingress", node_type="service")],
+                added_edges=[],
+                diff_summary="+ Detected Whiteboard Ingress [service]",
+            )
+        elif "auth gateway" not in existing_labels:
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=True,
+                added_vertices=[VertexAddition(temp_id="v-auth", label="Auth Gateway", node_type="service")],
+                added_edges=[EdgeAddition(source_label="Whiteboard Ingress", target_label="Auth Gateway", edge_label="Proxy /api")],
+                diff_summary="+ Ingested [service] Auth Gateway",
+            )
+        elif "primary db" not in existing_labels:
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=True,
+                added_vertices=[VertexAddition(temp_id="v-db", label="Primary DB", node_type="database")],
+                added_edges=[EdgeAddition(source_label="Auth Gateway", target_label="Primary DB", edge_label="Read/Write")],
+                diff_summary="+ Ingested [database] Primary DB",
+            )
+        elif "payment terminal" not in existing_labels:
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=True,
+                added_vertices=[VertexAddition(temp_id="v-term", label="Payment Terminal", node_type="terminal")],
+                added_edges=[EdgeAddition(source_label="Whiteboard Ingress", target_label="Payment Terminal", edge_label="Stripe /charge")],
+                diff_summary="+ Ingested [terminal] Payment Terminal",
+            )
+        else:
+            return GraphDeltaSchema(
+                person_occluding_board=False,
+                has_meaningful_change=False,
+                added_vertices=[],
+                added_edges=[],
+                diff_summary="Whiteboard state fully synchronized",
+            )
     return GraphDeltaSchema(
         person_occluding_board=False,
         has_meaningful_change=False,

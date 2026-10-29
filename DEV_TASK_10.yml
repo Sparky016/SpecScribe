@@ -12,17 +12,33 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #2; docs/prd.md US-01'
 human_action: none
 decision_log:
-  outcome: pending
-  rework_cycles: 0
+  outcome: passed
+  rework_cycles: 1
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
-  repeated_work: []
-  iterative_mistakes: []
+  history:
+  - "worker haiku/medium: commit 981b97a, graph_engine.py + new test_graph_engine.py (8 tests)"
+  - "evaluator sonnet/medium: FAIL - AC4. test_orchestrator.py::test_websocket_camera_frame_diff_gate hangs at 981b97a (passes at 3aed89e); AC1-AC3 pass"
+  - "rework 1 worker haiku/medium: commit 34112b5, test_orchestrator.py only; mocks envelope_router.extract_graph_delta_from_gemini and bounds receives via threaded _receive_json_bounded helper (pytest-timeout not installed)"
+  - "rework 1 evaluator sonnet/medium: PASS - full offline suite 78 passed, 1 deselected, no hang; no-change mock fails fast in 24s"
+  decisions:
+  - "Rework: vision call mocked at envelope_router.extract_graph_delta_from_gemini (where CameraFrameHandler looks it up); production empty-delta fallback left unchanged"
+  - "Rework: bounded receive implemented with a daemon thread + join timeout because pytest-timeout is not installed"
+  - "Demo labels kept verbatim and guarded by SPECSCRIBE_DEMO_MODE == '1' at call time"
+  - "Test file created as backend/test_graph_engine.py instead of appending to test_agents.py (task doc permits 'or new backend/test_graph_engine.py')"
+  sticking_points:
+  - "Full-suite runs in the shared checkout gave no summary line and were slow because other workers' pytest runs were active"
+  - "The initial full-suite run used the real backend/.env keys (live calls); it was rerun offline"
+  - "Worker reported AC4 as targeted-only; the full suite was never completed and masked the orchestrator test hang"
+  repeated_work:
+  - "Several full-suite reruns"
+  - "Many background monitor loops started while waiting, with no useful signal"
+  iterative_mistakes:
+  - "Changed fallback behaviour without searching for existing tests that depended on the fabricated node (test_orchestrator.py camera-frame test)"
   human_required: []
-  escalate: []
-  evaluator_verdicts: []
+  escalate: none
+  evaluator_verdicts:
+  - "FAIL (sonnet/medium): AC1 pass (8 tests in test_graph_engine.py pass), AC2 pass, AC3 pass (grep lines 359,364,420,424,426 all under SPECSCRIBE_DEMO_MODE guards), AC4 FAIL - test_orchestrator.py:291 test_websocket_camera_frame_diff_gate blocks on ws.receive_json() for DIAGRAM_UPDATED; with no GEMINI_API_KEY the fallback now returns an empty delta so no event is sent. Full offline run stalled at that test (53%). Scope check ok, no reverts of tasks 12/14/16/21/24."
+  - "PASS (sonnet/medium, rework 1): 34112b5 touches only backend/test_orchestrator.py; graph_engine.py unchanged. AC1-AC3 re-spot-checked (grep lines 364,424,426 under SPECSCRIBE_DEMO_MODE guards). AC4: full suite at 34112b5 in clean worktree with empty keys, no deselect: 78 passed, 1 deselected in 101s. Fail-fast check: mock returning has_meaningful_change=False made the test fail with 'No WebSocket event received within 15.0s' in 24s instead of hanging; edit reverted, worktree removed."
 objective: |
   backend/graph_engine.py replaces a valid Gemini 'no change' answer, any exception, and the no-API-key path with an invented 'Whiteboard Ingress'/'Whiteboard Node' vertex that is saved and broadcast. After this task a validated parse is always returned, and failures return an empty, no-change delta.
 scope:

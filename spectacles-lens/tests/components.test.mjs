@@ -103,6 +103,18 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(requestedDimension, 480);
     });
 
+    test('prioritizes simulatedTexture over CameraModule when assigned', () => {
+      const mockSimulated = new MockTexture(1920, 1080);
+      const mockCamera = new MockTexture(480, 360);
+      const capturer = createComponentInstance(PeriodicCameraCapturer);
+      capturer.cameraModule = { requestCamera: () => mockCamera };
+      capturer.simulatedTexture = mockSimulated;
+      capturer.onAwake();
+      capturer._testEvents.OnStartEvent.trigger();
+
+      assert.equal(capturer.getCameraTexture(), mockSimulated);
+    });
+
     test('accumulates deltaTime and encodes frame asynchronously at sample interval', () => {
       const mockCamera = new MockTexture(480, 360);
       let encodeQuality = null;
@@ -142,12 +154,13 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(encodeType, EncodingType.Jpg);
     });
 
-    test('triggerManualCapture forces frame encoding immediately', () => {
+    test('triggerManualCapture forces frame encoding immediately in MANUAL mode', () => {
       const mockCamera = new MockTexture(480, 360);
       const capturer = createComponentInstance(PeriodicCameraCapturer);
       capturer.cameraModule = { requestCamera: () => mockCamera };
       capturer.onAwake();
       capturer._testEvents.OnStartEvent.trigger();
+      capturer.setCaptureMode('manual');
 
       let manualFrame = null;
       capturer.onEncodedFrameAvailable = (b64) => {

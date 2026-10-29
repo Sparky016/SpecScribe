@@ -11,21 +11,29 @@ depends_on:
 - '46'
 - '26'
 - '25'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #33'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - "2026-10-27 worker (haiku/low) complete at acf8f08: removed module-level aliases and wrappers in main.py, setattr monkey-patch and extract_graph_delta_from_gemini_sync/_async in graph_engine.py, write-only _last_intervention_time in raising_hand_agent.py; tests import session_manager from main; 123 passed / 1 deselected."
+  - "2026-10-27 evaluator (haiku/low) PASS: AC1-AC3 reproduced; setattr removal verified non-breaking (no LayoutEngine symbol in installed drawio_mcp, no runtime/prompt/getattr reader); no repo-wide callers of removed symbols; suite 123 passed / 1 deselected; 0 rework cycles."
+  decisions:
+  - "Worker: replaced main-level alias imports in tests with session_manager from main; removed alias block, get_or_create_session/broadcast_to_meeting/db_save_* wrappers and setattr patch. Evaluator accepted: main.py:127 sets app.state.session_manager to the same module-level object that lifespan uses, so behaviour is identical; app.state access would fail in tests that do not enter lifespan."
+  - "Worker: removed extract_graph_delta_from_gemini_sync (zero callers repo-wide). Evaluator accepted."
+  - "Worker: also removed extract_graph_delta_from_gemini_async (zero-caller compat alias) and the now-orphaned imports (typing.Set, LiveGraphSession in main.py; drawio_mcp.layout_engine module import in graph_engine.py). Evaluator accepted as within the task's 'compat aliases' intent; no behaviour change."
+  - "Worker: removed _last_intervention_time from RaisingHandAgent and its two test references (write-only in production). Evaluator accepted; scope said 'if still unread' and it is unread."
+  sticking_points:
+  - "Worker: a sed-style regex replacement in test_spec_generator.py rewrote memory_store= keyword arguments; caught by collection error and reverted before commit."
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "worker: haiku/low | evaluator: haiku/low | verdict: PASS | AC1 pass (grep setattr(drawio_mcp in backend/graph_engine.py: no match) | AC2 pass (grep extract_graph_delta_from_gemini_sync in backend: no match) | AC3 pass (123 passed, 1 deselected, offline run) | setattr removal: installed drawio_mcp exposes no LayoutEngine symbol; no getattr/import_module/exec/eval reader in backend; only docs (PRD.md, checklist) mention the import path | no scope.out bleed; changed files match scope.in | no failures."
 objective: |
   Module-level aliases kept for tests, write-only _last_intervention_time, unused extract_graph_delta_from_gemini_sync, and a monkey-patch of drawio_mcp.layout_engine remain. After this task tests use app.state.session_manager and the dead code is deleted.
 scope:

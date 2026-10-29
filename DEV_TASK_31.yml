@@ -9,21 +9,36 @@ effort: medium
 eval_effort: medium
 depends_on:
 - '07'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #11; docs/prd.md US-04'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker (sonnet/medium) commit bb2f526: demo fallback restricted to DEMO_MEETING_ID; 502 in routes; page loading/error states; exports disabled when data missing"
+  - "evaluator (sonnet/medium): PASS on first cycle; AC1/AC3 reproduced at runtime with next start, BACKEND_URL=http://localhost:9"
+  decisions:
+  - "askMeetingRAG now throws on failed/empty backend response for non-demo IDs; existing catch in RAGDrawer shows the error. Canned keyword answers moved to private demoRAGAnswer used only for DEMO_MEETING_ID."
+  - "Page starts with timeline null + loading skeleton, then error banner with Retry button that re-runs fetch via reloadKey state."
+  - "Evaluator: kept 'demo' and empty-id aliases in getMeetingTimeline/timeline route as acceptable guards (already existing demo-only paths)."
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    cycle: 1
+    models: "worker sonnet/medium; evaluator sonnet/medium"
+    evidence:
+      AC1: "pass - runtime: next start with BACKEND_URL=http://localhost:9; timeline route 502, so getMeetingTimeline throws and page sets error banner (code inspected); SSR HTML has no demo title"
+      AC2: "pass - grep: DEMO_TIMELINE at api.ts:30-31 (demo/empty-id guard) and a comment only"
+      AC3: "pass - curl timeline and ask routes for non-demo uuid with backend down: 502 {error}; /api/meetings/demo/timeline still 200"
+      AC4: "pass - tsc --noEmit clean; npm run build succeeded"
+      scope: "only the 5 declared files changed; no scope.out bleed"
+      assumptions: "all acceptable (exports silently no-op when data missing and buttons disabled; matches 'disable exports')"
 objective: |
   On any backend error the dashboard silently shows DEMO_TIMELINE, keyword-canned RAG answers with fake citations, and demo exports under a real meeting's ID. After this task demo data is used only when id === DEMO_MEETING_ID; otherwise users see explicit error/loading states and route handlers return 502.
 scope:

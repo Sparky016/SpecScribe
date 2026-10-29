@@ -39,8 +39,9 @@ async function main() {
   if (shot.result && shot.result.content && shot.result.content[0]) {
     const data = shot.result.content[0].data;
     const buf = Buffer.from(data, 'base64');
-    fs.writeFileSync('C:/Users/ruanc/.gemini/antigravity-ide/brain/a1d49ac0-9611-4865-a573-37788258aacb/preview_current_panel.jpg', buf);
-    console.log('Saved preview_current_panel.jpg, length:', buf.length);
+    const outPath = 'C:/Users/ruanc/.gemini/antigravity-ide/brain/89f2dfee-3bd3-47cf-8a1e-6580eb2b0fc5/preview_live_diagram.jpg';
+    fs.writeFileSync(outPath, buf);
+    console.log('Saved preview_live_diagram.jpg, length:', buf.length);
   } else {
     console.log('Capture error or empty:', JSON.stringify(shot));
   }

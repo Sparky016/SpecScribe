@@ -34,12 +34,17 @@
     btnAddTerminal: false
     btnConcludeMeeting: false
     btnUpdateSnapshot: false
+    demoMode: false
     diagramOverlayMesh: false
+    diagramOverlayView: false
     diffToastText: false
     isPhysicalHardware: false
+    paletteController: false
+    previewInputAdapter: false
     raisingHandAgent: false
     socketClient: false
     whiteboardBoardMesh: false
+    whiteboardCalibrator: false
     whiteboardInteractable: false
   ScriptTypesHidden:
     {}
@@ -51,15 +56,20 @@
     []
   DefaultScriptInputs:
     - isPhysicalHardware: false
+      demoMode: false
       socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
-      btnAddDecision: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
-      btnAddService: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
-      btnAddDatabase: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
-      btnAddTerminal: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
-      btnUpdateSnapshot: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
-      btnConcludeMeeting: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
-      whiteboardInteractable: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+      whiteboardCalibrator: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
+      paletteController: !<MappingBased.AssignableType_4> 00000000-0000-0000-0000-000000000000
+      diagramOverlayView: !<MappingBased.AssignableType_5> 00000000-0000-0000-0000-000000000000
+      previewInputAdapter: !<MappingBased.AssignableType_6> 00000000-0000-0000-0000-000000000000
+      btnAddDecision: !<MappingBased.AssignableType_7> 00000000-0000-0000-0000-000000000000
+      btnAddService: !<MappingBased.AssignableType_8> 00000000-0000-0000-0000-000000000000
+      btnAddDatabase: !<MappingBased.AssignableType_9> 00000000-0000-0000-0000-000000000000
+      btnAddTerminal: !<MappingBased.AssignableType_10> 00000000-0000-0000-0000-000000000000
+      btnUpdateSnapshot: !<MappingBased.AssignableType_11> 00000000-0000-0000-0000-000000000000
+      btnConcludeMeeting: !<MappingBased.AssignableType_12> 00000000-0000-0000-0000-000000000000
+      whiteboardInteractable: !<MappingBased.AssignableType_13> 00000000-0000-0000-0000-000000000000
       diagramOverlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       whiteboardBoardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       diffToastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
@@ -68,15 +78,20 @@
       {}
   InputLines:
     - // @input bool isPhysicalHardware
+    - // @input bool demoMode
     - // @input AssignableType_1 socketClient
     - // @input AssignableType_2 raisingHandAgent
-    - // @input AssignableType_3 btnAddDecision
-    - // @input AssignableType_4 btnAddService
-    - // @input AssignableType_5 btnAddDatabase
-    - // @input AssignableType_6 btnAddTerminal
-    - // @input AssignableType_7 btnUpdateSnapshot
-    - // @input AssignableType_8 btnConcludeMeeting
-    - // @input AssignableType_9 whiteboardInteractable
+    - // @input AssignableType_3 whiteboardCalibrator
+    - // @input AssignableType_4 paletteController
+    - // @input AssignableType_5 diagramOverlayView
+    - // @input AssignableType_6 previewInputAdapter
+    - // @input AssignableType_7 btnAddDecision
+    - // @input AssignableType_8 btnAddService
+    - // @input AssignableType_9 btnAddDatabase
+    - // @input AssignableType_10 btnAddTerminal
+    - // @input AssignableType_11 btnUpdateSnapshot
+    - // @input AssignableType_12 btnConcludeMeeting
+    - // @input AssignableType_13 whiteboardInteractable
     - // @input Component.RenderMeshVisual diagramOverlayMesh
     - // @input Component.RenderMeshVisual whiteboardBoardMesh
     - // @input Component.Text diffToastText

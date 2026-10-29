@@ -1,6 +1,7 @@
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
 import { LENS_NODE_REGISTRY } from './NodeRegistry';
 import { findSceneObject } from './SceneUtils';
+import { WhiteboardCaptureSwitch } from './WhiteboardCaptureSwitch';
 
 /** What the palette Interactables drive. SpatialInterfaceManager satisfies it with its public API. */
 export interface PaletteTarget {
@@ -8,6 +9,7 @@ export interface PaletteTarget {
   triggerUpdateSnapshot(): void;
   triggerConcludeMeeting(): void;
   handleWhiteboardPinch(): void;
+  readonly capture: Pick<WhiteboardCaptureSwitch, 'captureNow' | 'toggleMode'>;
 }
 
 /** Interactable slots, named exactly as SpatialInterfaceManager's legacy inputs. */
@@ -18,7 +20,9 @@ export const PALETTE_SLOTS = [
   'btnAddTerminal',
   'btnUpdateSnapshot',
   'btnConcludeMeeting',
-  'whiteboardInteractable'
+  'whiteboardInteractable',
+  'btnCaptureWhiteboard',
+  'btnToggleCaptureMode'
 ] as const;
 export type PaletteSlot = typeof PALETTE_SLOTS[number];
 export type PaletteRefs = Partial<Record<PaletteSlot, Interactable>>;
@@ -131,6 +135,16 @@ export class PaletteController extends BaseScriptComponent {
   @allowUndefined
   public whiteboardInteractable?: Interactable;
 
+  /** Manual-mode capture button: pinching it ingests the whiteboard once. */
+  @input
+  @allowUndefined
+  public btnCaptureWhiteboard?: Interactable;
+
+  /** Switches between AUTO (periodic) and MANUAL (pinch) whiteboard capture. */
+  @input
+  @allowUndefined
+  public btnToggleCaptureMode?: Interactable;
+
   private bound: boolean = false;
 
   /** Fills each slot from the coordinator's legacy inputs when this component's own input is unset. */
@@ -164,6 +178,12 @@ export class PaletteController extends BaseScriptComponent {
     if (!this.btnConcludeMeeting) {
       this.btnConcludeMeeting = this.findInteractable('BtnConcludeMeeting');
     }
+    if (!this.btnCaptureWhiteboard) {
+      this.btnCaptureWhiteboard = this.findInteractable('BtnCaptureWhiteboard');
+    }
+    if (!this.btnToggleCaptureMode) {
+      this.btnToggleCaptureMode = this.findInteractable('BtnToggleCaptureMode');
+    }
   }
 
   /** Binds every Interactable to `target`. Binding twice would double-fire actions, so later calls are ignored. */
@@ -178,6 +198,12 @@ export class PaletteController extends BaseScriptComponent {
     this.bindSingleButton(this.btnAddTerminal, () => target.triggerAddNode('terminal'));
     this.bindSingleButton(this.btnUpdateSnapshot, () => target.triggerUpdateSnapshot());
     this.bindSingleButton(this.btnConcludeMeeting, () => target.triggerConcludeMeeting());
+    if (this.btnCaptureWhiteboard) {
+      this.bindSingleButton(this.btnCaptureWhiteboard, () => target.capture.captureNow());
+    }
+    if (this.btnToggleCaptureMode) {
+      this.bindSingleButton(this.btnToggleCaptureMode, () => target.capture.toggleMode());
+    }
     if (this.whiteboardInteractable) {
       this.bindSingleButton(this.whiteboardInteractable, () => target.handleWhiteboardPinch());
       print('[PaletteController] Bound Interactable on WhiteboardBackplate');

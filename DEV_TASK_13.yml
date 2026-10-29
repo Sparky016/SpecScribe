@@ -12,17 +12,23 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #6 (backend half); docs/prd.md US-02'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker haiku/medium: commit d878841 touched graph_engine.py, envelope_router.py, test_graph_dedupe.py (orchestrator-approved substitute for test_agents.py)"
+  - "evaluator sonnet/medium: PASS. Isolated worktree at d878841, pytest -m 'not integration': 86 passed (80 reference + 6 new). Task 10 fallback, task 14 CONCLUDE/COMMAND_ACK and task 21 spawn() untouched."
+  decisions:
+  - "Added node_by_key (lower_label, type) as a second map instead of re-keying node_by_label, keeping the test_orchestrator assertion and _resolve_node_id working"
+  - "Exposed reuse via a last_node_reused attribute so add_node's return type stays str"
+  - "Used '~ Updated' wording for the reuse diff_summary to match the task objective"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "PASS (evaluator sonnet/medium, worker haiku/medium): AC1-AC4 pass. Edge-by-label ambiguity across types is acceptable: task doc is silent on edge resolution and scope.out excludes registry refactor."
 objective: |
   LiveGraphSession.add_node (backend/graph_engine.py:118-139) dedupes by lowercase label and restyles the existing cell, leaving node_metadata stale. After this task an existing node is reused only when label AND type match; otherwise a new node is created, and diff_summary reports added vs updated correctly.
 scope:

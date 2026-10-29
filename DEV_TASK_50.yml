@@ -9,21 +9,39 @@ effort: low
 eval_effort: low
 depends_on:
 - '39'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #37'
 human_action: none
 decision_log:
-  outcome: pending
-  rework_cycles: 0
+  outcome: evaluator_pass
+  rework_cycles: 1
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  history:
+  - "attempt 1 (worker haiku/low): stopped without committing; blocked on AC2 because scope.in 'Cap drawio-mcp<0.2' conflicted with installed drawio-mcp 1.0.2. Clarification, not a failed evaluation."
+  - "attempt 2 (worker haiku/low): commit f28186c, 7 files, all within declared scope plus the two lock files the scope.in lock step requires. Evaluator (haiku/low) verdict FAIL: lock-file path leak and stale Python 3.11 references. See evaluator_verdicts."
+  - "rework cycle 1 (worker haiku/low): commit 2493cac on top of f28186c, 4 files (backend/requirements.lock, backend/requirements-dev.lock, README.md, backend/Dockerfile). Stripped all 170 machine-local -c via-annotation lines; README.md:11, 154, 214 and Dockerfile:4 now state Python 3.12. Re-evaluated under evaluator_verdicts."
+  decisions:
+  - "Worker: lock files generated with uv pinned to the installed freeze versions, split into runtime and dev sets. Evaluator: accepted; pins match backend/.venv (fastapi 0.143.3, playwright 1.64.0, drawio-mcp 1.0.2, deepgram-sdk 7.13.0)."
+  - "Worker: Python base aligned 3.11 to 3.12 (Dockerfile, deploy.yml setup-python, pyproject requires-python). Evaluator: accepted as a required consequence, not a forbidden upgrade. pyee 14.0.0 declares Requires-Python >=3.12 and backend/.venv is CPython 3.12.7. Stale 3.11 references remain (see failures)."
+  - "Worker: Dockerfile and deploy.yml install from requirements.lock and requirements-dev.lock. Evaluator: accepted; runtime image installs no pytest (requirements.lock has no pytest entry)."
+  - "Worker: httpx moved to requirements-dev.txt. Evaluator: accepted; no tracked non-test backend .py imports httpx (git grep at f28186c). httpx remains in requirements.lock transitively via supabase, google-genai and deepgram-sdk."
+  - "Worker: AC2 satisfied as drawio-mcp>=1.0.2,<2 per orchestrator clarification. Evaluator: accepted as a recorded deviation from the literal AC2 text (<0.2), since the orchestrator ruled on it. The objective's drawio-mcp 0.x concern is addressed by the 1.x floor."
+  - "Evaluator: deepgram-sdk stays a runtime dependency and DEEPGRAM_API_KEY stays in deploy.yml (line 162). Accepted per the task 39 human decision. The lock moves deepgram-sdk from the >=3.8.0 range to the installed 7.13.0, a major-version change that is a consequence of pinning installed versions, not a new upgrade."
+  - "Evaluator: AC3 not re-run. The main tree is shared with tasks 46 and 48, and a full fresh install was not cheap. Accepted the worker's worktree run (110 passed, 1 deselected) as evidence."
+  - "Rework worker: removed the machine-local -c via lines (83 in requirements.lock, 87 in requirements-dev.lock); no dangling via headers. Evaluator (cycle 2): accepted; sorted pkg==version diff between f28186c and 2493cac is empty for both locks, and every removed line carried the AppData scratchpad path."
+  - "Rework worker: README.md:11, 154, 214 and backend/Dockerfile:4 changed from 3.11 to 3.12. Evaluator (cycle 2): accepted; git grep for 3.11 in README.md, backend/Dockerfile, .github/workflows/deploy.yml and backend/pyproject.toml is empty. README.md is not in the declared files list, but the cycle-1 FAIL named those lines explicitly, so it is accepted as required rework."
+  - "Evaluator (cycle 2): PRD.md still says Python 3.11+ at lines 89, 403 and 423. Outside task 50 scope (the cycle-1 FAIL named only README.md and the Dockerfile), so not a failure; flagged for a later docs pass."
+  sticking_points:
+  - "AC2 literal text (<0.2) conflicted with installed drawio-mcp 1.0.2. Resolved by orchestrator clarification to >=1.0.2,<2."
+  - "pip install in the fresh venv failed twice with transient InvalidChunkLength; uv pip install succeeded."
+  - "Lock files were generated with uv using a session-local -c constraints file; the header comments in both lock files now contain a machine-local scratchpad path (see failures)."
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - "evaluator haiku/low, attempt 2: verdict FAIL. AC1 pass, AC2 pass (orchestrator ruling), AC3 pass (worker evidence, not re-run). Scope check clean. Failures: backend/requirements.lock:3 and backend/requirements-dev.lock:3 (and every '#   -c C:/Users/ruanc/AppData/...' comment, 83 and 87 occurrences) carry a machine-local scratchpad path; README.md:11, README.md:154 and README.md:214 still state Python 3.11 is supported; backend/Dockerfile:4 comment still says 'Python 3.11'. Rework: regenerate or strip the -c header lines, update the three README lines and the Dockerfile comment to 3.12. Do not change other content."
+  - "evaluator haiku/low, rework cycle 1 (re-evaluation): verdict PASS. AC1 pass (git grep for scratchpad or AppData in both lock files is empty; requirements.txt has no pytest). AC2 pass (drawio-mcp>=1.0.2,<2 per orchestrator ruling, unchanged by rework). AC3 pass on cycle-1 worktree evidence (110 passed, 1 deselected); rework touched no .py files and no pins. Scope check clean: 4 files, all required by the cycle-1 FAIL or the lock step. Pins unchanged between f28186c and 2493cac. Status and human_action untouched."
 objective: |
   Dependencies use open-ended >=, test tools ship in the runtime image, and drawio-mcp 0.x internals are relied upon. After this task runtime and dev requirements are split, versions are locked, and drawio-mcp is capped.
 scope:

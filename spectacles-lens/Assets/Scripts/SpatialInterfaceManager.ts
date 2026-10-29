@@ -7,6 +7,7 @@ import { WhiteboardCalibrator } from './WhiteboardCalibrator';
 import { PaletteController, PaletteRefs, DemoCritique, nodeLabels, demoNodeCritique, DEMO_SNAPSHOT_CRITIQUE } from './PaletteController';
 import { DiagramOverlayView } from './DiagramOverlayView';
 import { PreviewInputAdapter } from './PreviewInputAdapter';
+import { WhiteboardCaptureSwitch } from './WhiteboardCaptureSwitch';
 
 export enum WhiteboardState {
   SELECT_AREA = 0,    // Area selection mode: Reticle overlay, no drawings
@@ -55,6 +56,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private meetingConcluded: boolean = false;
   private concludeTimeoutEvent: DelayedCallbackEvent | null = null;
   private readonly concludeTimeoutSec: number = 30;
+  public readonly capture = new WhiteboardCaptureSwitch(() => this.getSceneObject(), (t: string) => this.setToastText(t), () => this.meetingConcluded);
 
   // Textures now live on DiagramOverlayView; these keep the manager's former texture fields addressable.
   private get texSelectArea() { return this.view().texSelectArea; } private set texSelectArea(t: Texture | undefined) { this.view().texSelectArea = t; }
@@ -119,7 +121,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.socketClient?.sendPinchCommand(PinchAction.INGEST_DRAWING, 'diagram', 'Initial Sugiyama DAG loaded');
   }
 
-  /** Whiteboard Interactable pinch: lock the area, then start drawing, then add service nodes. */
+  /** Whiteboard Interactable pinch: lock the area, then start drawing, then capture the board (MANUAL capture mode only). */
   public handleWhiteboardPinch(): void {
     if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
       if (this.input().suppressesPinch()) {
@@ -132,8 +134,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
       print('[SpatialInterfaceManager] Whiteboard pinched in CLEAN_BOARD mode -> Starting drawing & ingestion');
       this.startDrawingAndIngestion();
     } else {
-      print('[SpatialInterfaceManager] Whiteboard pinched in DRAWING mode -> Ingesting next service node');
-      this.triggerAddNode('service');
+      this.capture.captureNow();
     }
   }
 

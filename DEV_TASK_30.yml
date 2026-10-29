@@ -10,21 +10,35 @@ eval_effort: medium
 depends_on:
 - '14'
 - '29'
-status: PENDING
+status: DONE
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #9 (Lens half)'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: PASS
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
+  history:
+  - "worker (sonnet/medium) implemented commit 4f23113 (PinchAction consts, MEETING_FINALIZED dispatch, pending/timeout conclude UI, task30 tests)"
+  - "evaluator (sonnet/medium): PASS. 4f23113 touches only declared files; npm test 35 pass/0 fail/0 todo; PinchAction matches backend/contracts.py and docs/spec.md 3.1 D; MEETING_FINALIZED/COMMAND_ACK shapes match envelope_router.py"
+  decisions:
+  - "Added PinchAction const object in PinchActions.ts mirroring backend/contracts.py"
+  - "Added onMeetingFinalized callback on PersistentStreamSocketClient, wired in SpatialInterfaceManager.bindSocketCallbacks"
+  - "Moved the conclude success UI into showSpecGenerated, called on MEETING_FINALIZED or immediately in demoMode"
+  - "Former todo test edits (filter to ADD_NODE, '(pending)' suffix) accepted: intent kept, only accommodates CALIBRATE_AREA auto-advance and task 29 toast suffix"
   sticking_points: []
   repeated_work: []
   iterative_mistakes: []
   human_required: []
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    worker: sonnet/medium
+    evaluator: sonnet/medium
+    criteria:
+      AC1: "pass - all sent actions (incl. literal ASK_AGENT in RaisingHandAgentController) are in docs/spec.md table and backend PinchAction"
+      AC2: "pass - task30 tests: pending until MEETING_FINALIZED, timeout disabled on finalize, error toast on timeout, demoMode immediate"
+      AC3: "pass - npm test 35 pass / 0 fail / 0 todo"
+    notes: "Minor non-blocking: onMeetingFinalized sets timeout event enabled=false and never re-enables; a second conclude in the same session after success would rely on reset() re-arming it."
 objective: |
   After task 14 the backend accepts a documented action set. After this task the Lens only sends documented actions, Conclude sends CONCLUDE_MEETING and shows 'Spec generated' only on MEETING_FINALIZED.
 scope:

@@ -13,17 +13,31 @@ status: PENDING
 source: 'docs/reviews/2026-10-25-repo-prd-audit.md #3 (CWE-770 cost abuse)'
 human_action: none
 decision_log:
-  outcome: pending
+  outcome: pass
   rework_cycles: 0
   escalated: false
-  history: []
-  decisions: []
-  sticking_points: []
+  models:
+    worker: haiku/medium
+    evaluator: sonnet/medium
+  history:
+  - "worker (haiku/medium) commit b06d0fe: slowapi limiter on /ask, /finalize, /proactive-critique; env SPECSCRIBE_RATE_LIMIT default 10/minute; 429 test added"
+  - "evaluator (sonnet/medium): PASS. Files limited to main.py, requirements.txt, test_orchestrator.py; require_api_token dependencies intact on all three routes; backend suite 35 passed, 1 deselected"
+  decisions:
+  - Used slowapi (dependency permitted by task) instead of a hand-rolled bucket
+  - Limits per route and per client key; default 10/minute from SPECSCRIBE_RATE_LIMIT; 429 sends Retry-After via headers_enabled
+  - Limiter keys on leftmost X-Forwarded-For entry, per task implementation_notes
+  sticking_points:
+  - backend/.venv had no pip; bootstrapped with ensurepip
+  - slowapi needs request/response params on decorated routes; /ask body param renamed request -> body (JSON shape unchanged; dashboard sends {question})
   repeated_work: []
   iterative_mistakes: []
-  human_required: []
+  human_required:
+  - Leftmost X-Forwarded-For keying is client-spoofable (rotate header to bypass limit); last-hop keying behind Cloud Run is stronger. Worker followed the task doc, so recorded as risk, not failure. SPECSCRIBE_RATE_LIMIT is read at import time only.
   escalate: []
-  evaluator_verdicts: []
+  evaluator_verdicts:
+  - verdict: PASS
+    criteria: {AC1: pass, AC2: pass, AC3: pass, AC4: pass}
+    evidence: "AC1/AC3 via test_gemini_post_routes_rate_limited_per_client (10x200, 11th 429 with Retry-After, 20 GET timeline 200); AC2 SPECSCRIBE_RATE_LIMIT in main.py; AC4 35 passed"
 objective: |
   Unlimited calls to /ask, /finalize and /proactive-critique spend the project's Gemini quota. After this task those routes are rate-limited per client IP.
 scope:

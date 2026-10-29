@@ -1,0 +1,49 @@
+- !<AssetImportMetadata/4d6c760e-d117-4c8a-8e65-6b5b9397bf35>
+  ImportedAssetIds:
+    TypeScriptAsset: !<reference> dddf30d1-e17c-408e-8c86-9d6c9b4be726
+  ImporterName: TypeScriptAssetImporter
+  PrimaryAsset: !<reference> dddf30d1-e17c-408e-8c86-9d6c9b4be726
+  PackageType: NotAPackage
+  LegacyPackagePolicy: ~
+  ExtraData:
+    {}
+  AssetDataMap:
+    TypeScriptAsset: !<own> 4180bd12-e0ed-4a8c-bf37-21b1f649749b
+  DependentFiles:
+    []
+  ImporterSettings: !<AssetImporterSettings>
+    {}
+  CompressionSettings: !<own> 00000000-0000-0000-0000-000000000000
+- !<TypeScriptAssetData/4180bd12-e0ed-4a8c-bf37-21b1f649749b>
+  SvgIcon: ""
+  SetupScript:
+    code: ""
+  Description: ""
+  VersionMajor: 0
+  VersionMinor: 0
+  VersionPatch: 0
+  VersionPrerelease: ""
+  UpdateOrder: 0
+  ComponentUid: 81abf85f-7673-423d-95ad-ef170309a3bc
+  ExportUid: 00000000-0000-0000-0000-000000000000
+  PackagePolicy: CanBeUnpacked
+  ScriptInputsHidden:
+    disableKeyboard: false
+    disableTouchDrag: false
+  ScriptTypesHidden:
+    {}
+  ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
+  DeclarationFile: !<reference> 00000000-0000-0000-0000-000000000000
+  Tags:
+    []
+  Attachments:
+    []
+  DefaultScriptInputs:
+    - disableTouchDrag: false
+      disableKeyboard: false
+  ScriptTypes:
+    -
+      {}
+  InputLines:
+    - // @input bool disableTouchDrag
+    - // @input bool disableKeyboard
