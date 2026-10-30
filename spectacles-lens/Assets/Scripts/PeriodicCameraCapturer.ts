@@ -35,12 +35,21 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
   @allowUndefined
   private simulatedTexture?: Texture;
 
+  @input
+  @allowUndefined
+  public socketClient?: any;
+
   private cameraModule: CameraModule = require('LensStudio:CameraModule');
   private cameraTexture?: Texture;
   private isEncodingActive: boolean = false;
   private timeAccumulator: number = 0;
 
-  public onEncodedFrameAvailable: (encodedBase64: string, timestampMs: number) => void = () => {};
+  public onEncodedFrameAvailable: (
+    encodedBase64: string,
+    timestampMs: number,
+    isManual?: boolean,
+    captureMode?: string
+  ) => void = () => {};
   public onCaptureModeChanged: (mode: CaptureModeName) => void = () => {};
 
   onAwake(): void {
@@ -51,6 +60,10 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
     this.createEvent('UpdateEvent').bind((eventData) => {
       this.evaluateCaptureCadence(eventData.getDeltaTime());
     });
+  }
+
+  public onUpdate(deltaTime?: number): void {
+    this.evaluateCaptureCadence(typeof deltaTime === 'number' ? deltaTime : 0);
   }
 
   private setupCameraPipeline(): void {
@@ -158,7 +171,7 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
     this.timeAccumulator += deltaTime;
     if (this.timeAccumulator >= this.sampleIntervalSeconds) {
       this.timeAccumulator = 0;
-      this.encodeFrameAsync();
+      this.captureAndEncodeFrame(false);
     }
   }
 
@@ -171,7 +184,7 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
     if (this.isEncodingActive || !this.cameraTexture) {
       return false;
     }
-    return this.encodeFrameAsync();
+    return this.captureAndEncodeFrame(true);
   }
 
   public getCaptureMode(): CaptureModeName {
@@ -237,7 +250,11 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
     print('[PeriodicCameraCapturer] Simulated texture updated dynamically.');
   }
 
-  private encodeFrameAsync(): boolean {
+  public encodeFrameAsync(isManual: boolean = false): boolean {
+    return this.captureAndEncodeFrame(isManual);
+  }
+
+  public captureAndEncodeFrame(isManual: boolean = false): boolean {
     if (!this.cameraTexture) {
       return false;
     }
@@ -258,12 +275,28 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
 
     this.isEncodingActive = true;
     const captureTimestamp = Date.now();
+    const modeStr = this.getCaptureMode() === CaptureMode.MANUAL ? 'MANUAL' : 'AUTO';
 
     Base64.encodeTextureAsync(
       this.cameraTexture,
       (encodedString: string) => {
         this.isEncodingActive = false;
-        this.onEncodedFrameAvailable(encodedString, captureTimestamp);
+        if (this.socketClient) {
+          const payload = {
+            eventType: 'cameraFrame',
+            timestamp_ms: captureTimestamp,
+            image_b64: encodedString,
+            captureMode: modeStr,
+            isManual: isManual,
+            isManualTrigger: isManual
+          };
+          if (typeof this.socketClient.send === 'function') {
+            this.socketClient.send(payload);
+          } else if (typeof this.socketClient.sendJson === 'function') {
+            this.socketClient.sendJson(payload);
+          }
+        }
+        this.onEncodedFrameAvailable(encodedString, captureTimestamp, isManual, modeStr);
       },
       () => {
         this.isEncodingActive = false;

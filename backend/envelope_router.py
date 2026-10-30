@@ -135,6 +135,8 @@ class AsrHandler(BaseEnvelopeHandler):
 class CameraFrameHandler(BaseEnvelopeHandler):
     """Handles perceptual hash diff gating, vision analysis, and diagram re-render."""
 
+    VISION_COOLDOWN_SEC: float = 2.5
+
     async def handle(
         self,
         msg: Dict[str, Any],
@@ -143,6 +145,8 @@ class CameraFrameHandler(BaseEnvelopeHandler):
         meeting_id: str,
     ) -> None:
         img_b64 = msg.get("image_b64")
+        if not img_b64 and isinstance(msg.get("payload"), dict):
+            img_b64 = msg.get("payload", {}).get("image_b64")
         if not img_b64:
             return
 
@@ -154,28 +158,42 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             logger.debug("Vision analysis already in-flight; skipping frame.")
             return
 
+        payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else msg
+        is_manual = bool(
+            payload.get("isManual", False)
+            or payload.get("isManualTrigger", False)
+            or payload.get("captureMode") == "MANUAL"
+            or msg.get("isManual", False)
+            or msg.get("isManualTrigger", False)
+            or msg.get("captureMode") == "MANUAL"
+        )
+
         now = time.time()
         # Cooldown between vision calls to avoid Gemini 429 quota exhaustion
-        if now - getattr(session, "_last_vision_time", 0) < 5.0:
+        last_vision = getattr(session, "_last_vision_time", None)
+        if not is_manual and last_vision is not None and (now - last_vision < self.VISION_COOLDOWN_SEC):
             logger.debug("Vision analysis cooldown active; skipping frame.")
             return
 
         session._vision_in_flight = True
         try:
-            session._last_vision_time = now
             img_bytes = base64.b64decode(img_b64)
-            has_diff, hamming, current_hash = session.check_image_diff(
-                img_bytes, threshold=6
+            has_diff, hamming, current_hash = await asyncio.to_thread(
+                session.check_image_diff, img_bytes, threshold=6
             )
 
-            if not has_diff:
+            if is_manual:
+                session.last_phash = current_hash
+
+            if not has_diff and not is_manual:
                 logger.debug(
                     "Frame skipped by perceptual hash (hamming distance: %d < 6)",
                     hamming,
                 )
                 return
 
-            logger.info("Frame diff accepted (hamming: %d). Analyzing whiteboard...", hamming)
+            logger.info("Frame diff accepted (hamming: %d, is_manual=%s). Analyzing whiteboard...", hamming, is_manual)
+            session._last_vision_time = now
             existing_nodes = list(session.node_metadata.values())
             delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes)
 
