@@ -10,7 +10,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 import imagehash
 from PIL import Image
@@ -65,12 +65,35 @@ class EdgeAddition(BaseModel):
     edge_label: str = ""
 
 
+class UpdatedVertexSchema(BaseModel):
+    old_label: str = Field(description="Existing label of the shape on the board")
+    new_label: str = Field(description="Updated label written on the board")
+    node_type: Optional[Literal["service", "database", "client", "decision", "terminal"]] = None
+
+
+class RemovedEdgeSchema(BaseModel):
+    source_label: str
+    target_label: str
+
+
 class GraphDeltaSchema(BaseModel):
     person_occluding_board: bool = Field(description="True if a person's body blocks the diagram")
     has_meaningful_change: bool
-    added_vertices: List[VertexAddition]
-    added_edges: List[EdgeAddition]
-    diff_summary: str = Field(description="Max 60 chars summary of the visual update")
+    added_vertices: List[VertexAddition] = Field(default_factory=list)
+    added_edges: List[EdgeAddition] = Field(default_factory=list)
+    removed_vertices: List[str] = Field(
+        default_factory=list,
+        description="Exact labels of existing vertices that were visibly erased from the whiteboard",
+    )
+    updated_vertices: List[UpdatedVertexSchema] = Field(
+        default_factory=list,
+        description="Existing vertices whose label or type was modified",
+    )
+    removed_edges: List[RemovedEdgeSchema] = Field(
+        default_factory=list,
+        description="Existing edges whose arrow was erased from the whiteboard",
+    )
+    diff_summary: str = Field(default="", description="Max 60 chars summary of the visual update")
 
 
 class LayoutEngine:
@@ -113,8 +136,10 @@ class LiveGraphSession:
         self.diagram.name = "ARStream"
         self.layout_engine = LayoutEngine()
         self.node_by_label: Dict[str, str] = {}  # lowercase label -> cell_id (latest node with that label)
+        self.label_to_id: Dict[str, str] = self.node_by_label  # alias for label -> cell_id lookup
         self.node_by_key: Dict[Tuple[str, str], str] = {}  # (lowercase label, type) -> cell_id (dedupe key)
         self.node_metadata: Dict[str, Dict[str, str]] = {}  # cell_id -> {label, type}
+        self.edge_set: Set[Tuple[str, str]] = set()  # (source_cell_id, target_cell_id)
         self.last_node_reused: bool = False  # True when the last add_node call reused an existing node
         self.last_phash: Optional[imagehash.ImageHash] = None
 
@@ -126,6 +151,15 @@ class LiveGraphSession:
             n += 1
         return f"{prefix} {n}"
 
+    @staticmethod
+    def _normalize_node_type(node_type: Optional[str]) -> str:
+        clean_type = (node_type or "service").strip().lower()
+        if clean_type == "client" and "client" not in STYLE_MAP and "terminal" in STYLE_MAP:
+            clean_type = "terminal"
+        if clean_type not in STYLE_MAP:
+            clean_type = "service"
+        return clean_type
+
     def add_node(self, node_type: str, label: Optional[str]) -> str:
         """
         Inserts a node styled for waveguide display and registers its label.
@@ -133,9 +167,7 @@ class LiveGraphSession:
         A node is reused only when both the label (case-insensitive) and the type match.
         Missing/blank labels get an auto-generated one. Sets `last_node_reused`.
         """
-        clean_type = node_type.lower()
-        if clean_type not in STYLE_MAP:
-            clean_type = "service"
+        clean_type = self._normalize_node_type(node_type)
 
         style = STYLE_MAP[clean_type]
         width, height = DEFAULT_DIMENSIONS.get(clean_type, (120.0, 60.0))
@@ -190,6 +222,7 @@ class LiveGraphSession:
             if c.edge and getattr(c, "source", None) == s_id and getattr(c, "target", None) == t_id:
                 if edge_label:
                     c.value = edge_label
+                self.edge_set.add((s_id, t_id))
                 return c.id
 
         edge_id = self.diagram.add_edge(
@@ -203,23 +236,183 @@ class LiveGraphSession:
                     c.value = edge_label
                     break
 
+        self.edge_set.add((str(s_id), str(t_id)))
         return str(edge_id)
+
+    def get_existing_edges_summary(self) -> List[str]:
+        """
+        Returns existing directed edges formatted as ["Source -> Target", ...].
+        """
+        summaries: List[str] = []
+        for c in self.diagram.cells:
+            if c.edge:
+                s_id = getattr(c, "source", None)
+                t_id = getattr(c, "target", None)
+                s_meta = self.node_metadata.get(str(s_id)) if s_id is not None else None
+                t_meta = self.node_metadata.get(str(t_id)) if t_id is not None else None
+                s_label = s_meta["label"] if s_meta else None
+                t_label = t_meta["label"] if t_meta else None
+                if not s_label and s_id is not None:
+                    for vc in self.diagram.cells:
+                        if vc.vertex and vc.id == s_id:
+                            s_label = vc.value
+                            break
+                if not t_label and t_id is not None:
+                    for vc in self.diagram.cells:
+                        if vc.vertex and vc.id == t_id:
+                            t_label = vc.value
+                            break
+                if s_label and t_label:
+                    summaries.append(f"{s_label} -> {t_label}")
+        return summaries
 
     def _resolve_node_id(self, ref: str) -> Optional[str]:
         clean_ref = ref.strip().lower()
         if clean_ref in self.node_by_label:
             return self.node_by_label[clean_ref]
-        # Check by direct ID
+        if ref.strip() in self.node_by_label:
+            return self.node_by_label[ref.strip()]
+        # Check node_metadata by case-insensitive label
+        for cid, meta in self.node_metadata.items():
+            if meta.get("label", "").strip().lower() == clean_ref:
+                return cid
+        # Check by direct ID or cell value
         for c in self.diagram.cells:
-            if c.id == ref and c.vertex:
-                return c.id
+            if c.vertex and c.id not in ("0", "1"):
+                if c.id == ref or (c.value and c.value.strip().lower() == clean_ref):
+                    return c.id
         return None
+
+    def update_node(self, old_label_or_id: str, new_label: str, node_type: Optional[str] = None) -> Optional[str]:
+        """
+        Renames an existing vertex and optionally updates its node_type / styling,
+        re-keying internal lookup maps while preserving its cell_id and incident edges.
+        """
+        cell_id = self._resolve_node_id(old_label_or_id)
+        clean_new_label = (new_label or "").strip()
+        if not cell_id or not clean_new_label:
+            logger.warning("Could not resolve node to update: %s -> %s", old_label_or_id, new_label)
+            return None
+
+        old_meta = self.node_metadata.get(cell_id, {})
+        old_label = old_meta.get("label", old_label_or_id)
+        old_type = old_meta.get("type", "service")
+        clean_new_type = self._normalize_node_type(node_type) if node_type else old_type
+
+        # Remove old lookup keys pointing to this cell_id
+        for k in [k for k, v in self.node_by_label.items() if v == cell_id or k == old_label.strip().lower()]:
+            if self.node_by_label.get(k) == cell_id:
+                self.node_by_label.pop(k, None)
+        for k in [k for k, v in self.node_by_key.items() if v == cell_id or k == (old_label.strip().lower(), old_type)]:
+            if self.node_by_key.get(k) == cell_id:
+                self.node_by_key.pop(k, None)
+
+        # Update cell in diagram
+        for c in self.diagram.cells:
+            if c.vertex and c.id == cell_id:
+                c.value = clean_new_label
+                if node_type is not None or clean_new_type != old_type:
+                    c.style = STYLE_MAP[clean_new_type]
+                    if c.geometry is not None:
+                        w, h = DEFAULT_DIMENSIONS.get(clean_new_type, (120.0, 60.0))
+                        c.geometry.width = w
+                        c.geometry.height = h
+                break
+
+        lower_new = clean_new_label.lower()
+        self.node_by_label[lower_new] = cell_id
+        self.node_by_key[(lower_new, clean_new_type)] = cell_id
+        self.node_metadata[cell_id] = {"label": clean_new_label, "type": clean_new_type}
+        return cell_id
+
+    def remove_edge(self, source_label_or_id: str, target_label_or_id: str) -> int:
+        """
+        Removes matching directed edge mxCells between source and target from diagram.cells and edge_set.
+        """
+        s_id = self._resolve_node_id(source_label_or_id)
+        t_id = self._resolve_node_id(target_label_or_id)
+        if not s_id or not t_id:
+            return 0
+
+        removed_edge_ids: Set[str] = set()
+        kept_cells: List[MxCell] = []
+        for c in self.diagram.cells:
+            if c.edge and getattr(c, "source", None) == s_id and getattr(c, "target", None) == t_id:
+                removed_edge_ids.add(c.id)
+            else:
+                kept_cells.append(c)
+
+        if removed_edge_ids:
+            # Also drop any edge child label cells parented to removed edges
+            self.diagram.cells = [c for c in kept_cells if getattr(c, "parent", None) not in removed_edge_ids]
+            self.edge_set.discard((s_id, t_id))
+
+        return len(removed_edge_ids)
+
+    def remove_node(self, label_or_id: str) -> bool:
+        """
+        Removes a vertex mxCell and all incident edge mxCells from diagram.cells and internal lookup maps.
+        """
+        cell_id = self._resolve_node_id(label_or_id)
+        if not cell_id:
+            return False
+
+        removed_edge_ids: Set[str] = set()
+        for c in self.diagram.cells:
+            if c.edge and (getattr(c, "source", None) == cell_id or getattr(c, "target", None) == cell_id):
+                removed_edge_ids.add(c.id)
+
+        self.diagram.cells = [
+            c
+            for c in self.diagram.cells
+            if c.id != cell_id
+            and c.id not in removed_edge_ids
+            and getattr(c, "parent", None) != cell_id
+            and getattr(c, "parent", None) not in removed_edge_ids
+        ]
+
+        meta = self.node_metadata.pop(cell_id, None)
+        old_label_lower = meta["label"].strip().lower() if meta and "label" in meta else label_or_id.strip().lower()
+
+        for k in [k for k, v in self.node_by_label.items() if v == cell_id or k == old_label_lower]:
+            if self.node_by_label.get(k) == cell_id:
+                self.node_by_label.pop(k, None)
+
+        for k in [k for k, v in self.node_by_key.items() if v == cell_id or k[0] == old_label_lower]:
+            if self.node_by_key.get(k) == cell_id:
+                self.node_by_key.pop(k, None)
+
+        self.edge_set = {pair for pair in self.edge_set if pair[0] != cell_id and pair[1] != cell_id}
+        return True
 
     def apply_delta(self, delta: GraphDeltaSchema) -> int:
         """
-        Applies incremental vertices and edges from vision diff extraction.
+        Applies incremental vertex/edge updates, removals, and additions from vision diff extraction.
+        Skips all mutations if person_occluding_board is True so occluded shapes are never accidentally deleted.
         """
+        if delta.person_occluding_board:
+            logger.info("Person occluding whiteboard; skipping apply_delta to protect existing graph.")
+            return 0
+
         mutations = 0
+
+        # a. Process updated_vertices: update mxCell value/style in self.diagram and re-key self.label_to_id
+        for u in delta.updated_vertices:
+            updated_id = self.update_node(u.old_label, u.new_label, u.node_type)
+            if updated_id:
+                mutations += 1
+
+        # b. Process removed_edges: remove matching edge mxCells from self.diagram.cells and self.edge_set
+        for re_edge in delta.removed_edges:
+            removed_count = self.remove_edge(re_edge.source_label, re_edge.target_label)
+            mutations += removed_count
+
+        # c. Process removed_vertices: remove vertex mxCell and any incident edge mxCells
+        for rv_label in delta.removed_vertices:
+            if self.remove_node(rv_label):
+                mutations += 1
+
+        # d. Process added_vertices and added_edges, then run relayout_diagram
         for v in delta.added_vertices:
             self.add_node(v.node_type, v.label)
             mutations += 1
@@ -228,6 +421,9 @@ class LiveGraphSession:
             edge_id = self.add_edge(e.source_label, e.target_label, e.edge_label)
             if edge_id:
                 mutations += 1
+
+        if mutations > 0:
+            self.layout_engine.apply_sugiyama(self.diagram, layer_distance=70.0, node_distance=50.0)
 
         return mutations
 
@@ -475,7 +671,8 @@ class HeadlessDrawioDaemon:
 
 async def extract_graph_delta_from_gemini(
     image_bytes: bytes,
-    existing_nodes: List[Dict[str, str]],
+    existing_nodes: List[Any],
+    existing_edges: Optional[List[str]] = None,
     api_key: Optional[str] = None,
 ) -> GraphDeltaSchema:
     """
@@ -504,14 +701,22 @@ async def extract_graph_delta_from_gemini(
             diff_summary="",
         )
 
+    node_labels = [
+        n.get("label") if isinstance(n, dict) else str(n)
+        for n in (existing_nodes or [])
+    ]
+    edge_summaries = list(existing_edges) if existing_edges else []
+
     try:
         from google.genai import types
 
         prompt = (
             "Analyze this whiteboard frame from a software architecture brainstorming session.\n"
-            f"Already recognized nodes: {[n.get('label') for n in existing_nodes]}\n"
-            "Identify any newly drawn or modified shapes (service, decision, database, terminal) and arrows.\n"
-            "If a person is blocking the diagram view, set person_occluding_board=True."
+            f"Already recognized nodes: {node_labels}\n"
+            f"Already recognized edges: {edge_summaries}\n"
+            "Identify any newly drawn, modified/renamed (`updated_vertices`), or erased (`removed_vertices`, `removed_edges`) shapes (service, decision, database, terminal) and arrows.\n"
+            "CRITICAL OCCLUSION & DELETION RULE: If a person is standing in front of or blocking the diagram view, set `person_occluding_board=True` and leave `removed_vertices` and `removed_edges` completely empty. "
+            "Only populate `removed_vertices` or `removed_edges` when `person_occluding_board` is `False` AND the whiteboard surface where the shape or arrow previously sat is clearly visible and blank (visibly erased). Never remove nodes or edges simply because a person is occluding them."
         )
 
         text = await llm.generate_structured(
@@ -522,13 +727,20 @@ async def extract_graph_delta_from_gemini(
         )
         if text:
             data = json.loads(text)
-            return GraphDeltaSchema.model_validate(data)
+            delta = GraphDeltaSchema.model_validate(data)
+            if delta.person_occluding_board:
+                delta.removed_vertices = []
+                delta.removed_edges = []
+            return delta
         logger.warning("Gemini vision extraction returned no response text")
     except Exception as e:
         logger.warning("Gemini vision extraction failed: %s", e)
 
     if os.environ.get("SPECSCRIBE_DEMO_MODE") == "1":
-        existing_labels = {n.get("label", "").lower() for n in existing_nodes}
+        existing_labels = {
+            (n.get("label", "") if isinstance(n, dict) else str(n)).lower()
+            for n in (existing_nodes or [])
+        }
         if "whiteboard ingress" not in existing_labels:
             return GraphDeltaSchema(
                 person_occluding_board=False,
@@ -576,5 +788,8 @@ async def extract_graph_delta_from_gemini(
         added_edges=[],
         diff_summary="",
     )
+
+
+extract_graph_delta_from_gemini_async = extract_graph_delta_from_gemini
 
 
