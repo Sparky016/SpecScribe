@@ -1,5 +1,10 @@
 import { PeriodicCameraCapturer, CaptureMode, CaptureModeName } from './PeriodicCameraCapturer';
 
+/** Formats the HUD mode badge string ("CAPTURE: AUTO (3s)" or "CAPTURE: MANUAL"). */
+export function formatModeBadge(mode: CaptureModeName, intervalSec: number = 3): string {
+  return mode === CaptureMode.MANUAL ? 'CAPTURE: MANUAL' : `CAPTURE: AUTO (${intervalSec.toFixed(0)}s)`;
+}
+
 /**
  * Selects which whiteboard ingestion path is live: AUTO (PeriodicCameraCapturer samples every few seconds while the
  * user draws) or MANUAL (a pinch on the whiteboard or the capture button ingests one frame). Only one path runs at a
@@ -8,17 +13,27 @@ import { PeriodicCameraCapturer, CaptureMode, CaptureModeName } from './Periodic
  */
 export class WhiteboardCaptureSwitch {
   public capturer?: PeriodicCameraCapturer;
+  public onModeChanged?: (mode: CaptureModeName) => void;
 
   constructor(
     private readonly host: () => SceneObject,
     private readonly toast: (text: string) => void,
-    private readonly isLocked: () => boolean = () => false
-  ) {}
+    private readonly isLocked: () => boolean = () => false,
+    onModeChanged?: (mode: CaptureModeName) => void
+  ) {
+    this.onModeChanged = onModeChanged;
+  }
 
   /** Current capture path; AUTO when no capturer is attached (the capturer's own default). */
   public getMode(): CaptureModeName {
     const c = this.resolve();
     return c ? c.getCaptureMode() : CaptureMode.AUTO;
+  }
+
+  /** Returns the formatted badge text ("CAPTURE: AUTO (3s)" or "CAPTURE: MANUAL") for the active or supplied mode. */
+  public formatModeBadge(mode: CaptureModeName = this.getMode()): string {
+    const c = this.resolve();
+    return formatModeBadge(mode, c ? c.getSampleInterval() : 3);
   }
 
   public setMode(mode: string): CaptureModeName {
@@ -31,6 +46,7 @@ export class WhiteboardCaptureSwitch {
     this.toast(next === CaptureMode.AUTO
       ? `Capture: AUTO • every ${c.getSampleInterval().toFixed(0)}s`
       : 'Capture: MANUAL • Pinch capture to ingest the whiteboard');
+    this.onModeChanged?.(next);
     return next;
   }
 

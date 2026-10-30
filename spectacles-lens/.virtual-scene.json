@@ -6120,7 +6120,25 @@
             "isPrefabInstanceRoot": false,
             "hasPrefabChanges": false,
             "id": "813f72bf-02db-4d08-a5fe-821c5fdbfb6e",
-            "type": "ScriptComponent"
+            "type": "ScriptComponent",
+            "btnCaptureWhiteboard": {
+              "isScriptInput": true,
+              "value": null,
+              "type": "AssignableType_14"
+            },
+            "btnToggleCaptureMode": {
+              "isScriptInput": true,
+              "value": null,
+              "type": "AssignableType_15"
+            },
+            "captureModeStatusText": {
+              "isScriptInput": true,
+              "value": null,
+              "type": "Component.Text"
+            },
+            "inputNames.18": "btnCaptureWhiteboard",
+            "inputNames.19": "btnToggleCaptureMode",
+            "inputNames.20": "captureModeStatusText"
           }
         },
         {
@@ -9828,6 +9846,1199 @@
             "isPrefabInstanceRoot": false,
             "hasPrefabChanges": false,
             "id": "2f23292a-3874-4301-942f-d21b4012224c",
+            "type": "Text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5a100001-5400-4a00-8000-000000000001",
+      "name": "SpatialActionPalette",
+      "enabled": true,
+      "parentId": "3264dcaf-507c-43a2-aaa7-a555c08df52a",
+      "transform": {
+        "position": [
+          0,
+          0,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          1,
+          1,
+          1
+        ]
+      },
+      "layers": 1,
+      "components": []
+    },
+    {
+      "id": "5a100002-5400-4a00-8000-000000000002",
+      "name": "BtnCaptureWhiteboard",
+      "enabled": true,
+      "parentId": "5a100001-5400-4a00-8000-000000000001",
+      "transform": {
+        "position": [
+          0,
+          -21,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          18,
+          4.5,
+          1.5
+        ]
+      },
+      "layers": 1,
+      "components": [
+        {
+          "id": "5a100002-5400-4a00-8000-000000000011",
+          "type": "RenderMeshVisual",
+          "name": "Render Mesh Visual",
+          "enabled": true,
+          "properties": {
+            "mesh": "@asset:Meshes/Mesh_ButtonBox.mesh",
+            "blendShapesEnabled": true,
+            "blendNormals": false,
+            "materials.0": "@asset:Materials/Mat_ButtonBackplate.mat",
+            "mainMaterial": "@asset:Materials/Mat_ButtonBackplate.mat",
+            "stretchMode": {
+              "value": "Stretch",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "verticalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Vertical",
+              "options": [
+                "Bottom",
+                "Center",
+                "Top"
+              ]
+            },
+            "horizontalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Horizontal",
+              "options": [
+                "Left",
+                "Center",
+                "Right"
+              ]
+            },
+            "meshShadowMode": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.MeshShadowMode",
+              "options": [
+                "None",
+                "Caster",
+                "Receiver"
+              ]
+            },
+            "shadowColor": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "shadowDensity": 1,
+            "renderOrder": 0,
+            "name": "Render Mesh Visual",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnCaptureWhiteboard",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100002-5400-4a00-8000-000000000011",
+            "type": "RenderMeshVisual"
+          }
+        },
+        {
+          "id": "5a100002-5400-4a00-8000-000000000012",
+          "type": "ColliderComponent",
+          "name": "Physics Collider",
+          "enabled": true,
+          "properties": {
+            "shape.radius": 6,
+            "shape.id": "5a100002-5400-4a00-8000-000000000021",
+            "shape.type": "Sphere",
+            "filter": null,
+            "fitVisual": true,
+            "forceCompound": false,
+            "intangible": false,
+            "debugDrawEnabled": false,
+            "matter": null,
+            "overlapFilter": null,
+            "smooth": false,
+            "translateSmoothFactor": 30,
+            "rotateSmoothFactor": 30,
+            "worldSettings": null,
+            "name": "Physics Collider",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnCaptureWhiteboard",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100002-5400-4a00-8000-000000000012",
+            "type": "ColliderComponent"
+          }
+        },
+        {
+          "id": "5a100002-5400-4a00-8000-000000000013",
+          "type": "ScriptComponent",
+          "name": "Interactable",
+          "enabled": true,
+          "properties": {
+            "enableInstantDrag": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Enable Instant Drag\", \"hint\":\"Enable this to allow the Interactable to instantly be dragged on trigger rather than obeying the Interactor's drag threshold.\"}"
+            },
+            "useFilteredPinch": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Use Filtered Pinch\", \"hint\":\"Determines if the Interactable should listen to filtered pinch events when targeted by a HandInteractor. Filtered pinch events are more stable when the hand is quickly moving but may add latency in non-moving cases. Most interactions should use raw pinch events by default. Spatial interactions with large hand movement (such as dragging, scrolling) should use filtered pinch events. If an Interactable has a parent Interactable that uses filtered pinch events, this Interactable will also use filtered pinch events.\"}"
+            },
+            "acceptableXDirections": {
+              "isScriptInput": true,
+              "value": 0,
+              "type": "float",
+              "uiInfo": "{\"label\":\"X\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the X-axis:\\n- None: Disables X-axis poke detection.\\n- Right: Finger must approach from +X direction.\\n- Left: Finger must approach from -X direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Right\", \"value\":1}, {\"label\":\"Left\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}"
+            },
+            "acceptableYDirections": {
+              "isScriptInput": true,
+              "value": 0,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Y\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the Y-axis:\\n- None: Disables Y-axis poke detection.\\n- Top: Finger must approach from +Y direction.\\n- Bottom: Finger must approach from -Y direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Top\", \"value\":1}, {\"label\":\"Bottom\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}"
+            },
+            "enablePokeDirectionality": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Enable Poke Directionality\", \"hint\":\"Enable Poke Directionality to help prevent accidental interactions when users approach from unwanted angles. When enabled, you can specify which directions are valid for poke interactions on each axis.\"}"
+            },
+            "acceptableZDirections": {
+              "isScriptInput": true,
+              "value": 1,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Z\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the Z-axis:\\n- None: Disables Z-axis poke detection.\\n- Front: Finger must approach from +Z direction.\\n- Back: Finger must approach from -Z direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Front\", \"value\":1}, {\"label\":\"Back\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}",
+              "defaultValue": "1"
+            },
+            "allowMultipleInteractors": {
+              "isScriptInput": true,
+              "value": true,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Allow Multiple Interactors\", \"hint\":\"Determines whether this Interactable can be simultaneously controlled by multiple Interactors. When false, only one Interactor type (e.g., left hand or right hand) can interact at a time. Set to true to enable interactions from multiple sources simultaneously, such as allowing both hands to manipulate the Interactable at once.\"}",
+              "defaultValue": "true"
+            },
+            "ignoreInteractionPlane": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Ignore Interaction Plane\", \"hint\":\"When enabled, this Interactable ignores any parent InteractionPlane and factors into the cursor's position and targetingVisual. Use when the Interactable is parented for organization but not spatially within that plane.\"}"
+            },
+            "isScrollable": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Is Scrollable\", \"hint\":\"When true, interactions with this element can scroll a parent ScrollView that has content extending beyond its visible bounds.\"}"
+            },
+            "keepHoverOnTrigger": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Keep Hover On Trigger\", \"hint\":\"When enabled, the Interactable exhibits sticky behavior during trigger - the cursor locks on the Interactable and remains in an active visual state even after de-hovering. This is the singular source of truth for feedback, UI, and cursor components.\"}"
+            },
+            "targetingMode": {
+              "isScriptInput": true,
+              "value": 3,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Targeting Mode\", \"hint\":\"Defines how Interactors can target and interact with this Interactable. Options include:\\n- Direct: Only allows close pinch interactions where a hand directly touches the Interactable.\\n- Indirect: Allows interactions from a distance with raycasting.\\n- Direct/Indirect: Supports both direct and indirect interaction methods.\\n- Poke: Enables finger poking interactions.\\n- All: Supports all targeting modes (Direct, Indirect, and Poke).\", \"widget\":\"combobox\", \"values\":[{\"label\":\"Direct\", \"value\":1}, {\"label\":\"Indirect\", \"value\":2}, {\"label\":\"Direct/Indirect\", \"value\":3}, {\"label\":\"Poke\", \"value\":4}, {\"label\":\"All\", \"value\":7}]}",
+              "defaultValue": "3"
+            },
+            "targetingVisual": {
+              "isScriptInput": true,
+              "value": 1,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Targeting Visual\", \"hint\":\"Sets the preferred targeting visual. (Requires the V2 Cursor to be enabled on InteractorCursors).\\n\\n- None: No visual feedback.\\n- Cursor (default): Shows a cursor at the interaction point.\\n- Ray: Shows a ray from the interactor to the target.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Cursor\", \"value\":1}, {\"label\":\"Ray\", \"value\":2}]}"
+            },
+            "scriptAsset": "@asset:Packages/SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable.ts",
+            "inputNames.0": "acceptableXDirections",
+            "inputNames.1": "acceptableYDirections",
+            "inputNames.2": "acceptableZDirections",
+            "inputNames.3": "allowMultipleInteractors",
+            "inputNames.4": "enableInstantDrag",
+            "inputNames.5": "enablePokeDirectionality",
+            "inputNames.6": "ignoreInteractionPlane",
+            "inputNames.7": "isScrollable",
+            "inputNames.8": "keepHoverOnTrigger",
+            "inputNames.9": "targetingMode",
+            "inputNames.10": "targetingVisual",
+            "inputNames.11": "useFilteredPinch",
+            "name": "Interactable",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnCaptureWhiteboard",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100002-5400-4a00-8000-000000000013",
+            "type": "ScriptComponent"
+          }
+        },
+        {
+          "id": "5a100002-5400-4a00-8000-000000000014",
+          "type": "Text",
+          "name": "Text",
+          "enabled": true,
+          "properties": {
+            "text": "Capture Board",
+            "font": null,
+            "fontSource": null,
+            "size": 2,
+            "weight": null,
+            "italic": null,
+            "preferredStyle": "Regular",
+            "verticalOverflow": {
+              "value": "Overflow",
+              "type": "enum",
+              "enumType": "Editor.Components.VerticalOverflow",
+              "options": [
+                "Overflow",
+                "Truncate",
+                "Shrink"
+              ]
+            },
+            "horizontalOverflow": {
+              "value": "Overflow",
+              "type": "enum",
+              "enumType": "Editor.Components.HorizontalOverflow",
+              "options": [
+                "Overflow",
+                "Truncate",
+                "TruncateFront",
+                "Wrap",
+                "Ellipsis",
+                "EllipsisFront",
+                "Shrink"
+              ]
+            },
+            "textFill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "textFill.color": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "textFill.texture": null,
+            "textFill.tileCount": 5,
+            "textFill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "textFill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "textFill.id": "5a100002-5400-4a00-8000-000000000022",
+            "textFill.type": "TextFill",
+            "dropshadowSettings.enabled": false,
+            "dropshadowSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "dropshadowSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "dropshadowSettings.fill.texture": null,
+            "dropshadowSettings.fill.tileCount": 5,
+            "dropshadowSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "dropshadowSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "dropshadowSettings.fill.id": "5a100002-5400-4a00-8000-000000000023",
+            "dropshadowSettings.fill.type": "TextFill",
+            "dropshadowSettings.offset": {
+              "x": 0.25,
+              "y": 0.25
+            },
+            "dropshadowSettings.id": "5a100002-5400-4a00-8000-000000000024",
+            "dropshadowSettings.type": "DropshadowSettings",
+            "outlineSettings.enabled": false,
+            "outlineSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "outlineSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "outlineSettings.fill.texture": null,
+            "outlineSettings.fill.tileCount": 5,
+            "outlineSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "outlineSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "outlineSettings.fill.id": "5a100002-5400-4a00-8000-000000000025",
+            "outlineSettings.fill.type": "TextFill",
+            "outlineSettings.size": 0.25,
+            "outlineSettings.id": "5a100002-5400-4a00-8000-000000000026",
+            "outlineSettings.type": "OutlineSettings",
+            "backgroundSettings.enabled": false,
+            "backgroundSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "backgroundSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "backgroundSettings.fill.texture": null,
+            "backgroundSettings.fill.tileCount": 5,
+            "backgroundSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "backgroundSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "backgroundSettings.fill.id": "5a100002-5400-4a00-8000-000000000027",
+            "backgroundSettings.fill.type": "TextFill",
+            "backgroundSettings.margins.leftBottom": {
+              "x": 0,
+              "y": 0
+            },
+            "backgroundSettings.margins.rightTop": {
+              "x": 0,
+              "y": 0
+            },
+            "backgroundSettings.margins.left": 0,
+            "backgroundSettings.margins.right": 0,
+            "backgroundSettings.margins.top": 0,
+            "backgroundSettings.margins.bottom": 0,
+            "backgroundSettings.cornerRadius": 0,
+            "backgroundSettings.id": "5a100002-5400-4a00-8000-000000000028",
+            "backgroundSettings.type": "BackgroundSettings",
+            "advancedLayout.extentsTarget": null,
+            "advancedLayout.letterSpacing": 0,
+            "advancedLayout.lineSpacing": 1,
+            "advancedLayout.capitalizationOverride": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.CapitalizationOverride",
+              "options": [
+                "None",
+                "AllUpper",
+                "AllLower"
+              ]
+            },
+            "advancedLayout.id": "5a100002-5400-4a00-8000-000000000029",
+            "advancedLayout.type": "TextAdvancedLayout",
+            "sizeToFit": false,
+            "enableRichText": false,
+            "letterSpacing": 0,
+            "lineSpacing": 1,
+            "depthTest": false,
+            "twoSided": false,
+            "layoutRect.leftBottom": {
+              "x": -7.5,
+              "y": -2.25
+            },
+            "layoutRect.rightTop": {
+              "x": 7.5,
+              "y": 2.25
+            },
+            "layoutRect.left": -7.5,
+            "layoutRect.right": 7.5,
+            "layoutRect.top": 2.25,
+            "layoutRect.bottom": -2.25,
+            "worldSpaceRect.leftBottom": {
+              "x": -7.5,
+              "y": -2.25
+            },
+            "worldSpaceRect.rightTop": {
+              "x": 7.5,
+              "y": 2.25
+            },
+            "worldSpaceRect.left": -7.5,
+            "worldSpaceRect.right": 7.5,
+            "worldSpaceRect.top": 2.25,
+            "worldSpaceRect.bottom": -2.25,
+            "debugRenderLayoutRect": false,
+            "capitalizationOverride": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.CapitalizationOverride",
+              "options": [
+                "None",
+                "AllUpper",
+                "AllLower"
+              ]
+            },
+            "editable": false,
+            "showEditingPreview": true,
+            "touchHandler": null,
+            "stretchMode": {
+              "value": "Stretch",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "verticalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Vertical",
+              "options": [
+                "Bottom",
+                "Center",
+                "Top"
+              ]
+            },
+            "horizontalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Horizontal",
+              "options": [
+                "Left",
+                "Center",
+                "Right"
+              ]
+            },
+            "meshShadowMode": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.MeshShadowMode",
+              "options": [
+                "None",
+                "Caster",
+                "Receiver"
+              ]
+            },
+            "shadowColor": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "shadowDensity": 1,
+            "renderOrder": 0,
+            "name": "Text",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnCaptureWhiteboard",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100002-5400-4a00-8000-000000000014",
+            "type": "Text"
+          }
+        }
+      ]
+    },
+    {
+      "id": "5a100003-5400-4a00-8000-000000000003",
+      "name": "BtnToggleCaptureMode",
+      "enabled": true,
+      "parentId": "5a100001-5400-4a00-8000-000000000001",
+      "transform": {
+        "position": [
+          0,
+          -27,
+          0
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ],
+        "scale": [
+          18,
+          4.5,
+          1.5
+        ]
+      },
+      "layers": 1,
+      "components": [
+        {
+          "id": "5a100003-5400-4a00-8000-000000000011",
+          "type": "RenderMeshVisual",
+          "name": "Render Mesh Visual",
+          "enabled": true,
+          "properties": {
+            "mesh": "@asset:Meshes/Mesh_ButtonBox.mesh",
+            "blendShapesEnabled": true,
+            "blendNormals": false,
+            "materials.0": "@asset:Materials/Mat_ButtonBackplate.mat",
+            "mainMaterial": "@asset:Materials/Mat_ButtonBackplate.mat",
+            "stretchMode": {
+              "value": "Stretch",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "verticalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Vertical",
+              "options": [
+                "Bottom",
+                "Center",
+                "Top"
+              ]
+            },
+            "horizontalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Horizontal",
+              "options": [
+                "Left",
+                "Center",
+                "Right"
+              ]
+            },
+            "meshShadowMode": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.MeshShadowMode",
+              "options": [
+                "None",
+                "Caster",
+                "Receiver"
+              ]
+            },
+            "shadowColor": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "shadowDensity": 1,
+            "renderOrder": 0,
+            "name": "Render Mesh Visual",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnToggleCaptureMode",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100003-5400-4a00-8000-000000000011",
+            "type": "RenderMeshVisual"
+          }
+        },
+        {
+          "id": "5a100003-5400-4a00-8000-000000000012",
+          "type": "ColliderComponent",
+          "name": "Physics Collider",
+          "enabled": true,
+          "properties": {
+            "shape.radius": 6,
+            "shape.id": "5a100003-5400-4a00-8000-000000000021",
+            "shape.type": "Sphere",
+            "filter": null,
+            "fitVisual": true,
+            "forceCompound": false,
+            "intangible": false,
+            "debugDrawEnabled": false,
+            "matter": null,
+            "overlapFilter": null,
+            "smooth": false,
+            "translateSmoothFactor": 30,
+            "rotateSmoothFactor": 30,
+            "worldSettings": null,
+            "name": "Physics Collider",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnToggleCaptureMode",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100003-5400-4a00-8000-000000000012",
+            "type": "ColliderComponent"
+          }
+        },
+        {
+          "id": "5a100003-5400-4a00-8000-000000000013",
+          "type": "ScriptComponent",
+          "name": "Interactable",
+          "enabled": true,
+          "properties": {
+            "enableInstantDrag": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Enable Instant Drag\", \"hint\":\"Enable this to allow the Interactable to instantly be dragged on trigger rather than obeying the Interactor's drag threshold.\"}"
+            },
+            "useFilteredPinch": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Use Filtered Pinch\", \"hint\":\"Determines if the Interactable should listen to filtered pinch events when targeted by a HandInteractor. Filtered pinch events are more stable when the hand is quickly moving but may add latency in non-moving cases. Most interactions should use raw pinch events by default. Spatial interactions with large hand movement (such as dragging, scrolling) should use filtered pinch events. If an Interactable has a parent Interactable that uses filtered pinch events, this Interactable will also use filtered pinch events.\"}"
+            },
+            "acceptableXDirections": {
+              "isScriptInput": true,
+              "value": 0,
+              "type": "float",
+              "uiInfo": "{\"label\":\"X\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the X-axis:\\n- None: Disables X-axis poke detection.\\n- Right: Finger must approach from +X direction.\\n- Left: Finger must approach from -X direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Right\", \"value\":1}, {\"label\":\"Left\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}"
+            },
+            "acceptableYDirections": {
+              "isScriptInput": true,
+              "value": 0,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Y\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the Y-axis:\\n- None: Disables Y-axis poke detection.\\n- Top: Finger must approach from +Y direction.\\n- Bottom: Finger must approach from -Y direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Top\", \"value\":1}, {\"label\":\"Bottom\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}"
+            },
+            "enablePokeDirectionality": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Enable Poke Directionality\", \"hint\":\"Enable Poke Directionality to help prevent accidental interactions when users approach from unwanted angles. When enabled, you can specify which directions are valid for poke interactions on each axis.\"}"
+            },
+            "acceptableZDirections": {
+              "isScriptInput": true,
+              "value": 1,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Z\", \"hint\":\"Controls from which directions a poke interaction can trigger this Interactable along the Z-axis:\\n- None: Disables Z-axis poke detection.\\n- Front: Finger must approach from +Z direction.\\n- Back: Finger must approach from -Z direction.\\n- All: Accepts both directions.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Front\", \"value\":1}, {\"label\":\"Back\", \"value\":2}, {\"label\":\"All\", \"value\":3}], \"showIf\":\"enablePokeDirectionality\"}",
+              "defaultValue": "1"
+            },
+            "allowMultipleInteractors": {
+              "isScriptInput": true,
+              "value": true,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Allow Multiple Interactors\", \"hint\":\"Determines whether this Interactable can be simultaneously controlled by multiple Interactors. When false, only one Interactor type (e.g., left hand or right hand) can interact at a time. Set to true to enable interactions from multiple sources simultaneously, such as allowing both hands to manipulate the Interactable at once.\"}",
+              "defaultValue": "true"
+            },
+            "ignoreInteractionPlane": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Ignore Interaction Plane\", \"hint\":\"When enabled, this Interactable ignores any parent InteractionPlane and factors into the cursor's position and targetingVisual. Use when the Interactable is parented for organization but not spatially within that plane.\"}"
+            },
+            "isScrollable": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Is Scrollable\", \"hint\":\"When true, interactions with this element can scroll a parent ScrollView that has content extending beyond its visible bounds.\"}"
+            },
+            "keepHoverOnTrigger": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "bool",
+              "uiInfo": "{\"label\":\"Keep Hover On Trigger\", \"hint\":\"When enabled, the Interactable exhibits sticky behavior during trigger - the cursor locks on the Interactable and remains in an active visual state even after de-hovering. This is the singular source of truth for feedback, UI, and cursor components.\"}"
+            },
+            "targetingMode": {
+              "isScriptInput": true,
+              "value": 3,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Targeting Mode\", \"hint\":\"Defines how Interactors can target and interact with this Interactable. Options include:\\n- Direct: Only allows close pinch interactions where a hand directly touches the Interactable.\\n- Indirect: Allows interactions from a distance with raycasting.\\n- Direct/Indirect: Supports both direct and indirect interaction methods.\\n- Poke: Enables finger poking interactions.\\n- All: Supports all targeting modes (Direct, Indirect, and Poke).\", \"widget\":\"combobox\", \"values\":[{\"label\":\"Direct\", \"value\":1}, {\"label\":\"Indirect\", \"value\":2}, {\"label\":\"Direct/Indirect\", \"value\":3}, {\"label\":\"Poke\", \"value\":4}, {\"label\":\"All\", \"value\":7}]}",
+              "defaultValue": "3"
+            },
+            "targetingVisual": {
+              "isScriptInput": true,
+              "value": 1,
+              "type": "float",
+              "uiInfo": "{\"label\":\"Targeting Visual\", \"hint\":\"Sets the preferred targeting visual. (Requires the V2 Cursor to be enabled on InteractorCursors).\\n\\n- None: No visual feedback.\\n- Cursor (default): Shows a cursor at the interaction point.\\n- Ray: Shows a ray from the interactor to the target.\", \"widget\":\"combobox\", \"values\":[{\"label\":\"None\", \"value\":0}, {\"label\":\"Cursor\", \"value\":1}, {\"label\":\"Ray\", \"value\":2}]}"
+            },
+            "scriptAsset": "@asset:Packages/SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable.ts",
+            "inputNames.0": "acceptableXDirections",
+            "inputNames.1": "acceptableYDirections",
+            "inputNames.2": "acceptableZDirections",
+            "inputNames.3": "allowMultipleInteractors",
+            "inputNames.4": "enableInstantDrag",
+            "inputNames.5": "enablePokeDirectionality",
+            "inputNames.6": "ignoreInteractionPlane",
+            "inputNames.7": "isScrollable",
+            "inputNames.8": "keepHoverOnTrigger",
+            "inputNames.9": "targetingMode",
+            "inputNames.10": "targetingVisual",
+            "inputNames.11": "useFilteredPinch",
+            "name": "Interactable",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnToggleCaptureMode",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100003-5400-4a00-8000-000000000013",
+            "type": "ScriptComponent"
+          }
+        },
+        {
+          "id": "5a100003-5400-4a00-8000-000000000014",
+          "type": "Text",
+          "name": "Text",
+          "enabled": true,
+          "properties": {
+            "text": "Mode: Auto/Manual",
+            "font": null,
+            "fontSource": null,
+            "size": 2,
+            "weight": null,
+            "italic": null,
+            "preferredStyle": "Regular",
+            "verticalOverflow": {
+              "value": "Overflow",
+              "type": "enum",
+              "enumType": "Editor.Components.VerticalOverflow",
+              "options": [
+                "Overflow",
+                "Truncate",
+                "Shrink"
+              ]
+            },
+            "horizontalOverflow": {
+              "value": "Overflow",
+              "type": "enum",
+              "enumType": "Editor.Components.HorizontalOverflow",
+              "options": [
+                "Overflow",
+                "Truncate",
+                "TruncateFront",
+                "Wrap",
+                "Ellipsis",
+                "EllipsisFront",
+                "Shrink"
+              ]
+            },
+            "textFill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "textFill.color": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "textFill.texture": null,
+            "textFill.tileCount": 5,
+            "textFill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "textFill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "textFill.id": "5a100003-5400-4a00-8000-000000000022",
+            "textFill.type": "TextFill",
+            "dropshadowSettings.enabled": false,
+            "dropshadowSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "dropshadowSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "dropshadowSettings.fill.texture": null,
+            "dropshadowSettings.fill.tileCount": 5,
+            "dropshadowSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "dropshadowSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "dropshadowSettings.fill.id": "5a100003-5400-4a00-8000-000000000023",
+            "dropshadowSettings.fill.type": "TextFill",
+            "dropshadowSettings.offset": {
+              "x": 0.25,
+              "y": 0.25
+            },
+            "dropshadowSettings.id": "5a100003-5400-4a00-8000-000000000024",
+            "dropshadowSettings.type": "DropshadowSettings",
+            "outlineSettings.enabled": false,
+            "outlineSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "outlineSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "outlineSettings.fill.texture": null,
+            "outlineSettings.fill.tileCount": 5,
+            "outlineSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "outlineSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "outlineSettings.fill.id": "5a100003-5400-4a00-8000-000000000025",
+            "outlineSettings.fill.type": "TextFill",
+            "outlineSettings.size": 0.25,
+            "outlineSettings.id": "5a100003-5400-4a00-8000-000000000026",
+            "outlineSettings.type": "OutlineSettings",
+            "backgroundSettings.enabled": false,
+            "backgroundSettings.fill.mode": {
+              "value": "Solid",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillMode",
+              "options": [
+                "Solid",
+                "Texture"
+              ]
+            },
+            "backgroundSettings.fill.color": {
+              "x": 0,
+              "y": 0,
+              "z": 0,
+              "w": 1
+            },
+            "backgroundSettings.fill.texture": null,
+            "backgroundSettings.fill.tileCount": 5,
+            "backgroundSettings.fill.tileZone": {
+              "value": "Rect",
+              "type": "enum",
+              "enumType": "Editor.Components.TextFillTileZone",
+              "options": [
+                "Rect",
+                "Extents",
+                "Character",
+                "Screen"
+              ]
+            },
+            "backgroundSettings.fill.textureStretch": {
+              "value": "FitWidth",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "backgroundSettings.fill.id": "5a100003-5400-4a00-8000-000000000027",
+            "backgroundSettings.fill.type": "TextFill",
+            "backgroundSettings.margins.leftBottom": {
+              "x": 0,
+              "y": 0
+            },
+            "backgroundSettings.margins.rightTop": {
+              "x": 0,
+              "y": 0
+            },
+            "backgroundSettings.margins.left": 0,
+            "backgroundSettings.margins.right": 0,
+            "backgroundSettings.margins.top": 0,
+            "backgroundSettings.margins.bottom": 0,
+            "backgroundSettings.cornerRadius": 0,
+            "backgroundSettings.id": "5a100003-5400-4a00-8000-000000000028",
+            "backgroundSettings.type": "BackgroundSettings",
+            "advancedLayout.extentsTarget": null,
+            "advancedLayout.letterSpacing": 0,
+            "advancedLayout.lineSpacing": 1,
+            "advancedLayout.capitalizationOverride": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.CapitalizationOverride",
+              "options": [
+                "None",
+                "AllUpper",
+                "AllLower"
+              ]
+            },
+            "advancedLayout.id": "5a100003-5400-4a00-8000-000000000029",
+            "advancedLayout.type": "TextAdvancedLayout",
+            "sizeToFit": false,
+            "enableRichText": false,
+            "letterSpacing": 0,
+            "lineSpacing": 1,
+            "depthTest": false,
+            "twoSided": false,
+            "layoutRect.leftBottom": {
+              "x": -7.5,
+              "y": -2.25
+            },
+            "layoutRect.rightTop": {
+              "x": 7.5,
+              "y": 2.25
+            },
+            "layoutRect.left": -7.5,
+            "layoutRect.right": 7.5,
+            "layoutRect.top": 2.25,
+            "layoutRect.bottom": -2.25,
+            "worldSpaceRect.leftBottom": {
+              "x": -7.5,
+              "y": -2.25
+            },
+            "worldSpaceRect.rightTop": {
+              "x": 7.5,
+              "y": 2.25
+            },
+            "worldSpaceRect.left": -7.5,
+            "worldSpaceRect.right": 7.5,
+            "worldSpaceRect.top": 2.25,
+            "worldSpaceRect.bottom": -2.25,
+            "debugRenderLayoutRect": false,
+            "capitalizationOverride": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.CapitalizationOverride",
+              "options": [
+                "None",
+                "AllUpper",
+                "AllLower"
+              ]
+            },
+            "editable": false,
+            "showEditingPreview": true,
+            "touchHandler": null,
+            "stretchMode": {
+              "value": "Stretch",
+              "type": "enum",
+              "enumType": "Editor.Components.StretchMode",
+              "options": [
+                "Fill",
+                "Fit",
+                "Stretch",
+                "FitHeight",
+                "FitWidth",
+                "FillAndCut"
+              ]
+            },
+            "verticalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Vertical",
+              "options": [
+                "Bottom",
+                "Center",
+                "Top"
+              ]
+            },
+            "horizontalAlignment": {
+              "value": "Center",
+              "type": "enum",
+              "enumType": "Editor.Alignment.Horizontal",
+              "options": [
+                "Left",
+                "Center",
+                "Right"
+              ]
+            },
+            "meshShadowMode": {
+              "value": "None",
+              "type": "enum",
+              "enumType": "Editor.Components.MeshShadowMode",
+              "options": [
+                "None",
+                "Caster",
+                "Receiver"
+              ]
+            },
+            "shadowColor": {
+              "x": 1,
+              "y": 1,
+              "z": 1,
+              "w": 1
+            },
+            "shadowDensity": 1,
+            "renderOrder": 0,
+            "name": "Text",
+            "enabled": true,
+            "sceneObject": "@sceneObject:BtnToggleCaptureMode",
+            "isPrefabInstanceRoot": false,
+            "hasPrefabChanges": false,
+            "id": "5a100003-5400-4a00-8000-000000000014",
             "type": "Text"
           }
         }

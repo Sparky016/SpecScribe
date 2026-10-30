@@ -46,9 +46,12 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   @input @allowUndefined private btnUpdateSnapshot?: Interactable;
   @input @allowUndefined private btnConcludeMeeting?: Interactable;
   @input @allowUndefined private whiteboardInteractable?: Interactable;
+  @input @allowUndefined private btnCaptureWhiteboard?: Interactable;
+  @input @allowUndefined private btnToggleCaptureMode?: Interactable;
   @input @allowUndefined private diagramOverlayMesh?: RenderMeshVisual;
   @input @allowUndefined private whiteboardBoardMesh?: RenderMeshVisual;
   @input @allowUndefined private diffToastText?: Text;
+  @input @allowUndefined private captureModeStatusText?: Text;
 
   private whiteboardState: WhiteboardState = WhiteboardState.SELECT_AREA;
   private diagramStage: number = 0; // 0: initial/clean/select, 1: node added, 2: snapshot updated, 3: concluded
@@ -56,7 +59,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private meetingConcluded: boolean = false;
   private concludeTimeoutEvent: DelayedCallbackEvent | null = null;
   private readonly concludeTimeoutSec: number = 30;
-  public readonly capture = new WhiteboardCaptureSwitch(() => this.getSceneObject(), (t: string) => this.setToastText(t), () => this.meetingConcluded);
+  public readonly capture = new WhiteboardCaptureSwitch(() => this.getSceneObject(), (t: string) => this.setToastText(t), () => this.meetingConcluded, (m) => { if (this.captureModeStatusText) this.captureModeStatusText.text = this.capture.formatModeBadge(m); });
 
   // Textures now live on DiagramOverlayView; these keep the manager's former texture fields addressable.
   private get texSelectArea() { return this.view().texSelectArea; } private set texSelectArea(t: Texture | undefined) { this.view().texSelectArea = t; }
@@ -69,11 +72,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private get texConcluded() { return this.view().texConcluded; } private set texConcluded(t: Texture | undefined) { this.view().texConcluded = t; }
 
   onAwake(): void {
-    try {
-      (global as any).SpecScribeSpatialInterfaceManager = this;
-    } catch (e) {
-      print(`[SpatialInterfaceManager] onAwake failed: ${e}`);
-    }
+    try { (global as any).SpecScribeSpatialInterfaceManager = this; } catch (e) { print(`[SpatialInterfaceManager] onAwake failed: ${e}`); }
     this.createEvent('OnStartEvent').bind(() => {
       this.view().loadTextures();
       this.resolvePeers();
@@ -94,6 +93,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.nodeCount = 0;
     this.cal().placeForCalibration(); // Whiteboard starts in selection/calibration mode up high on the wall
     this.view().presentCalibration();
+    if (this.captureModeStatusText) this.captureModeStatusText.text = this.capture.formatModeBadge();
   }
 
   public pinchCenterToSet(): void { this.selectWhiteboardArea(); }

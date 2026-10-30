@@ -26,6 +26,7 @@ export const PALETTE_SLOTS = [
 ] as const;
 export type PaletteSlot = typeof PALETTE_SLOTS[number];
 export type PaletteRefs = Partial<Record<PaletteSlot, Interactable>>;
+export type LegacyPaletteInputs = PaletteRefs;
 
 export interface DemoCritique {
   title: string;
@@ -145,6 +146,9 @@ export class PaletteController extends BaseScriptComponent {
   @allowUndefined
   public btnToggleCaptureMode?: Interactable;
 
+  /** Optional callback fired when BtnToggleCaptureMode switches between AUTO and MANUAL. */
+  public onModeChanged?: (mode: string) => void;
+
   private bound: boolean = false;
 
   /** Fills each slot from the coordinator's legacy inputs when this component's own input is unset. */
@@ -153,6 +157,19 @@ export class PaletteController extends BaseScriptComponent {
       if (!this[slot] && refs[slot]) {
         this[slot] = refs[slot];
       }
+    }
+  }
+
+  /** Convenience helper that adopts legacy inputs, resolves scene references, and optionally binds target. */
+  public attach(rootOrRefs?: SceneObject | LegacyPaletteInputs, legacy?: LegacyPaletteInputs, target?: PaletteTarget): void {
+    if (legacy) {
+      this.adopt(legacy);
+    } else if (rootOrRefs && typeof (rootOrRefs as any).getChildrenCount !== 'function') {
+      this.adopt(rootOrRefs as LegacyPaletteInputs);
+    }
+    this.resolveReferences();
+    if (target) {
+      this.bind(target);
     }
   }
 
@@ -202,7 +219,12 @@ export class PaletteController extends BaseScriptComponent {
       this.bindSingleButton(this.btnCaptureWhiteboard, () => target.capture.captureNow());
     }
     if (this.btnToggleCaptureMode) {
-      this.bindSingleButton(this.btnToggleCaptureMode, () => target.capture.toggleMode());
+      this.bindSingleButton(this.btnToggleCaptureMode, () => {
+        const mode = target.capture.toggleMode();
+        if (this.onModeChanged && mode) {
+          this.onModeChanged(mode);
+        }
+      });
     }
     if (this.whiteboardInteractable) {
       this.bindSingleButton(this.whiteboardInteractable, () => target.handleWhiteboardPinch());
@@ -217,7 +239,8 @@ export class PaletteController extends BaseScriptComponent {
       return undefined;
     }
     try {
-      const interactable = obj.getComponent(Interactable.getTypeName()) as Interactable;
+      const typeName = typeof Interactable.getTypeName === 'function' ? Interactable.getTypeName() : ('Component.ScriptComponent' as any);
+      const interactable = obj.getComponent(typeName) as Interactable;
       if (interactable) {
         print(`[PaletteController] Successfully resolved Interactable on "${name}"`);
         return interactable;
