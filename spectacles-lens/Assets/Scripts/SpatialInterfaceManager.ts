@@ -200,12 +200,12 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   }
 
   private raiseHand(c: DemoCritique): void { this.raisingHandAgent?.triggerHandRaised(c.title, c.body, c.category); }
-
   private bindSocketCallbacks(): void {
     if (!this.socketClient) return;
     this.socketClient.onDiagramUpdated = (b64: string, diffSummary: string) => { this.updateDiagramOverlay(b64); this.setToastText(diffSummary); };
     this.socketClient.onMeetingFinalized = () => this.onMeetingFinalized();
-    this.socketClient.onDecisionLogged = (p: any) => { if (p) this.setToastText(`📝 Decision: ${p.decision_rationale || p.diff_summary || 'Decision logged'}`); };
+    this.socketClient.onDecisionLogged = (p: any) => { if (p) this.showToast(`📝 Decision: ${p.decision_rationale || p.summary || p.rationale || p.diff_summary || 'Decision logged'}`); };
+    this.socketClient.onRequirementSynthesized = (p: any) => { if (p) this.showToast(`Req: ${typeof p === 'string' ? p : (p.summary || p.rationale || p.decision_rationale || p.diff_summary || 'Requirement logged')}`); };
   }
 
   /** Finds the socket client and agent on this SceneObject, then the agent on its known root objects. */
@@ -279,7 +279,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   public getNodeCount(): number { return this.nodeCount; }
   public isMeetingConcluded(): boolean { return this.meetingConcluded; }
   public getToastText(): string { return this.view().getToast(); }
-  public setToastText(text: string): void { this.view().setToast(text); }
+  public setToastText(text: string): void { this.view().setToast(text); } public showToast(text: string): void { this.view().setToast(text); }
   public getWhiteboardPosition(): vec3 { return this.cal().getPosition(); }
   public getWhiteboardScale(): vec3 { return this.cal().getScale(); }
   public getWhiteboardYaw(): number { return this.cal().getYaw(); }

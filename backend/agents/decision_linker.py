@@ -8,15 +8,45 @@ import hashlib
 import json
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
 import llm
 
 logger = logging.getLogger("specscribe.decision_linker")
+
+
+REQUIREMENT_INTENT_PATTERN = re.compile(
+    r"\b(?:"
+    r"need|needs|needed|must|should|shall|require|requires|required|requirement|requirements|"
+    r"decide|decided|decision|agree|agreed|propose|proposed|architect|architecture|design|"
+    r"service|microservice|database|db|cache|caching|redis|postgres|postgresql|mysql|mongo|dynamodb|"
+    r"kafka|queue|broker|pubsub|sqs|gateway|api|rest|graphql|grpc|websocket|webhook|endpoint|"
+    r"auth|authn|authz|authentication|authorization|jwt|oauth|token|tokens|tls|mtls|encrypt|encryption|"
+    r"latency|throughput|scalability|scalable|scale|replica|replicas|failover|cluster|storage|bucket|"
+    r"worker|rate[- ]?limit|sla|slo|p99|p95|load[- ]?balancer|ingress|cdn|firewall|vpc"
+    r")\b",
+    re.IGNORECASE,
+)
+
+DECISION_CUE_PATTERN = re.compile(
+    r"\b(?:agreed|decide|decided|decision|let's use|lets use|we will use|we'll use|going with|settled on|choose|chosen)\b",
+    re.IGNORECASE,
+)
+
+
+def has_requirement_intent(text: str) -> bool:
+    """Returns True when a spoken utterance contains substantive requirement or architectural intent."""
+    if not text:
+        return False
+    words = text.strip().split()
+    if len(words) < 5:
+        return False
+    return bool(REQUIREMENT_INTENT_PATTERN.search(text))
 
 
 class DecisionRationaleSchema(BaseModel):
@@ -31,6 +61,37 @@ class DecisionRationaleSchema(BaseModel):
     architectural_intent: Optional[str] = Field(
         default=None,
         description="Core intent (e.g., latency, security, fault-tolerance, scalability)."
+    )
+
+
+class TranscriptRequirementSchema(BaseModel):
+    """Structured output schema for continuous real-time requirement and decision extraction from speech."""
+    has_requirement: bool = Field(
+        description="True if the dialogue contains a substantive functional/non-functional requirement or architectural decision; False for casual chatter."
+    )
+    chunk_type: Literal["REQUIREMENT", "DECISION"] = Field(
+        default="REQUIREMENT",
+        description="'DECISION' if an explicit architectural choice was agreed upon, or 'REQUIREMENT' for a system requirement."
+    )
+    summary: str = Field(
+        default="",
+        description="Concise 1-sentence summary of the requirement or decision (max 120 chars)."
+    )
+    rationale: str = Field(
+        default="",
+        description="1-2 sentences explaining the requirement context, why the decision was made, and who proposed it."
+    )
+    speaker: Optional[str] = Field(
+        default=None,
+        description="Primary speaker who articulated the requirement or decision."
+    )
+    suggested_node_label: Optional[str] = Field(
+        default=None,
+        description="Optional graph node label suggested by the requirement (e.g., 'Redis Cache', 'Auth Service')."
+    )
+    suggested_node_type: Optional[str] = Field(
+        default=None,
+        description="Optional node type ('service', 'database', 'decision', 'terminal') if a graph node is suggested."
     )
 
 
@@ -421,3 +482,272 @@ class DecisionLinkerAgent:
             "chunk_id": chunk_id,
             "turns_considered": len(recent_turns),
         }
+
+    def _infer_suggested_node(self, text: str) -> Optional[Dict[str, str]]:
+        """Extracts an optional graph node suggestion from spoken requirement text."""
+        lower = text.lower()
+        candidates = [
+            ("redis", "Redis Cache", "database"),
+            ("postgres", "PostgreSQL", "database"),
+            ("kafka", "Kafka Broker", "database"),
+            ("dynamodb", "DynamoDB", "database"),
+            ("mongo", "MongoDB", "database"),
+            ("database", "Primary Database", "database"),
+            ("auth", "Auth Service", "service"),
+            ("gateway", "API Gateway", "service"),
+            ("worker", "Worker Service", "service"),
+            ("webhook", "Webhook Service", "service"),
+            ("rate limit", "Rate Limiter", "decision"),
+            ("load balancer", "Load Balancer", "service"),
+        ]
+        for keyword, label, node_type in candidates:
+            if keyword in lower:
+                return {"label": label, "node_type": node_type}
+        return None
+
+    def _heuristic_transcript_window_fallback(
+        self,
+        substantive_turns: List[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        """Heuristic requirement/decision extractor for offline or fallback execution."""
+        intent_turns = [
+            t for t in substantive_turns if has_requirement_intent(t.get("transcript_text", ""))
+        ]
+        if not intent_turns:
+            return None
+
+        combined_text = " ".join(t.get("transcript_text", "").strip() for t in intent_turns)
+        chunk_type = "DECISION" if DECISION_CUE_PATTERN.search(combined_text) else "REQUIREMENT"
+
+        target_turn = intent_turns[-1]
+        speaker = (
+            target_turn.get("speaker_label")
+            or target_turn.get("speaker")
+            or "Speaker 0 (Wearer)"
+        )
+        raw_summary = target_turn.get("transcript_text", "").strip()
+        summary = raw_summary if len(raw_summary) <= 120 else raw_summary[:117] + "..."
+
+        speakers: List[str] = []
+        for t in substantive_turns:
+            spk = t.get("speaker_label") or t.get("speaker") or "Speaker"
+            if spk not in speakers:
+                speakers.append(spk)
+        other_speakers = [s for s in speakers if s != speaker]
+
+        if other_speakers:
+            rationale = (
+                f"{speaker} articulated {chunk_type.lower()} in discussion with "
+                f"{', '.join(other_speakers)}: {summary}"
+            )
+        else:
+            rationale = f"{speaker} specified {chunk_type.lower()}: {summary}"
+
+        suggested_node = self._infer_suggested_node(combined_text)
+        return {
+            "has_requirement": True,
+            "chunk_type": chunk_type,
+            "summary": summary,
+            "speaker": speaker,
+            "rationale": rationale,
+            "suggested_node": suggested_node,
+        }
+
+    async def process_transcript_window(
+        self,
+        meeting_id: str,
+        turns: Optional[List[Dict[str, Any]]] = None,
+        current_xml: str = "",
+        *,
+        recent_turns: Optional[List[Dict[str, Any]]] = None,
+        timestamp_ms: Optional[int] = None,
+        broadcast_fn: Optional[Callable[[str, Dict[str, Any]], Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Reasons over a rolling window of spoken transcript turns (even without a whiteboard snapshot)
+        to extract structured REQUIREMENT and DECISION chunks with speaker attribution and optional
+        graph node suggestions.
+        """
+        active_turns = turns if turns is not None else recent_turns
+        if active_turns is None:
+            if self.memory_store and "transcript_turns" in self.memory_store:
+                active_turns = list(self.memory_store["transcript_turns"].get(meeting_id, []))[-6:]
+            else:
+                active_turns = []
+
+        substantive_turns = [
+            t
+            for t in active_turns
+            if isinstance(t, dict) and len((t.get("transcript_text") or "").strip().split()) >= 5
+        ]
+        if not substantive_turns:
+            return None
+
+        extracted: Optional[Dict[str, Any]] = None
+        if self.api_key:
+            try:
+                turns_formatted = "\n".join([
+                    f"- [{t.get('timestamp_ms', 0)}ms] {t.get('speaker_label') or t.get('speaker') or 'Speaker'}: {t.get('transcript_text', '')}"
+                    for t in substantive_turns
+                ])
+                prompt = (
+                    "You are SpecScribe's Real-Time Requirement & Decision Synthesis Agent.\n"
+                    "Analyze the rolling window of spoken meeting transcript turns and the current architecture diagram XML.\n"
+                    "Determine whether the participants articulated any substantive functional/non-functional requirement "
+                    "or architectural decision.\n\n"
+                    f"Current Architecture XML:\n{current_xml or '(Empty diagram)'}\n\n"
+                    f"Recent Spoken Transcript Turns:\n{turns_formatted}\n\n"
+                    "Instructions:\n"
+                    "1. If the turns are only casual chatter, greetings, or filler without architectural or system requirements, "
+                    "set has_requirement=false.\n"
+                    "2. If a requirement or decision is present, set has_requirement=true, choose chunk_type ('REQUIREMENT' or 'DECISION'), "
+                    "provide a concise summary, a 1-2 sentence rationale, the primary speaker label, and optional suggested graph node."
+                )
+                text = await llm.generate_structured(
+                    prompt,
+                    schema=TranscriptRequirementSchema,
+                    api_key=self.api_key,
+                )
+                if text:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict):
+                        if parsed.get("has_requirement") is False:
+                            return None
+                        raw_type = str(parsed.get("chunk_type") or parsed.get("source_type") or "REQUIREMENT").upper()
+                        chunk_type = "DECISION" if raw_type == "DECISION" else "REQUIREMENT"
+                        summary = (parsed.get("summary") or parsed.get("diff_summary") or "").strip()
+                        rationale = (parsed.get("rationale") or parsed.get("decision_rationale") or summary).strip()
+                        speaker = (
+                            parsed.get("speaker")
+                            or parsed.get("primary_speaker")
+                            or substantive_turns[-1].get("speaker_label")
+                            or "Speaker 0 (Wearer)"
+                        )
+                        node_label = parsed.get("suggested_node_label")
+                        node_type = parsed.get("suggested_node_type") or "service"
+                        suggested_node = (
+                            parsed.get("suggested_node")
+                            if isinstance(parsed.get("suggested_node"), dict)
+                            else ({"label": node_label, "node_type": node_type} if node_label else None)
+                        )
+                        if summary or rationale:
+                            extracted = {
+                                "has_requirement": True,
+                                "chunk_type": chunk_type,
+                                "summary": summary or rationale,
+                                "speaker": speaker,
+                                "rationale": rationale or summary,
+                                "suggested_node": suggested_node,
+                            }
+            except Exception as e:
+                logger.warning("Gemini transcript window synthesis failed: %s; using heuristic fallback", e)
+
+        if extracted is None:
+            extracted = self._heuristic_transcript_window_fallback(substantive_turns)
+
+        if not extracted or not extracted.get("has_requirement", True):
+            return None
+
+        chunk_type = extracted["chunk_type"]
+        summary = extracted["summary"]
+        speaker = extracted["speaker"]
+        rationale = extracted["rationale"]
+        suggested_node = extracted.get("suggested_node")
+        latest_ts = (
+            timestamp_ms
+            if timestamp_ms is not None
+            else max((int(t.get("timestamp_ms", 0) or 0) for t in substantive_turns), default=0)
+        )
+
+        chunk_content = f"{chunk_type} at {latest_ts}ms ({speaker}): {summary}. Rationale: {rationale}"
+        embedding_vec = await generate_text_embedding_async(
+            chunk_content,
+            api_key=self.api_key,
+            target_dim=1536,
+        )
+
+        chunk_id: Optional[str] = None
+        if embedding_vec is None:
+            logger.warning(
+                "Embedding failed for transcript window in meeting %s; skipping knowledge_chunk persistence",
+                meeting_id,
+            )
+        else:
+            chunk_id = str(uuid.uuid4())
+            db_record = {
+                "id": chunk_id,
+                "meeting_id": meeting_id,
+                "chunk_type": chunk_type,
+                "timestamp_ms": latest_ts,
+                "content": chunk_content,
+                "embedding": embedding_vec,
+                "embedding_model": get_embedding_model(),
+            }
+            mem_record = {
+                **db_record,
+                "source_type": chunk_type,
+                "summary": summary,
+                "speaker": speaker,
+                "rationale": rationale,
+                "suggested_node": suggested_node,
+            }
+
+            if self.memory_store is not None and "knowledge_chunks" in self.memory_store:
+                chunks_store = self.memory_store["knowledge_chunks"]
+                if isinstance(chunks_store, dict):
+                    chunks_store.setdefault(meeting_id, []).append(mem_record)
+
+            if self.supabase_client:
+                try:
+                    await asyncio.to_thread(
+                        lambda: self.supabase_client.table("knowledge_chunks")
+                        .insert(db_record)
+                        .execute()
+                    )
+                except Exception as e:
+                    logger.warning("Failed to insert transcript knowledge_chunk in Supabase: %s", e)
+
+        result = {
+            "id": chunk_id,
+            "chunk_id": chunk_id,
+            "meeting_id": meeting_id,
+            "timestamp_ms": latest_ts,
+            "has_requirement": True,
+            "chunk_type": chunk_type,
+            "source_type": chunk_type,
+            "summary": summary,
+            "diff_summary": summary,
+            "speaker": speaker,
+            "speaker_label": speaker,
+            "rationale": rationale,
+            "decision_rationale": rationale,
+            "suggested_node": suggested_node,
+        }
+
+        if broadcast_fn:
+            for event_name in ("REQUIREMENT_SYNTHESIZED", "DECISION_LOGGED"):
+                payload = {
+                    "event": event_name,
+                    "type": event_name,
+                    "snapshot_id": chunk_id,
+                    "chunk_id": chunk_id,
+                    "meeting_id": meeting_id,
+                    "timestamp_ms": latest_ts,
+                    "chunk_type": chunk_type,
+                    "source_type": chunk_type,
+                    "summary": summary,
+                    "diff_summary": summary,
+                    "rationale": rationale,
+                    "decision_rationale": rationale,
+                    "speaker": speaker,
+                    "speaker_label": speaker,
+                    "suggested_node": suggested_node,
+                }
+                try:
+                    res = broadcast_fn(meeting_id, payload)
+                    if asyncio.iscoroutine(res):
+                        await res
+                except Exception as e:
+                    logger.warning("Failed to broadcast %s: %s", event_name, e)
+
+        return result

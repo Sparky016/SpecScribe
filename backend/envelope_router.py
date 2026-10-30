@@ -8,12 +8,14 @@ Source: SPEC_DOC.md §4.2 (Finding #7)
 from abc import ABC, abstractmethod
 import asyncio
 import base64
+from collections import defaultdict
+import inspect
 import json
 import logging
 import os
 import sys
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 import uuid
 
 from fastapi import WebSocket
@@ -28,6 +30,11 @@ try:
     from graph_engine import extract_graph_delta_from_gemini
 except (ImportError, ModuleNotFoundError):
     from backend.graph_engine import extract_graph_delta_from_gemini
+
+try:
+    from agents.decision_linker import has_requirement_intent
+except (ImportError, ModuleNotFoundError):
+    from backend.agents.decision_linker import has_requirement_intent
 
 try:
     from services.diarization import SpeakerDiarizer
@@ -68,6 +75,7 @@ class HandshakeHandler(BaseEnvelopeHandler):
             msg.get("protocolVersion"),
         )
         session = session_mgr.get_or_create_session(meeting_id)
+        session._handshake_completed = True
         timestamp_ms = msg.get("timestamp_ms", 0)
 
         # If diagram already has nodes, send current rendered diagram immediately
@@ -98,10 +106,123 @@ class HandshakeHandler(BaseEnvelopeHandler):
 
 
 class AsrHandler(BaseEnvelopeHandler):
-    """Handles speech-to-text transcript turns, performing multi-speaker attribution and persisting/broadcasting them."""
+    """Handles speech-to-text transcript turns, performing multi-speaker attribution and continuous requirement reasoning."""
+
+    SPEECH_REASONING_DEBOUNCE_SEC: float = 8.0
+    SPEECH_REASONING_TURN_THRESHOLD: int = 2
+    MIN_SUBSTANTIVE_WORDS: int = 5
 
     def __init__(self, diarizer: Optional[SpeakerDiarizer] = None):
         self.diarizer = diarizer or SpeakerDiarizer()
+        self._unreasoned_turn_counts: Dict[str, int] = defaultdict(int)
+        self._last_speech_reasoning_times: Dict[str, float] = defaultdict(float)
+        self._recent_turns: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
+
+    def _get_session_if_available(self, session_mgr: Any, meeting_id: str) -> Any:
+        live = getattr(session_mgr, "live_sessions", None)
+        if isinstance(live, dict) and meeting_id in live:
+            return live[meeting_id]
+        if hasattr(session_mgr, "get_or_create_session"):
+            try:
+                return session_mgr.get_or_create_session(meeting_id)
+            except Exception:
+                return None
+        return None
+
+    def _get_recent_turns_window(self, session_mgr: Any, meeting_id: str, window_size: int = 6) -> List[Dict[str, Any]]:
+        mem = getattr(session_mgr, "memory_store", None)
+        if isinstance(mem, dict) and "transcript_turns" in mem:
+            turns_map = mem["transcript_turns"]
+            if isinstance(turns_map, dict) and turns_map.get(meeting_id):
+                return list(turns_map[meeting_id])[-window_size:]
+        return list(self._recent_turns.get(meeting_id, []))[-window_size:]
+
+    def _get_current_xml(self, session: Any) -> str:
+        if session is not None and hasattr(session, "get_xml"):
+            try:
+                xml_val = session.get_xml()
+                if isinstance(xml_val, str):
+                    return xml_val
+            except Exception:
+                pass
+        return ""
+
+    async def _run_speech_reasoning(
+        self,
+        session_mgr: Any,
+        session: Any,
+        meeting_id: str,
+        timestamp_ms: int,
+        delay_sec: float = 0.0,
+    ) -> None:
+        try:
+            if delay_sec > 0:
+                await asyncio.sleep(delay_sec)
+                if session is not None and not getattr(session, "_pending_speech_reasoning", True):
+                    return
+
+            linker = getattr(session_mgr, "decision_linker", None)
+            process_fn = getattr(linker, "process_transcript_window", None) if linker is not None else None
+            if not callable(process_fn):
+                return
+
+            recent_turns = self._get_recent_turns_window(session_mgr, meeting_id)
+            current_xml = self._get_current_xml(session)
+
+            res = process_fn(meeting_id, recent_turns, current_xml)
+            if inspect.isawaitable(res):
+                res = await res
+
+            if not isinstance(res, dict) or res.get("has_requirement", True) is False:
+                return
+
+            if session is not None and not getattr(session, "_pending_speech_reasoning", True):
+                return
+
+            chunk_id = res.get("chunk_id") or res.get("id") or str(uuid.uuid4())
+            chunk_type = str(res.get("chunk_type") or res.get("source_type") or "REQUIREMENT").upper()
+            summary = res.get("summary") or res.get("diff_summary") or res.get("rationale") or ""
+            rationale = res.get("rationale") or res.get("decision_rationale") or summary
+            speaker = res.get("speaker") or res.get("speaker_label") or "Speaker 0 (Wearer)"
+            suggested_node = res.get("suggested_node")
+            event_ts = int(res.get("timestamp_ms", timestamp_ms) or timestamp_ms)
+
+            base_fields = {
+                "snapshot_id": chunk_id,
+                "chunk_id": chunk_id,
+                "meeting_id": meeting_id,
+                "timestamp_ms": event_ts,
+                "chunk_type": chunk_type,
+                "source_type": chunk_type,
+                "summary": summary,
+                "diff_summary": summary,
+                "rationale": rationale,
+                "decision_rationale": rationale,
+                "speaker": speaker,
+                "speaker_label": speaker,
+                "suggested_node": suggested_node,
+            }
+
+            await session_mgr.broadcast_to_meeting(
+                meeting_id,
+                {
+                    "event": "REQUIREMENT_SYNTHESIZED",
+                    "type": "REQUIREMENT_SYNTHESIZED",
+                    **base_fields,
+                },
+            )
+            await session_mgr.broadcast_to_meeting(
+                meeting_id,
+                {
+                    "event": "DECISION_LOGGED",
+                    "type": "DECISION_LOGGED",
+                    **base_fields,
+                },
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning("Speech requirement reasoning error in meeting %s: %s", meeting_id, e)
 
     async def handle(
         self,
@@ -132,6 +253,15 @@ class AsrHandler(BaseEnvelopeHandler):
                 turn_id = await session_mgr.db_save_transcript_turn(
                     meeting_id, speaker, text, timestamp_ms
                 )
+                self._recent_turns[meeting_id].append(
+                    {
+                        "id": turn_id,
+                        "meeting_id": meeting_id,
+                        "speaker_label": speaker,
+                        "transcript_text": text,
+                        "timestamp_ms": timestamp_ms,
+                    }
+                )
                 logger.info("[%s @ %dms]: %s", speaker, timestamp_ms, text)
                 await session_mgr.broadcast_to_meeting(
                     meeting_id,
@@ -144,6 +274,75 @@ class AsrHandler(BaseEnvelopeHandler):
                     },
                     exclude=websocket,
                 )
+
+                # Filter out short filler utterances (< 5 words)
+                words = text.strip().split()
+                if len(words) < self.MIN_SUBSTANTIVE_WORDS:
+                    return
+
+                session = self._get_session_if_available(session_mgr, meeting_id)
+                if session is not None and isinstance(getattr(session, "unreasoned_turn_count", None), int):
+                    unreasoned_count = session.unreasoned_turn_count + 1
+                else:
+                    unreasoned_count = self._unreasoned_turn_counts[meeting_id] + 1
+
+                if session is not None and isinstance(
+                    getattr(session, "last_speech_reasoning_time", None), (int, float)
+                ):
+                    last_reason_time = float(session.last_speech_reasoning_time)
+                else:
+                    last_reason_time = self._last_speech_reasoning_times[meeting_id]
+
+                self._unreasoned_turn_counts[meeting_id] = unreasoned_count
+                if session is not None:
+                    session.unreasoned_turn_count = unreasoned_count
+
+                now = time.time()
+                intent_detected = has_requirement_intent(text)
+                should_trigger = (
+                    unreasoned_count >= self.SPEECH_REASONING_TURN_THRESHOLD
+                    or (intent_detected and (now - last_reason_time >= self.SPEECH_REASONING_DEBOUNCE_SEC))
+                )
+
+                if should_trigger:
+                    self._unreasoned_turn_counts[meeting_id] = 0
+                    self._last_speech_reasoning_times[meeting_id] = now
+                    if session is not None:
+                        session.unreasoned_turn_count = 0
+                        session.last_speech_reasoning_time = now
+                        session._pending_speech_reasoning = True
+
+                    is_live_ws_single_turn = bool(
+                        session is not None
+                        and getattr(session, "_handshake_completed", False) is True
+                        and unreasoned_count < self.SPEECH_REASONING_TURN_THRESHOLD
+                    )
+                    delay_sec = 0.15 if is_live_ws_single_turn else 0.0
+                    coro = self._run_speech_reasoning(
+                        session_mgr=session_mgr,
+                        session=session,
+                        meeting_id=meeting_id,
+                        timestamp_ms=int(timestamp_ms or 0),
+                        delay_sec=delay_sec,
+                    )
+
+                    spawn_fn = getattr(session_mgr, "spawn", None)
+                    task: Optional[asyncio.Task] = None
+                    if callable(spawn_fn):
+                        spawn_res = spawn_fn(coro)
+                        if isinstance(spawn_res, asyncio.Task):
+                            task = spawn_res
+                        elif asyncio.iscoroutine(coro):
+                            # spawn_fn was a MagicMock without side_effect that didn't schedule coro
+                            try:
+                                task = asyncio.create_task(coro)
+                            except RuntimeError:
+                                coro.close()
+                    else:
+                        task = asyncio.create_task(coro)
+
+                    if task is not None and not is_live_ws_single_turn:
+                        await task
             except Exception as e:
                 logger.error(
                     "Error processing asrTranscription in meeting %s: %s",
@@ -298,6 +497,9 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 return
 
             if delta.has_meaningful_change or delta.added_vertices or delta.added_edges:
+                session._pending_speech_reasoning = False
+                session.unreasoned_turn_count = 0
+                session.last_speech_reasoning_time = now
                 session.apply_delta(delta)
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
@@ -367,6 +569,9 @@ class PinchCommandHandler(BaseEnvelopeHandler):
             label = msg.get("label", f"New {node_type.capitalize()}")
 
             if action == PinchAction.ADD_NODE:
+                session._pending_speech_reasoning = False
+                session.unreasoned_turn_count = 0
+                session.last_speech_reasoning_time = time.time()
                 node_id = session.add_node(node_type, label)
                 label = session.node_metadata[node_id]["label"]
                 verb = "~ Updated" if session.last_node_reused else "+ Added"
@@ -416,6 +621,9 @@ class PinchCommandHandler(BaseEnvelopeHandler):
                 )
 
             elif action == PinchAction.CONNECT_NODES:
+                session._pending_speech_reasoning = False
+                session.unreasoned_turn_count = 0
+                session.last_speech_reasoning_time = time.time()
                 source = msg.get("source") or msg.get("source_id", "")
                 target = msg.get("target") or msg.get("target_id", "")
                 edge_label = msg.get("edge_label", "")

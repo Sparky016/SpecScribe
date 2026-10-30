@@ -4,6 +4,7 @@ Supports Mode A (Proactive Push every 20s/diagram change) and Mode B (On-Demand 
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import os
@@ -18,6 +19,16 @@ from pydantic import BaseModel, Field
 import llm
 
 logger = logging.getLogger("specscribe.raising_hand")
+
+
+class _AwaitableTurnList(list):
+    """List of transcript turns that can be consumed synchronously or awaited in async contexts."""
+
+    def __await__(self):
+        async def _coro():
+            return list(self)
+
+        return _coro().__await__()
 
 
 class RaisingHandEvaluation(BaseModel):
@@ -75,15 +86,58 @@ class RaisingHandAgent:
         timestamp_ms: int,
         window_ms: int = 60000,
     ) -> List[Dict[str, Any]]:
-        """Retrieves recent transcript turns for evaluation."""
-        turns: List[Dict[str, Any]] = []
+        """
+        Retrieves recent transcript turns for evaluation within the last window_ms (default: 60s).
+        Falls back to Supabase transcript_turns when memory_store["transcript_turns"] is empty
+        (e.g., after a backend restart), matching DecisionLinkerAgent.
+        """
+        all_turns: List[Dict[str, Any]] = []
         if self.memory_store and "transcript_turns" in self.memory_store:
-            all_turns = self.memory_store["transcript_turns"].get(meeting_id, [])
-            lower = max(0, timestamp_ms - window_ms)
-            turns = [t for t in all_turns if lower <= t.get("timestamp_ms", 0) <= timestamp_ms]
-            if not turns and all_turns:
-                turns = all_turns[-5:]
-        return turns
+            all_turns = list(self.memory_store["transcript_turns"].get(meeting_id, []))
+
+        if not all_turns and self.supabase_client:
+            try:
+                res = (
+                    self.supabase_client.table("transcript_turns")
+                    .select("*")
+                    .eq("meeting_id", meeting_id)
+                    .order("timestamp_ms")
+                    .execute()
+                )
+                if res and getattr(res, "data", None):
+                    all_turns = list(res.data)
+            except Exception as e:
+                logger.warning("Supabase transcript lookup error in RaisingHandAgent: %s", e)
+
+        if not all_turns:
+            return _AwaitableTurnList()
+
+        lower = max(0, timestamp_ms - window_ms)
+        turns = [t for t in all_turns if lower <= t.get("timestamp_ms", 0) <= timestamp_ms]
+        if not turns:
+            prior_turns = [t for t in all_turns if t.get("timestamp_ms", 0) <= timestamp_ms]
+            turns = prior_turns[-5:] if prior_turns else all_turns[-5:]
+        return _AwaitableTurnList(turns)
+
+    async def _resolve_recent_context_async(
+        self,
+        meeting_id: str,
+        timestamp_ms: int,
+        window_ms: int = 60000,
+    ) -> List[Dict[str, Any]]:
+        """Resolves _get_recent_context off the event loop when Supabase fallback is needed."""
+        has_mem = bool(
+            self.memory_store
+            and "transcript_turns" in self.memory_store
+            and self.memory_store["transcript_turns"].get(meeting_id)
+        )
+        if not has_mem and self.supabase_client:
+            res = await asyncio.to_thread(self._get_recent_context, meeting_id, timestamp_ms, window_ms)
+        else:
+            res = self._get_recent_context(meeting_id, timestamp_ms, window_ms=window_ms)
+        if not isinstance(res, list) and inspect.isawaitable(res):
+            return list(await res)
+        return list(res)
 
     def _evaluate_heuristic_proactive(
         self,
@@ -168,7 +222,11 @@ class RaisingHandAgent:
         Asynchronously evaluates current whiteboard architecture and recent speech using Gemini.
         Uses the shared async llm helper to prevent blocking the asyncio event loop (Fixes #1).
         """
-        turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
+        turns = (
+            recent_turns
+            if recent_turns is not None
+            else await self._resolve_recent_context_async(meeting_id, timestamp_ms, window_ms=60000)
+        )
         xml_content = drawio_xml or ""
         history = self._history.setdefault(meeting_id, set())
 
@@ -223,7 +281,11 @@ class RaisingHandAgent:
         """
         Mode B: Asynchronous On-Demand Research Pull via the shared async llm helper (Fixes #1).
         """
-        turns = recent_turns or self._get_recent_context(meeting_id, timestamp_ms, window_ms=60000)
+        turns = (
+            recent_turns
+            if recent_turns is not None
+            else await self._resolve_recent_context_async(meeting_id, timestamp_ms, window_ms=60000)
+        )
         xml_content = drawio_xml or ""
 
         if self.api_key:

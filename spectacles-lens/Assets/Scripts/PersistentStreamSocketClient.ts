@@ -36,9 +36,11 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private websocketUrl: string = '';
   private lastSentCommand: Record<string, any> | null = null;
 
+  private static readonly noopCallback = (_payload?: any): void => {};
   public onDiagramUpdated: (imageB64: string, diffSummary: string) => void = () => {};
   public onHandRaised: (payload: any) => void = () => {};
-  public onDecisionLogged: (payload: any) => void = () => {};
+  public onDecisionLogged: (payload: any) => void = PersistentStreamSocketClient.noopCallback;
+  public onRequirementSynthesized: (payload: any) => void = PersistentStreamSocketClient.noopCallback;
   public onMeetingFinalized: (payload: any) => void = () => {};
 
   onAwake(): void {
@@ -225,20 +227,39 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
     this.reconnectEvent.reset(delaySec);
   }
 
+  public handleIncomingMessage(rawJsonOrMsg: string | Record<string, any>): void {
+    if (typeof rawJsonOrMsg === 'string') {
+      this.routeInboundJson(rawJsonOrMsg);
+    } else if (rawJsonOrMsg && typeof rawJsonOrMsg === 'object') {
+      this.routeInboundJson(JSON.stringify(rawJsonOrMsg));
+    }
+  }
+
   private routeInboundJson(rawJson: string): void {
     try {
       const msg = JSON.parse(rawJson);
-      if (msg.event === 'DIAGRAM_UPDATED') {
+      const eventType = msg.event || msg.type;
+      if (eventType === 'DIAGRAM_UPDATED') {
         this.onDiagramUpdated(msg.image_b64, msg.diff_summary);
-      } else if (msg.event === 'HAND_RAISED') {
+      } else if (eventType === 'HAND_RAISED') {
         this.onHandRaised(msg);
-      } else if (msg.event === 'DECISION_LOGGED') {
-        this.onDecisionLogged(msg);
-      } else if (msg.event === 'MEETING_FINALIZED') {
+      } else if (eventType === 'REQUIREMENT_SYNTHESIZED') {
+        if (this.onRequirementSynthesized !== PersistentStreamSocketClient.noopCallback) {
+          this.onRequirementSynthesized(msg);
+        } else {
+          this.onDecisionLogged(msg);
+        }
+      } else if (eventType === 'DECISION_LOGGED') {
+        if (this.onDecisionLogged !== PersistentStreamSocketClient.noopCallback) {
+          this.onDecisionLogged(msg);
+        } else {
+          this.onRequirementSynthesized(msg);
+        }
+      } else if (eventType === 'MEETING_FINALIZED') {
         this.onMeetingFinalized(msg);
-      } else if (msg.event === 'COMMAND_ACK') {
+      } else if (eventType === 'COMMAND_ACK') {
         // Client-only actions are acknowledged by the backend; nothing to do.
-      } else if (msg.event === 'COMMAND_ERROR') {
+      } else if (eventType === 'COMMAND_ERROR') {
         print(`[PersistentStreamSocketClient] Command error (${msg.action}): ${msg.message}`);
       }
     } catch (e) {

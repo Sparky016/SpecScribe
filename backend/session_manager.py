@@ -64,6 +64,8 @@ class TimedLiveGraphSession(LiveGraphSession):
     def __init__(self, *args: Any, **kwargs: Any):
         super().__init__(*args, **kwargs)
         self.started_at_monotonic: float = time.monotonic()
+        self.unreasoned_turn_count: int = 0
+        self.last_speech_reasoning_time: float = 0.0
 
     def elapsed_ms(self) -> int:
         """Milliseconds since meeting/session start (PRD timestamp_ms)."""
