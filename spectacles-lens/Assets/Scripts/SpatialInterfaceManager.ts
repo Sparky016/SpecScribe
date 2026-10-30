@@ -91,6 +91,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.whiteboardState = WhiteboardState.SELECT_AREA;
     this.diagramStage = 0;
     this.nodeCount = 0;
+    if (this.detectPhysicalHardware()) this.setHardwarePassthrough(true);
     this.cal().placeForCalibration(); // Whiteboard starts in selection/calibration mode up high on the wall
     this.view().presentCalibration();
     if (this.captureModeStatusText) this.captureModeStatusText.text = this.capture.formatModeBadge();
@@ -124,10 +125,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   /** Whiteboard Interactable pinch: lock the area, then start drawing, then capture the board (MANUAL capture mode only). */
   public handleWhiteboardPinch(): void {
     if (this.whiteboardState === WhiteboardState.SELECT_AREA) {
-      if (this.input().suppressesPinch()) {
-        print('[SpatialInterfaceManager] Ignoring pinch release right after dragging');
-        return;
-      }
+      if (this.input().suppressesPinch()) return print('[SpatialInterfaceManager] Ignoring pinch release right after dragging');
       print('[SpatialInterfaceManager] Center Whiteboard pinched in SELECT_AREA mode -> Locking area');
       this.pinchCenterToSet();
     } else if (this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
@@ -139,23 +137,15 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   }
 
   public triggerAddNode(nodeType: string): void {
-    if (this.meetingConcluded) {
-      print('[SpatialInterfaceManager] Meeting is concluded; ignoring node addition.');
-      return;
-    }
+    if (this.meetingConcluded) return print('[SpatialInterfaceManager] Meeting is concluded; ignoring node addition.');
     // Auto-advance through selection and clean board if user directly adds a node
     if (this.whiteboardState === WhiteboardState.SELECT_AREA) this.selectWhiteboardArea();
-    if (this.demoMode && this.whiteboardState === WhiteboardState.CLEAN_BOARD) {
-      this.nodeCount = 4;
-      this.view().showBoard(this.texWhiteboardDrawn);
-    }
+    if (this.demoMode && this.whiteboardState === WhiteboardState.CLEAN_BOARD) { this.nodeCount = 4; this.view().showBoard(this.texWhiteboardDrawn); }
     this.whiteboardState = WhiteboardState.NODE_ADDED;
     this.nodeCount++;
     this.diagramStage = 1;
     const labels = nodeLabels(nodeType, this.demoMode, this.socketClient ? this.socketClient.consumeLatestSpokenPhrase() : null);
-    const toastMsg = this.demoMode
-      ? `Injected [${nodeType.toUpperCase()}]: "${labels.shown}" (Nodes: ${this.nodeCount})`
-      : `Adding [${nodeType.toUpperCase()}]: "${labels.shown}"... (pending)`;
+    const toastMsg = this.demoMode ? `Injected [${nodeType.toUpperCase()}]: "${labels.shown}" (Nodes: ${this.nodeCount})` : `Adding [${nodeType.toUpperCase()}]: "${labels.shown}"... (pending)`;
     print(`[SpatialInterfaceManager] ${toastMsg}`);
     this.view().presentNodeAdded(toastMsg, this.demoMode);
     if (this.demoMode) this.raiseHand(demoNodeCritique(nodeType)); // AI teammate critique (demo only)
@@ -168,9 +158,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.whiteboardState = WhiteboardState.SNAPSHOT_UPDATED;
     this.diagramStage = 2;
     if (this.demoMode) this.nodeCount = 6;
-    const toastMsg = this.demoMode
-      ? 'Snapshot Synced: Multi-tier DAG optimized (6 nodes, 7 edges)'
-      : 'Snapshot update requested... (pending)';
+    const toastMsg = this.demoMode ? 'Snapshot Synced: Multi-tier DAG optimized (6 nodes, 7 edges)' : 'Snapshot update requested... (pending)';
     print(`[SpatialInterfaceManager] ${toastMsg}`);
     this.view().presentSnapshot(toastMsg, this.demoMode);
     if (this.demoMode) this.raiseHand(DEMO_SNAPSHOT_CRITIQUE); // Proactive AI teammate feedback (demo only)
@@ -224,19 +212,13 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private resolvePeers(): void {
     if (!this.socketClient) this.socketClient = this.findPeer(this.getSceneObject(), 'sendPinchCommand', 'socket');
     if (!this.raisingHandAgent) this.raisingHandAgent = this.findPeer(this.getSceneObject(), 'triggerHandRaised', 'agent');
-    if (!this.raisingHandAgent) {
-      const agentObj = findSceneObject('RaisingHandAgentRoot') || findSceneObject('SpecScribeControllers');
-      if (agentObj) this.raisingHandAgent = this.findPeer(agentObj, 'triggerHandRaised', 'agent');
-    }
+    const agentObj = !this.raisingHandAgent ? (findSceneObject('RaisingHandAgentRoot') || findSceneObject('SpecScribeControllers')) : null;
+    if (agentObj) this.raisingHandAgent = this.findPeer(agentObj, 'triggerHandRaised', 'agent');
   }
 
   /** First script component on `obj`, other than this one, that exposes `key`. */
   private findPeer(obj: SceneObject, key: string, label: string): any {
-    try {
-      for (const c of obj.getComponents('Component.ScriptComponent' as any)) if (c !== this && (c as any)[key]) return c;
-    } catch (e) {
-      print(`[SpatialInterfaceManager] resolveReferences ${label} lookup failed: ${e}`);
-    }
+    try { for (const c of obj.getComponents('Component.ScriptComponent' as any)) if (c !== this && (c as any)[key]) return c; } catch (e) { print(`[SpatialInterfaceManager] resolveReferences ${label} lookup failed: ${e}`); }
     return undefined;
   }
 
@@ -268,6 +250,18 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
 
   private input(): PreviewInputAdapter { return (this.previewInputAdapter = this.previewInputAdapter || this.attach<PreviewInputAdapter>(PreviewInputAdapter)); }
 
+  /** Auto-detects physical Spectacles runtime when `deviceInfoSystem.isSpectacles()` is true and not running in editor. */
+  public detectPhysicalHardware(): boolean {
+    try { const dis = (global as any).deviceInfoSystem; if (dis && typeof dis.isSpectacles === 'function' && dis.isSpectacles() && !(typeof dis.isEditor === 'function' && dis.isEditor())) return true; } catch (_) {}
+    return this.isPhysicalHardware;
+  }
+  public setHardwarePassthrough(enabled: boolean): void {
+    this.isPhysicalHardware = !!enabled;
+    this.view().setHardwarePassthrough(this.isPhysicalHardware);
+    this.cal().setHardwarePassthrough(this.isPhysicalHardware, this.view().overlayMesh);
+  }
+  public toggleHardwarePassthrough(): boolean { this.setHardwarePassthrough(!this.isPhysicalHardware); return this.isPhysicalHardware; }
+
   /** Test hook: returns per-scenario state to its initial values without re-binding scene components. */
   public resetForTest(): void {
     this.concludeTimeoutEvent?.cancel();
@@ -288,9 +282,15 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   public setToastText(text: string): void { this.view().setToast(text); }
   public getWhiteboardPosition(): vec3 { return this.cal().getPosition(); }
   public getWhiteboardScale(): vec3 { return this.cal().getScale(); }
+  public getWhiteboardYaw(): number { return this.cal().getYaw(); }
   public setWhiteboardPosition(x: number, y: number, z: number): void { this.cal().setPosition(x, y, z); }
   public setWhiteboardScale(x: number, y: number, z: number): void { this.cal().setScale(x, y, z); }
   public dragWhiteboard(deltaY: number, deltaX: number = 0, deltaZ: number = 0): void { this.cal().drag(deltaY, deltaX, deltaZ); }
+  public adjustDepth(deltaZ: number): vec3 { return this.cal().adjustDepth(deltaZ); }
+  public adjustWhiteboardDepth(deltaZ: number): vec3 { return this.cal().adjustDepth(deltaZ); }
+  public rotateYaw(deltaDegrees: number): quat { return this.cal().rotateYaw(deltaDegrees); }
+  public adjustYaw(deltaYawDeg: number): quat { return this.cal().adjustYaw(deltaYawDeg); }
+  public rotateWhiteboardYaw(deltaDegrees: number): quat { return this.cal().rotateYaw(deltaDegrees); }
   public resizeWhiteboard(newWidth: number, newHeight: number): void { this.cal().resize(newWidth, newHeight); }
   public enableWhiteboardManipulation(): void { this.cal().enableManipulation(); }
   public disableWhiteboardManipulation(): void { this.cal().disableManipulation(); }

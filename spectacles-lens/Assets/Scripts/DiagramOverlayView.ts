@@ -48,6 +48,48 @@ export class DiagramOverlayView extends BaseScriptComponent {
     if (!this.boardMesh && boardMesh) this.boardMesh = boardMesh;
     if (!this.toastText && toastText) this.toastText = toastText;
     this.isPhysicalHardware = !!isPhysicalHardware;
+    if (this.isPhysicalHardware) {
+      this.setHardwarePassthrough(true);
+    }
+  }
+
+  /**
+   * Configures hardware waveguide passthrough mode: makes WhiteboardBackplate fully transparent (alpha = 0.0)
+   * while preserving ColliderComponent hit-testing and keeping WhiteboardOverlayAnchor visible at alpha = 0.92.
+   */
+  public setHardwarePassthrough(enabled: boolean): void {
+    this.isPhysicalHardware = !!enabled;
+    const Vec4Ctor = (global as any).vec4;
+    const makeColor = (x: number, y: number, z: number, w: number) =>
+      typeof Vec4Ctor === 'function' ? new Vec4Ctor(x, y, z, w) : { x, y, z, w };
+
+    if (this.boardMesh) {
+      this.boardMesh.enabled = !this.isPhysicalHardware;
+      const boardObj = this.boardMesh.getSceneObject?.();
+      if (boardObj) {
+        boardObj.enabled = true;
+        const col =
+          boardObj.getComponent?.('Physics.ColliderComponent' as any) ||
+          boardObj.getComponent?.('ColliderComponent' as any);
+        if (col) col.enabled = true;
+      }
+      if (this.boardMesh.mainMaterial && this.boardMesh.mainMaterial.mainPass) {
+        const pass = this.boardMesh.mainMaterial.mainPass as any;
+        const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 1 };
+        pass.baseColor = makeColor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, this.isPhysicalHardware ? 0.0 : 1.0);
+      }
+    }
+
+    if (this.overlayMesh) {
+      this.overlayMesh.enabled = true;
+      const overlayObj = this.overlayMesh.getSceneObject?.();
+      if (overlayObj) overlayObj.enabled = true;
+      if (this.overlayMesh.mainMaterial && this.overlayMesh.mainMaterial.mainPass) {
+        const pass = this.overlayMesh.mainMaterial.mainPass as any;
+        const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 0.92 };
+        pass.baseColor = makeColor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, 0.92);
+      }
+    }
   }
 
   public loadTextures(): void {
@@ -187,7 +229,14 @@ export class DiagramOverlayView extends BaseScriptComponent {
           this.overlayMesh.mainMaterial.mainPass
         ) {
           this.overlayMesh.enabled = true;
-          this.overlayMesh.mainMaterial.mainPass.baseTex = decodedTexture;
+          const pass = this.overlayMesh.mainMaterial.mainPass as any;
+          pass.baseTex = decodedTexture;
+          const Vec4Ctor = (global as any).vec4;
+          const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 0.92 };
+          pass.baseColor =
+            typeof Vec4Ctor === 'function'
+              ? new Vec4Ctor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, 0.92)
+              : { x: bc.x ?? 1, y: bc.y ?? 1, z: bc.z ?? 1, w: 0.92 };
           print('[DiagramOverlayView] Decoded and applied server diagram overlay.');
         }
       },
@@ -215,12 +264,33 @@ export class DiagramOverlayView extends BaseScriptComponent {
   private setMeshTexture(rmv: RenderMeshVisual, tex: Texture): void {
     try {
       if (rmv && rmv.mainMaterial && rmv.mainMaterial.mainPass) {
+        const pass = rmv.mainMaterial.mainPass as any;
+        const Vec4Ctor = (global as any).vec4;
+        const makeColor = (x: number, y: number, z: number, w: number) =>
+          typeof Vec4Ctor === 'function' ? new Vec4Ctor(x, y, z, w) : { x, y, z, w };
         if (this.isPhysicalHardware && rmv === this.boardMesh) {
-          // On physical Spectacles in front of a real whiteboard, disable virtual quad to prevent waveguide glare
+          // On physical Spectacles in front of a real whiteboard, make transparent and disable virtual quad
+          const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 1 };
+          pass.baseColor = makeColor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, 0.0);
           rmv.enabled = false;
+          const boardObj = rmv.getSceneObject?.();
+          if (boardObj) {
+            boardObj.enabled = true;
+            const col =
+              boardObj.getComponent?.('Physics.ColliderComponent' as any) ||
+              boardObj.getComponent?.('ColliderComponent' as any);
+            if (col) col.enabled = true;
+          }
         } else {
           rmv.enabled = true;
-          rmv.mainMaterial.mainPass.baseTex = tex;
+          pass.baseTex = tex;
+          if (rmv === this.overlayMesh) {
+            const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 0.92 };
+            pass.baseColor = makeColor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, 0.92);
+          } else if (rmv === this.boardMesh) {
+            const bc = pass.baseColor || { x: 1, y: 1, z: 1, w: 1 };
+            pass.baseColor = makeColor(bc.x ?? 1, bc.y ?? 1, bc.z ?? 1, 1.0);
+          }
         }
       }
     } catch (e) {
