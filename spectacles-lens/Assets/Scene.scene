@@ -863,6 +863,7 @@
     sampleIntervalSeconds: true
     captureMode: true
     frameSmallerDimension: true
+    demoMode: true
   ScriptTypesDefault:
     {}
   ScriptInputs:
@@ -870,6 +871,7 @@
       sampleIntervalSeconds: !<float> 3.000000
       captureMode: ""
       frameSmallerDimension: !<float> 480.000000
+      demoMode: false
       simulatedTexture: !<reference.Texture> 69b2b12f-15b1-44d5-9ca3-1da4b29caef0
   ScriptTypes:
     "":
@@ -3538,7 +3540,7 @@
       meetingId: 00000000-0000-4000-8000-000000000d0e
       apiToken: ""
       cameraCapturer: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
-      simulatedSpeechPhrase: Payment Gateway Microservice
+      simulatedSpeechPhrase: ""
   ScriptTypes:
     "":
       {}

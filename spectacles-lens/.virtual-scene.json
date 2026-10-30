@@ -5913,6 +5913,12 @@
           "name": "PeriodicCameraCapturer",
           "enabled": true,
           "properties": {
+            "demoMode": {
+              "isScriptInput": true,
+              "value": false,
+              "type": "boolean",
+              "defaultValue": "false"
+            },
             "frameSmallerDimension": {
               "isScriptInput": true,
               "value": 480,
@@ -5975,7 +5981,7 @@
             },
             "simulatedSpeechPhrase": {
               "isScriptInput": true,
-              "value": "Payment Gateway Microservice",
+              "value": "",
               "type": "string"
             },
             "scriptAsset": "@asset:Scripts/PersistentStreamSocketClient.ts",

@@ -19,6 +19,9 @@ export function normalizeCaptureMode(mode: string | undefined | null): CaptureMo
 @component
 export class PeriodicCameraCapturer extends BaseScriptComponent {
   @input
+  public demoMode: boolean = false;
+
+  @input
   private sampleIntervalSeconds: number = 3.0;
 
   // 'auto' (periodic capture) or 'manual' (pinch to capture).
@@ -51,10 +54,62 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
   }
 
   private setupCameraPipeline(): void {
-    // 1. If simulatedTexture is assigned (e.g. DemoVideo VideoTexture in Inspector), prioritize it
+    // 1. When demoMode is true, prioritize simulated / prerecorded textures
+    if (this.demoMode) {
+      if (this.bindSimulatedOrFallbackTexture()) {
+        return;
+      }
+    } else {
+      // 2. demoMode is false: attempt live CameraModule feed FIRST
+      try {
+        if (!this.cameraModule) {
+          try {
+            this.cameraModule = require('LensStudio:CameraModule');
+          } catch (e) {
+            // Ignored
+          }
+        }
+        if (
+          typeof CameraModule !== 'undefined' &&
+          CameraModule.createCameraRequest &&
+          this.cameraModule &&
+          typeof this.cameraModule.requestCamera === 'function'
+        ) {
+          const request = CameraModule.createCameraRequest();
+          request.cameraId = CameraModule.CameraId.Default_Color;
+          request.imageSmallerDimension = this.frameSmallerDimension;
+          const tex = this.cameraModule.requestCamera(request);
+          if (tex) {
+            this.cameraTexture = tex;
+            print(`[PeriodicCameraCapturer] Camera pipeline initialized at ${this.frameSmallerDimension}p.`);
+            return;
+          }
+          throw new Error('CameraModule.requestCamera returned no texture');
+        } else {
+          throw new Error('CameraModule or requestCamera is unavailable');
+        }
+      } catch (e) {
+        print(`[PeriodicCameraCapturer] Camera pipeline unavailable (simulated runtime): ${e}`);
+        // Fall back to simulatedTexture or WhiteboardBackplate texture so Lens Studio Preview still works seamlessly
+        if (this.bindSimulatedOrFallbackTexture()) {
+          return;
+        }
+      }
+    }
+
+    if (!this.cameraTexture) {
+      if (this.bindSimulatedOrFallbackTexture()) {
+        return;
+      }
+    }
+
+    print('[PeriodicCameraCapturer] Running in simulation without camera input; periodic capture idle.');
+  }
+
+  private bindSimulatedOrFallbackTexture(): boolean {
+    // A. If simulatedTexture is assigned (e.g. DemoVideo VideoTexture in Inspector), use it
     if (this.simulatedTexture) {
       this.cameraTexture = this.simulatedTexture;
-      // Start playback if this texture is driven by a VideoTextureProvider
       try {
         const ctrl = (this.simulatedTexture as any).control;
         if (ctrl && typeof ctrl.play === 'function') {
@@ -65,22 +120,26 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
         // Ignored
       }
       print('[PeriodicCameraCapturer] Simulated texture active (assigned input).');
-      return;
+      return true;
     }
 
-    // 1b. Auto-bind fallback: if WhiteboardBackplate has a VideoTexture (e.g. DemoVideo), use it
+    // B. Auto-bind fallback: if WhiteboardBackplate has a texture (e.g. DemoVideo), use it
     try {
       const wb = findSceneObject('WhiteboardBackplate');
       if (wb && typeof wb.getComponent === 'function') {
         const rmv = wb.getComponent('Component.RenderMeshVisual' as any) as any;
         if (rmv && rmv.mainMaterial && rmv.mainMaterial.mainPass && rmv.mainMaterial.mainPass.baseTex) {
           const tex = rmv.mainMaterial.mainPass.baseTex;
-          if (tex && (tex as any).control && typeof (tex as any).control.play === 'function') {
+          if (tex) {
             this.simulatedTexture = tex;
             this.cameraTexture = tex;
-            (tex as any).control.play(-1);
-            print('[PeriodicCameraCapturer] Video playback started on WhiteboardBackplate texture (loop).');
-            return;
+            if ((tex as any).control && typeof (tex as any).control.play === 'function') {
+              (tex as any).control.play(-1);
+              print('[PeriodicCameraCapturer] Video playback started on WhiteboardBackplate texture (loop).');
+            } else {
+              print('[PeriodicCameraCapturer] WhiteboardBackplate texture active as fallback.');
+            }
+            return true;
           }
         }
       }
@@ -88,21 +147,7 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
       print(`[PeriodicCameraCapturer] Auto-bind fallback error: ${e}`);
     }
 
-    // 2. Fallback to CameraModule live feed (Webcam in Preview / Spectacles hardware)
-    try {
-      if (typeof CameraModule !== 'undefined' && CameraModule.createCameraRequest) {
-        const request = CameraModule.createCameraRequest();
-        request.cameraId = CameraModule.CameraId.Default_Color;
-        request.imageSmallerDimension = this.frameSmallerDimension;
-        this.cameraTexture = this.cameraModule.requestCamera(request);
-        print(`[PeriodicCameraCapturer] Camera pipeline initialized at ${this.frameSmallerDimension}p.`);
-        return;
-      }
-    } catch (e) {
-      print(`[PeriodicCameraCapturer] Camera pipeline unavailable (simulated runtime): ${e}`);
-    }
-
-    print('[PeriodicCameraCapturer] Running in simulation without camera input; periodic capture idle.');
+    return false;
   }
 
   private evaluateCaptureCadence(deltaTime: number): void {
@@ -160,6 +205,14 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
 
   public isEncoding(): boolean {
     return this.isEncodingActive;
+  }
+
+  public getDemoMode(): boolean {
+    return this.demoMode;
+  }
+
+  public setDemoMode(demoMode: boolean): void {
+    this.demoMode = demoMode;
   }
 
   public getCameraTexture(): Texture | undefined {

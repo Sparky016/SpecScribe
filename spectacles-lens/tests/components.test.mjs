@@ -103,18 +103,31 @@ describe('Epic 2: Lens Studio 5.15 TypeScript Spatial Client Tests', async () =>
       assert.equal(requestedDimension, 480);
     });
 
-    test('prioritizes simulatedTexture over CameraModule when assigned', () => {
+    test('prioritizes CameraModule over simulatedTexture when demoMode is false', () => {
       const mockSimulated = new MockTexture(1920, 1080);
       const mockCamera = new MockTexture(480, 360);
       const capturer = createComponentInstance(PeriodicCameraCapturer);
       capturer.cameraModule = { requestCamera: () => mockCamera };
       capturer.simulatedTexture = mockSimulated;
+      capturer.demoMode = false;
+      capturer.onAwake();
+      capturer._testEvents.OnStartEvent.trigger();
+
+      assert.equal(capturer.getCameraTexture(), mockCamera);
+    });
+
+    test('prioritizes simulatedTexture over CameraModule when demoMode is true', () => {
+      const mockSimulated = new MockTexture(1920, 1080);
+      const mockCamera = new MockTexture(480, 360);
+      const capturer = createComponentInstance(PeriodicCameraCapturer);
+      capturer.cameraModule = { requestCamera: () => mockCamera };
+      capturer.simulatedTexture = mockSimulated;
+      capturer.demoMode = true;
       capturer.onAwake();
       capturer._testEvents.OnStartEvent.trigger();
 
       assert.equal(capturer.getCameraTexture(), mockSimulated);
     });
-
     test('accumulates deltaTime and encodes frame asynchronously at sample interval', () => {
       const mockCamera = new MockTexture(480, 360);
       let encodeQuality = null;
