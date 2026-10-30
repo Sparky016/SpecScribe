@@ -4,6 +4,7 @@ Supports Mode A (Proactive Push every 20s/diagram change) and Mode B (On-Demand 
 """
 
 import asyncio
+import base64
 import inspect
 import json
 import logging
@@ -19,6 +20,10 @@ from pydantic import BaseModel, Field
 import llm
 
 logger = logging.getLogger("specscribe.raising_hand")
+
+# Maximum raw TTS audio size (64 KB) to keep HAND_RAISED JSON payloads fast on Spectacles
+MAX_TTS_AUDIO_BYTES = 64 * 1024
+MAX_SPOKEN_SUMMARY_CHARS = 220
 
 
 class _AwaitableTurnList(list):
@@ -45,6 +50,14 @@ class RaisingHandEvaluation(BaseModel):
     detailed_body: str = Field(
         description="Actionable 2-3 bullet point technical critique, trade-offs, and mitigation instructions."
     )
+    spoken_summary: Optional[str] = Field(
+        default=None,
+        description="Concise 1-2 sentence spoken summary (<15s) for AgentVoicePlayer TTS readout.",
+    )
+    audio_b64: Optional[str] = Field(
+        default=None,
+        description="Optional base64-encoded TTS audio clip (<64KB) for AgentVoicePlayer playback.",
+    )
 
 
 class RaisingHandAgent:
@@ -61,10 +74,14 @@ class RaisingHandAgent:
         api_key: Optional[str] = None,
         supabase_client: Any = None,
         memory_store: Optional[Dict[str, Any]] = None,
+        deepgram_api_key: Optional[str] = None,
+        deepgram_client: Optional[Any] = None,
     ):
         self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY")
         self.supabase_client = supabase_client
         self.memory_store = memory_store
+        self._explicit_deepgram_api_key = deepgram_api_key
+        self._deepgram_client = deepgram_client
 
         # Tracking per meeting: meeting_id -> Set of triggered short_titles (to avoid duplicates)
         self._history: Dict[str, Set[str]] = {}
@@ -72,6 +89,136 @@ class RaisingHandAgent:
         self._active_loops: Dict[str, asyncio.Task] = {}
         # Structured health telemetry: meeting_id -> telemetry dict
         self._loop_telemetry: Dict[str, Dict[str, Any]] = {}
+
+    @property
+    def deepgram_api_key(self) -> Optional[str]:
+        if self._explicit_deepgram_api_key is not None:
+            return self._explicit_deepgram_api_key or None
+        if self.api_key == "":
+            return None
+        return os.environ.get("DEEPGRAM_API_KEY") or None
+
+    def _get_deepgram_client(self) -> Optional[Any]:
+        if self._deepgram_client is not None:
+            return self._deepgram_client
+        key = self.deepgram_api_key
+        if not key:
+            return None
+        try:
+            from deepgram import DeepgramClient
+
+            return DeepgramClient(api_key=key)
+        except Exception as e:
+            logger.warning("Failed to initialize DeepgramClient for TTS: %s", e)
+            return None
+
+    def _build_spoken_summary(
+        self,
+        short_title: str,
+        detailed_body: str,
+        max_chars: int = MAX_SPOKEN_SUMMARY_CHARS,
+    ) -> str:
+        """Builds a concise (<15s) plain-text spoken summary from the pill title and bullet points."""
+        clean_title = re.sub(r"^[^\w\s]+\s*", "", (short_title or "").strip()).rstrip("….")
+        lines = []
+        for raw_line in (detailed_body or "").splitlines():
+            stripped = re.sub(r"^[\s•\-\*]+", "", raw_line).strip()
+            if stripped:
+                lines.append(stripped.rstrip(".") + ".")
+        body_text = " ".join(lines)
+        combined = f"{clean_title}: {body_text}".strip() if clean_title and body_text else (clean_title or body_text)
+        if len(combined) <= max_chars:
+            return combined
+        return combined[: max_chars - 1].rstrip() + "…"
+
+    def _extract_audio_bytes(self, response: Any) -> bytes:
+        """Normalizes a Deepgram Aura TTS response (bytes, iterator of chunks, or stream object) into raw bytes."""
+        if response is None:
+            return b""
+        if isinstance(response, (bytes, bytearray)):
+            return bytes(response)
+        if isinstance(response, str):
+            try:
+                return base64.b64decode(response)
+            except Exception:
+                return response.encode("utf-8")
+        for attr in ("audio", "content", "stream"):
+            val = getattr(response, attr, None)
+            if val is not None and val is not response:
+                return self._extract_audio_bytes(val)
+        if hasattr(response, "read") and callable(response.read):
+            data = response.read()
+            return bytes(data) if isinstance(data, (bytes, bytearray)) else b""
+        if hasattr(response, "__iter__"):
+            chunks: List[bytes] = []
+            total = 0
+            for chunk in response:
+                if isinstance(chunk, (bytes, bytearray)):
+                    b = bytes(chunk)
+                elif isinstance(chunk, str):
+                    b = chunk.encode("utf-8")
+                else:
+                    continue
+                chunks.append(b)
+                total += len(b)
+                if total >= MAX_TTS_AUDIO_BYTES:
+                    break
+            return b"".join(chunks)
+        return b""
+
+    def synthesize_critique_tts(
+        self,
+        text: str,
+        model: str = "aura-asteria-en",
+    ) -> Optional[str]:
+        """
+        Synchronously synthesizes a short spoken critique via Deepgram Aura TTS when available.
+        Returns a base64-encoded audio string (<64KB raw) or None if TTS is unconfigured/unavailable.
+        """
+        clean_text = (text or "").strip()
+        if not clean_text:
+            return None
+        if len(clean_text) > MAX_SPOKEN_SUMMARY_CHARS:
+            clean_text = clean_text[:MAX_SPOKEN_SUMMARY_CHARS]
+
+        client = self._get_deepgram_client()
+        if client is None:
+            return None
+
+        try:
+            speak = getattr(client, "speak", None)
+            v1 = getattr(speak, "v1", None) if speak is not None else None
+            audio = getattr(v1, "audio", None) if v1 is not None else None
+            if audio is not None and hasattr(audio, "generate"):
+                raw_resp = audio.generate(text=clean_text, model=model)
+            elif hasattr(client, "synthesize"):
+                raw_resp = client.synthesize(text=clean_text, model=model)
+            elif hasattr(client, "generate"):
+                raw_resp = client.generate(text=clean_text, model=model)
+            else:
+                return None
+
+            raw_bytes = self._extract_audio_bytes(raw_resp)
+            if not raw_bytes:
+                return None
+            if len(raw_bytes) > MAX_TTS_AUDIO_BYTES:
+                raw_bytes = raw_bytes[:MAX_TTS_AUDIO_BYTES]
+            return base64.b64encode(raw_bytes).decode("ascii")
+        except Exception as e:
+            logger.warning("Deepgram Aura TTS synthesis failed; falling back to notification chime: %s", e)
+            return None
+
+    async def synthesize_critique_tts_async(
+        self,
+        text: str,
+        model: str = "aura-asteria-en",
+    ) -> Optional[str]:
+        """Asynchronous wrapper for Deepgram Aura TTS critique synthesis."""
+        if self._deepgram_client is None and not self.deepgram_api_key:
+            return None
+        return await asyncio.to_thread(self.synthesize_critique_tts, text, model)
+
+    synthesize_tts_async = synthesize_critique_tts_async
 
     def _truncate_title(self, title: str, max_chars: int = 28) -> str:
         """Enforces strict character limit for Snap Spectacles AR waveguide pill display."""
@@ -363,11 +510,20 @@ class RaisingHandAgent:
     ) -> Dict[str, Any]:
         """
         Inserts the intervention into agent_interventions table / memory_store
-        and broadcasts HAND_RAISED to active WebSockets.
+        and broadcasts HAND_RAISED to active WebSockets (with optional spoken_summary and audio_b64).
         """
         intervention_id = str(uuid.uuid4())
         short_title = self._truncate_title(evaluation.short_title)
-        record = {
+        spoken_summary = (
+            evaluation.spoken_summary
+            if evaluation.spoken_summary
+            else self._build_spoken_summary(short_title, evaluation.detailed_body)
+        )
+        audio_b64 = evaluation.audio_b64
+        if audio_b64 is None and (self._deepgram_client is not None or self.deepgram_api_key):
+            audio_b64 = await self.synthesize_critique_tts_async(spoken_summary)
+
+        db_record = {
             "id": intervention_id,
             "meeting_id": meeting_id,
             "timestamp_ms": timestamp_ms,
@@ -375,6 +531,11 @@ class RaisingHandAgent:
             "short_title": short_title,
             "detailed_body": evaluation.detailed_body,
             "was_pinched": was_pinched,
+        }
+        record = {
+            **db_record,
+            "spoken_summary": spoken_summary,
+            "audio_b64": audio_b64,
         }
 
         # Save to memory store
@@ -385,7 +546,7 @@ class RaisingHandAgent:
         if self.supabase_client:
             try:
                 await asyncio.to_thread(
-                    lambda: self.supabase_client.table("agent_interventions").insert(record).execute()
+                    lambda: self.supabase_client.table("agent_interventions").insert(db_record).execute()
                 )
             except Exception as e:
                 logger.warning("Supabase agent_interventions insert error: %s", e)
@@ -402,6 +563,8 @@ class RaisingHandAgent:
             "category": evaluation.category,
             "short_title": short_title,
             "detailed_body": evaluation.detailed_body,
+            "spoken_summary": spoken_summary,
+            "audio_b64": audio_b64,
             "was_pinched": was_pinched,
         }
 

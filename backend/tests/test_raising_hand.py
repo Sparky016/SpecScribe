@@ -15,7 +15,12 @@ backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if backend_dir not in sys.path:
     sys.path.insert(0, backend_dir)
 
-from agents.raising_hand_agent import RaisingHandAgent
+from agents.raising_hand_agent import (
+    MAX_SPOKEN_SUMMARY_CHARS,
+    MAX_TTS_AUDIO_BYTES,
+    RaisingHandAgent,
+    RaisingHandEvaluation,
+)
 
 
 class _MockSupabaseWithTranscripts:
@@ -149,3 +154,119 @@ async def test_raising_hand_prefers_memory_store_when_populated():
     assert len(turns) == 1
     assert turns[0]["id"] == "mem-t1"
     assert mock_sb.queried_tables == []
+
+
+@pytest.mark.asyncio
+async def test_task60_persist_and_broadcast_attaches_spoken_summary_and_deepgram_tts_audio():
+    """
+    Task 60 (AC2): RaisingHandAgent synthesizes a concise spoken_summary and attaches
+    base64-encoded TTS audio (via Deepgram Aura TTS when available) to HAND_RAISED payloads.
+    """
+    import base64
+
+    meeting_id = "00000000-0000-4000-8000-000000000601"
+    fake_wav_bytes = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00@\x1f\x00\x00@\x1f\x00\x00\x01\x00\x08\x00data\x00\x00\x00\x00"
+
+    mock_dg_client = MagicMock()
+    mock_dg_client.speak.v1.audio.generate.return_value = iter([fake_wav_bytes[:16], fake_wav_bytes[16:]])
+
+    memory_store = {
+        "transcript_turns": {},
+        "agent_interventions": {meeting_id: []},
+    }
+    agent = RaisingHandAgent(
+        api_key="",
+        memory_store=memory_store,
+        deepgram_client=mock_dg_client,
+    )
+
+    evaluation = RaisingHandEvaluation(
+        trigger=True,
+        category="VULNERABILITY",
+        short_title="🚩 Cache Stampede Risk",
+        detailed_body=(
+            "• High-concurrency cache misses on Redis will overload PostgreSQL.\n"
+            "• Add mutex lock / request coalescing on cache miss."
+        ),
+    )
+
+    broadcast_payloads = []
+
+    async def _capture_broadcast(mid, payload):
+        broadcast_payloads.append((mid, payload))
+
+    record = await agent.persist_and_broadcast(
+        meeting_id=meeting_id,
+        evaluation=evaluation,
+        timestamp_ms=90000,
+        was_pinched=True,
+        broadcast_fn=_capture_broadcast,
+    )
+
+    expected_b64 = base64.b64encode(fake_wav_bytes).decode("ascii")
+    assert record["audio_b64"] == expected_b64
+    assert "Cache Stampede Risk" in record["spoken_summary"]
+    assert len(record["spoken_summary"]) <= MAX_SPOKEN_SUMMARY_CHARS
+
+    assert len(broadcast_payloads) == 1
+    mid, payload = broadcast_payloads[0]
+    assert mid == meeting_id
+    assert payload["event"] == "HAND_RAISED"
+    assert payload["spoken_summary"] == record["spoken_summary"]
+    assert payload["audio_b64"] == expected_b64
+
+    mock_dg_client.speak.v1.audio.generate.assert_called_once()
+    call_kwargs = mock_dg_client.speak.v1.audio.generate.call_args.kwargs
+    assert call_kwargs["model"] == "aura-asteria-en"
+    assert "Cache Stampede Risk" in call_kwargs["text"]
+
+
+@pytest.mark.asyncio
+async def test_task60_tts_synthesis_caps_audio_at_64kb_and_falls_back_cleanly_on_error():
+    """
+    Task 60: TTS helper caps raw audio at 64KB to protect Spectacles WebSocket JSON parsing,
+    and returns None cleanly (falling back to notification chime) when Deepgram is unconfigured or errors.
+    """
+    import base64
+
+    meeting_id = "00000000-0000-4000-8000-000000000602"
+
+    # 1. Oversized stream (> 64KB) is capped at MAX_TTS_AUDIO_BYTES (64KB)
+    oversized_chunk = b"A" * (MAX_TTS_AUDIO_BYTES + 8192)
+    mock_dg_large = MagicMock()
+    mock_dg_large.speak.v1.audio.generate.return_value = [oversized_chunk]
+
+    agent_large = RaisingHandAgent(api_key="", deepgram_client=mock_dg_large)
+    b64_capped = await agent_large.synthesize_critique_tts_async("Short architectural warning.")
+    assert b64_capped is not None
+    decoded_bytes = base64.b64decode(b64_capped)
+    assert len(decoded_bytes) == MAX_TTS_AUDIO_BYTES
+
+    # 2. When Deepgram raises an error, persist_and_broadcast still succeeds with audio_b64=None
+    mock_dg_err = MagicMock()
+    mock_dg_err.speak.v1.audio.generate.side_effect = RuntimeError("Deepgram network timeout")
+
+    agent_err = RaisingHandAgent(
+        api_key="",
+        memory_store={"agent_interventions": {meeting_id: []}},
+        deepgram_client=mock_dg_err,
+    )
+    eval_obj = RaisingHandEvaluation(
+        trigger=True,
+        category="LOGIC_FLAW",
+        short_title="⚡ Single Point of Failure",
+        detailed_body="• Single database lacks failover.",
+    )
+    broadcasted = []
+    record = await agent_err.persist_and_broadcast(
+        meeting_id=meeting_id,
+        evaluation=eval_obj,
+        timestamp_ms=95000,
+        was_pinched=False,
+        broadcast_fn=lambda _m, p: broadcasted.append(p),
+    )
+    assert record["audio_b64"] is None
+    assert "Single Point of Failure" in record["spoken_summary"]
+    assert len(broadcasted) == 1
+    assert broadcasted[0]["audio_b64"] is None
+

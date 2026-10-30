@@ -8,6 +8,15 @@ export enum AgentState {
   HAND_RAISED = 'HAND_RAISED'
 }
 
+export interface CritiquePayload {
+  short_title?: string;
+  detailed_body?: string;
+  category?: string;
+  spoken_summary?: string;
+  audio_b64?: string;
+  audio_track?: AudioTrackAsset;
+}
+
 @component
 export class RaisingHandAgentController extends BaseScriptComponent {
   @input
@@ -46,10 +55,19 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   @allowUndefined
   private agentAudioComponent?: AudioComponent;
 
+  @input
+  @allowUndefined
+  private voiceAudioComponent?: AudioComponent;
+
   private currentState: AgentState = AgentState.IDLE;
   private readonly researchTimeoutSec: number = 30.0;
   private researchTimeoutEvent: DelayedCallbackEvent | null = null;
   private latestCritiqueBody: string = '';
+  private latestSpokenSummary: string = '';
+  private latestAudioB64: string = '';
+  private latestVoiceTrack?: AudioTrackAsset;
+  private lastPlayedAudioB64: string = '';
+  private lastSpokenSummary: string = '';
   private isCardExpanded: boolean = false;
   private animTime: number = 0;
   private initialScale: vec3 = new vec3(1.0, 1.0, 1.0);
@@ -94,6 +112,12 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.agentAudioComponent.audioTrack = this.audioTrack;
         this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
       }
+      if (this.voiceAudioComponent) {
+        if (this.audioTrack && !this.voiceAudioComponent.audioTrack) {
+          this.voiceAudioComponent.audioTrack = this.audioTrack;
+        }
+        this.voiceAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
+      }
     } catch (e) {
       // Feature detection: audio is optional in mock / headless runs; silent by design.
     }
@@ -133,11 +157,17 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.agentOrbPinchButton = this.findInteractableOnObject(orbObj);
       }
     }
-    if (!this.agentAudioComponent) {
-      const audioObj = findSceneObject('AgentVoicePlayer') || this.getSceneObject();
-      if (audioObj) {
-        this.agentAudioComponent = audioObj.getComponent('Component.AudioComponent' as any) as any;
+    if (!this.voiceAudioComponent) {
+      const voiceObj = findSceneObject('AgentVoicePlayer') || this.getSceneObject();
+      if (voiceObj) {
+        this.voiceAudioComponent = voiceObj.getComponent('Component.AudioComponent' as any) as any;
       }
+    }
+    if (!this.agentAudioComponent) {
+      this.agentAudioComponent = this.voiceAudioComponent;
+    }
+    if (!this.voiceAudioComponent && this.agentAudioComponent) {
+      this.voiceAudioComponent = this.agentAudioComponent;
     }
   }
 
@@ -164,8 +194,18 @@ export class RaisingHandAgentController extends BaseScriptComponent {
 
   private bindInteractions(): void {
     if (this.socketClient) {
-      this.socketClient.onHandRaised = (payload: any) => {
-        this.triggerHandRaised(payload.short_title || 'Agent Insight', payload.detailed_body || '', payload.category);
+      this.socketClient.onHandRaised = (payload: CritiquePayload) => {
+        if (payload && typeof payload === 'object') {
+          this.latestSpokenSummary = payload.spoken_summary || '';
+          this.latestAudioB64 = payload.audio_b64 || '';
+          this.latestVoiceTrack = payload.audio_track;
+        }
+        this.triggerHandRaised(
+          payload?.short_title || 'Agent Insight',
+          payload?.detailed_body || '',
+          payload?.category,
+          payload
+        );
       };
     }
 
@@ -184,17 +224,69 @@ export class RaisingHandAgentController extends BaseScriptComponent {
   }
 
   private playNotificationSound(): void {
-    if (this.agentAudioComponent) {
+    const audioComp = this.agentAudioComponent || this.voiceAudioComponent;
+    if (audioComp) {
       try {
-        if (this.audioTrack && !this.agentAudioComponent.audioTrack) {
-          this.agentAudioComponent.audioTrack = this.audioTrack;
+        if (this.audioTrack) {
+          audioComp.audioTrack = this.audioTrack;
         }
-        this.agentAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
-        this.agentAudioComponent.play(1);
+        audioComp.playbackMode = Audio.PlaybackMode.LowLatency;
+        audioComp.play(1);
       } catch (e) {
         // Audio play ignored if unavailable
       }
     }
+  }
+
+  public playCritiqueVoiceOrChime(): void {
+    const voicePlayer = this.voiceAudioComponent || this.agentAudioComponent;
+    this.lastSpokenSummary = this.latestSpokenSummary || this.latestCritiqueBody || '';
+    if (voicePlayer && (this.latestAudioB64 || this.latestVoiceTrack)) {
+      try {
+        let track: AudioTrackAsset | undefined = this.latestVoiceTrack;
+        if (!track && this.latestAudioB64) {
+          const b64Api = (global as any).Base64;
+          if (b64Api && typeof b64Api.decodeAudioAsync === 'function') {
+            b64Api.decodeAudioAsync(
+              this.latestAudioB64,
+              (decodedTrack: AudioTrackAsset) => {
+                track = decodedTrack;
+              },
+              () => {}
+            );
+          }
+          if (!track) {
+            track = {
+              name: 'AgentCritiqueVoiceClip',
+              audio_b64: this.latestAudioB64,
+              spoken_summary: this.lastSpokenSummary
+            } as any;
+          }
+        }
+        if (track) {
+          voicePlayer.audioTrack = track;
+        }
+        voicePlayer.playbackMode = Audio.PlaybackMode.LowLatency;
+        voicePlayer.play(1);
+        this.lastPlayedAudioB64 = this.latestAudioB64;
+        return;
+      } catch (e) {
+        // Fall back to notification chime
+      }
+    }
+    if (this.voiceAudioComponent && this.voiceAudioComponent !== this.agentAudioComponent) {
+      try {
+        if (this.audioTrack && !this.voiceAudioComponent.audioTrack) {
+          this.voiceAudioComponent.audioTrack = this.audioTrack;
+        }
+        this.voiceAudioComponent.playbackMode = Audio.PlaybackMode.LowLatency;
+        this.voiceAudioComponent.play(1);
+        return;
+      } catch (e) {
+        // Fall back to notification sound
+      }
+    }
+    this.playNotificationSound();
   }
 
   private lastPinchTime: number = 0;
@@ -208,6 +300,11 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     }
     this.isCardExpanded = false;
     this.lastPinchTime = 0;
+    this.latestSpokenSummary = '';
+    this.latestAudioB64 = '';
+    this.latestVoiceTrack = undefined;
+    this.lastPlayedAudioB64 = '';
+    this.lastSpokenSummary = '';
     if (this.expandedCritiqueCard) {
       this.expandedCritiqueCard.enabled = false;
     }
@@ -228,8 +325,10 @@ export class RaisingHandAgentController extends BaseScriptComponent {
         this.expandedCritiqueCard.enabled = this.isCardExpanded;
       }
       print(`[RaisingHandAgentController] Critique card toggled: expanded = ${this.isCardExpanded}`);
-      this.playNotificationSound();
-      if (!this.isCardExpanded) {
+      if (this.isCardExpanded) {
+        this.playCritiqueVoiceOrChime();
+      } else {
+        this.playNotificationSound();
         this.setVisualState(AgentState.IDLE, '', '');
       }
     } else if (this.currentState === AgentState.IDLE) {
@@ -493,22 +592,73 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     return this.latestCritiqueBody;
   }
 
-  public triggerHandRaised(shortTitle: string, detailedBody: string, category?: string): void {
-    let title = shortTitle;
+  public getSpokenSummary(): string {
+    return this.latestSpokenSummary;
+  }
+
+  public getAudioB64(): string {
+    return this.latestAudioB64;
+  }
+
+  public getLastPlayedAudioB64(): string {
+    return this.lastPlayedAudioB64;
+  }
+
+  public formatPillText(shortTitle: string, category?: string): string {
+    const title = shortTitle ?? '';
+    let clean = title.trim();
+    try {
+      clean = clean.replace(new RegExp('^(\\p{Extended_Pictographic}\\uFE0F?\\s*)+', 'u'), '').trim();
+    } catch (_e) {
+      clean = clean.replace(/^([\uD800-\uDBFF][\uDC00-\uDFFF]|\u26A0\uFE0F?|\s)+/, '').trim();
+    }
+    let formatted = clean;
     if (category) {
       const cat = category.toUpperCase();
-      // Remove any leading emoji (and variation selectors/spaces) so exactly one category icon is shown.
-      const bare = title.replace(/^(\p{Extended_Pictographic}️?\s*)+/u, '');
       if (cat === 'VULNERABILITY') {
-        title = `🚩 ${bare}`;
+        formatted = `🚩 ${clean}`;
       } else if (cat === 'LOGIC_FLAW') {
-        title = `⚠️ ${bare}`;
+        formatted = `⚠️ ${clean}`;
       } else if (cat === 'ALTERNATIVE_IDEA') {
-        title = `💡 ${bare}`;
+        formatted = `💡 ${clean}`;
+      } else if (cat === 'RESEARCH') {
+        formatted = `🔍 ${clean}`;
       }
     }
     // Code-point-safe truncation so a surrogate pair is never split.
-    this.setVisualState(AgentState.HAND_RAISED, Array.from(title).slice(0, 28).join(''), detailedBody);
+    return Array.from(formatted).slice(0, 28).join('');
+  }
+
+  public triggerHandRaised(
+    shortTitle: string | CritiquePayload,
+    detailedBody: string = '',
+    category?: string,
+    payload?: CritiquePayload
+  ): void {
+    let rawTitle: string;
+    let body: string = detailedBody;
+    let cat: string | undefined = category;
+    if (typeof shortTitle !== 'string') {
+      rawTitle = shortTitle?.short_title || 'Agent Insight';
+      body = shortTitle?.detailed_body || '';
+      cat = shortTitle?.category;
+      this.latestSpokenSummary = shortTitle?.spoken_summary || '';
+      this.latestAudioB64 = shortTitle?.audio_b64 || '';
+      this.latestVoiceTrack = shortTitle?.audio_track;
+    } else {
+      rawTitle = shortTitle;
+      if (payload && typeof payload === 'object') {
+        this.latestSpokenSummary = payload.spoken_summary || '';
+        this.latestAudioB64 = payload.audio_b64 || '';
+        this.latestVoiceTrack = payload.audio_track;
+      } else {
+        this.latestSpokenSummary = '';
+        this.latestAudioB64 = '';
+        this.latestVoiceTrack = undefined;
+      }
+    }
+    const formattedTitle = this.formatPillText(rawTitle, cat);
+    this.setVisualState(AgentState.HAND_RAISED, formattedTitle, body);
     this.playNotificationSound();
   }
 }
