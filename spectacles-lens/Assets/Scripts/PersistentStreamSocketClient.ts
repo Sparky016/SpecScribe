@@ -26,6 +26,8 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
   private asrModule: AsrModule = require('LensStudio:AsrModule');
   private activeSocket?: WebSocket;
   private meetingStartEpochMs: number = 0;
+  private lastUtteranceTimestampMs: number = 0;
+  private asrTurnIndex: number = 0;
   private latestSpokenPhrase: string = 'New Component';
   private pendingFinalPhrase: string | null = null;
   private isDestroyed: boolean = false;
@@ -258,11 +260,19 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
           }
         }
         if (eventArgs.isFinal) {
+          const nowMs = Date.now();
+          const silenceGapMs = this.lastUtteranceTimestampMs > 0 ? Math.max(0, nowMs - this.lastUtteranceTimestampMs) : 0;
+          this.lastUtteranceTimestampMs = nowMs;
+          const turnIndex = this.asrTurnIndex++;
+          const payloadSpeaker = (eventArgs as any).speaker_label || (eventArgs as any).speaker;
           this.sendJson({
             eventType: 'asrTranscription',
-            speaker_label: 'Speaker 0 (Wearer)',
+            speaker_label: payloadSpeaker || 'auto',
             transcript_text: eventArgs.text,
-            timestamp_ms: this.getElapsedMs()
+            timestamp_ms: this.getElapsedMs(),
+            silenceGapMs: silenceGapMs,
+            silenceDurationMs: silenceGapMs,
+            turnIndex: turnIndex
           });
         }
       });
@@ -302,6 +312,28 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       eventType: 'cameraFrame',
       timestamp_ms: this.getElapsedMs(),
       image_b64: b64
+    });
+  }
+
+  public sendSimulatedVoiceNote(text: string, speaker?: string): void {
+    if (!text || !text.trim()) {
+      return;
+    }
+    const trimmed = text.trim();
+    this.latestSpokenPhrase = trimmed;
+    this.pendingFinalPhrase = trimmed;
+    const nowMs = Date.now();
+    const silenceGapMs = this.lastUtteranceTimestampMs > 0 ? Math.max(0, nowMs - this.lastUtteranceTimestampMs) : 0;
+    this.lastUtteranceTimestampMs = nowMs;
+    const turnIndex = this.asrTurnIndex++;
+    this.sendJson({
+      eventType: 'asrTranscription',
+      speaker_label: speaker || 'auto',
+      transcript_text: trimmed,
+      timestamp_ms: this.getElapsedMs(),
+      silenceGapMs: silenceGapMs,
+      silenceDurationMs: silenceGapMs,
+      turnIndex: turnIndex
     });
   }
 

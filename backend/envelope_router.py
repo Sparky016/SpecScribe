@@ -29,6 +29,11 @@ try:
 except (ImportError, ModuleNotFoundError):
     from backend.graph_engine import extract_graph_delta_from_gemini
 
+try:
+    from services.diarization import SpeakerDiarizer
+except (ImportError, ModuleNotFoundError):
+    from backend.services.diarization import SpeakerDiarizer
+
 logger = logging.getLogger("specscribe.envelope_router")
 
 
@@ -93,7 +98,10 @@ class HandshakeHandler(BaseEnvelopeHandler):
 
 
 class AsrHandler(BaseEnvelopeHandler):
-    """Handles speech-to-text transcript turns, persisting and broadcasting them."""
+    """Handles speech-to-text transcript turns, performing multi-speaker attribution and persisting/broadcasting them."""
+
+    def __init__(self, diarizer: Optional[SpeakerDiarizer] = None):
+        self.diarizer = diarizer or SpeakerDiarizer()
 
     async def handle(
         self,
@@ -102,12 +110,25 @@ class AsrHandler(BaseEnvelopeHandler):
         session_mgr: Any,
         meeting_id: str,
     ) -> None:
-        speaker = msg.get("speaker_label", "Speaker 0")
-        text = msg.get("transcript_text", "")
+        raw_speaker = msg.get("speaker_label")
+        raw_text = msg.get("transcript_text", "")
         timestamp_ms = msg.get("timestamp_ms", 0)
+        silence_gap_ms = msg.get("silenceGapMs")
+        if silence_gap_ms is None:
+            silence_gap_ms = msg.get("silenceDurationMs")
+        if silence_gap_ms is None:
+            silence_gap_ms = msg.get("silence_gap_ms")
 
-        if text.strip():
+        if raw_text and raw_text.strip():
             try:
+                diarizer = getattr(session_mgr, "speaker_diarizer", None) or self.diarizer
+                speaker, text = diarizer.attribute_text_turn(
+                    meeting_id=meeting_id,
+                    transcript_text=raw_text,
+                    speaker_label=raw_speaker,
+                    silence_gap_ms=int(silence_gap_ms) if silence_gap_ms is not None else None,
+                    timestamp_ms=int(timestamp_ms or 0),
+                )
                 turn_id = await session_mgr.db_save_transcript_turn(
                     meeting_id, speaker, text, timestamp_ms
                 )
@@ -130,6 +151,72 @@ class AsrHandler(BaseEnvelopeHandler):
                     e,
                     exc_info=True,
                 )
+
+
+class AudioChunkHandler(BaseEnvelopeHandler):
+    """Handles raw/base64 audioChunk envelopes via Deepgram Nova-2 speaker diarization."""
+
+    def __init__(self, diarizer: Optional[SpeakerDiarizer] = None):
+        self.diarizer = diarizer or SpeakerDiarizer()
+
+    async def handle(
+        self,
+        msg: Dict[str, Any],
+        websocket: WebSocket,
+        session_mgr: Any,
+        meeting_id: str,
+    ) -> None:
+        audio_b64 = msg.get("audio_b64") or msg.get("audioChunk") or msg.get("audio_data")
+        audio_url = msg.get("audio_url")
+        if not audio_b64 and not audio_url and isinstance(msg.get("payload"), dict):
+            payload = msg["payload"]
+            audio_b64 = payload.get("audio_b64") or payload.get("audioChunk") or payload.get("audio_data")
+            audio_url = payload.get("audio_url")
+
+        if not audio_b64 and not audio_url:
+            return
+
+        timestamp_ms = int(msg.get("timestamp_ms", 0) or 0)
+        explicit_speaker = msg.get("speaker_label")
+
+        try:
+            diarizer = getattr(session_mgr, "speaker_diarizer", None) or self.diarizer
+            utterances = await diarizer.diarize_audio_chunk(
+                audio_bytes_or_b64=audio_b64,
+                timestamp_ms=timestamp_ms,
+                audio_url=audio_url,
+            )
+            for utt in utterances:
+                if not utt.transcript_text.strip():
+                    continue
+                speaker = (
+                    explicit_speaker.strip()
+                    if (explicit_speaker and explicit_speaker.strip().lower() not in ("", "auto", "unknown"))
+                    else utt.speaker_label
+                )
+                turn_ts = utt.start_ms or timestamp_ms
+                turn_id = await session_mgr.db_save_transcript_turn(
+                    meeting_id, speaker, utt.transcript_text, turn_ts
+                )
+                logger.info("[Deepgram %s @ %dms]: %s", speaker, turn_ts, utt.transcript_text)
+                await session_mgr.broadcast_to_meeting(
+                    meeting_id,
+                    {
+                        "event": "TRANSCRIPT_LOGGED",
+                        "turn_id": turn_id,
+                        "speaker_label": speaker,
+                        "transcript_text": utt.transcript_text,
+                        "timestamp_ms": turn_ts,
+                    },
+                    exclude=websocket,
+                )
+        except Exception as e:
+            logger.error(
+                "Error processing audioChunk in meeting %s: %s",
+                meeting_id,
+                e,
+                exc_info=True,
+            )
 
 
 class CameraFrameHandler(BaseEnvelopeHandler):
@@ -466,13 +553,15 @@ class PinchCommandHandler(BaseEnvelopeHandler):
 class EnvelopeRouter:
     """Dispatches inbound WebSocket envelopes to registered handlers."""
 
-    def __init__(self):
+    def __init__(self, diarizer: Optional[SpeakerDiarizer] = None):
+        self.diarizer = diarizer or SpeakerDiarizer()
         self._handlers: Dict[str, BaseEnvelopeHandler] = {}
         self._register_default_handlers()
 
     def _register_default_handlers(self):
         self.register("handshake", HandshakeHandler())
-        self.register("asrTranscription", AsrHandler())
+        self.register("asrTranscription", AsrHandler(diarizer=self.diarizer))
+        self.register("audioChunk", AudioChunkHandler(diarizer=self.diarizer))
         self.register("cameraFrame", CameraFrameHandler())
         self.register("pinchCommand", PinchCommandHandler())
 
