@@ -15,6 +15,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { TimelineData } from "../lib/types";
+import { LogoutButton } from "./LogoutButton";
 import {
   exportDecisionLogJson,
   exportDrawioXml,
@@ -68,12 +69,12 @@ export const TopBar: React.FC<TopBarProps> = ({
       {/* Left: Brand & Meeting Info */}
       <div className="flex items-center gap-3 sm:gap-4 overflow-hidden">
         <Link
-          href="/"
+          href="/meetings"
           className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-colors flex items-center gap-1.5 text-xs font-mono"
-          title="Back to SpecScribe Overview"
+          title="Back to your meetings"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span className="hidden md:inline font-semibold text-[#00FF66]">SpecScribe AR</span>
+          <span className="hidden md:inline font-semibold text-[#00FF66]">Meetings</span>
         </Link>
 
         <div className="h-5 w-px bg-white/15 hidden sm:block" />
@@ -190,14 +191,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               ? "bg-[#00FF66] text-black shadow-[#00FF66]/30 shadow-lg"
               : "bg-gradient-to-r from-[#00FF66]/20 to-[#00E5FF]/20 hover:from-[#00FF66]/30 hover:to-[#00E5FF]/30 border border-[#00FF66]/40 text-white"
           }`}
-          title="Open grounded post-meeting RAG assistant"
+          title="Chat about this meeting"
         >
           <Sparkles className={`w-3.5 h-3.5 ${isRAGOpen ? "text-black" : "text-[#00FF66] animate-pulse"}`} />
-          <span>Ask Meeting</span>
-          <span className="hidden md:inline px-1.5 py-0.2 rounded text-[10px] font-mono bg-black/40 text-[#00E5FF] border border-[#00E5FF]/30">
-            pgvector
-          </span>
+          <span>Chat</span>
         </button>
+
+        <LogoutButton compact />
       </div>
     </header>
   );

@@ -1,5 +1,3 @@
-import { NodeType } from "./nodeRegistry";
-
 export interface Meeting {
   id: string;
   title: string;
@@ -68,6 +66,25 @@ export interface TimelineData {
 }
 
 
+export interface MeetingSummary {
+  id: string;
+  title: string;
+  created_at?: string | null;
+  finalized: boolean;
+  is_live: boolean;
+  is_demo?: boolean;
+}
+
+export interface MeetingListResponse {
+  meetings: MeetingSummary[];
+  backend_unavailable?: boolean;
+}
+
+export interface ChatTurn {
+  role: "user" | "assistant";
+  content: string;
+}
+
 export interface CitationItem {
   timestamp_ms: number;
   label: string;
@@ -79,30 +96,4 @@ export interface RAGResponse {
   question: string;
   answer: string;
   citations: CitationItem[];
-}
-
-export interface ParsedVertex {
-  id: string;
-  label: string;
-  style: string;
-  type: NodeType | "default";
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  fillColor?: string;
-  strokeColor?: string;
-}
-
-export interface ParsedEdge {
-  id: string;
-  source: string;
-  target: string;
-  label?: string;
-  style: string;
-}
-
-export interface ParsedGraph {
-  vertices: ParsedVertex[];
-  edges: ParsedEdge[];
 }
