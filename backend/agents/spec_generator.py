@@ -101,6 +101,110 @@ def extract_drawio_nodes(drawio_xml: str) -> List[Tuple[str, str]]:
     return nodes
 
 
+# Post-meeting chat limits (the dashboard sends prior turns with each question).
+MAX_CHAT_HISTORY_TURNS = 10
+MAX_CHAT_TURN_CHARS = 4000
+# Raw-record lookup budget for meetings without knowledge chunks.
+RAW_CONTEXT_MAX_RECORDS = 40
+RAW_CONTEXT_MAX_CHARS = 12000
+
+_STOPWORDS = {
+    "what", "is", "the", "of", "a", "an", "to", "in", "for", "and", "or",
+    "on", "with", "at", "by", "from", "was", "were", "be", "been", "how",
+    "why", "when", "where", "who", "which", "are", "do", "does", "did",
+    "we", "i", "you", "it", "that", "this", "these", "those", "our", "us",
+    "they", "there", "about", "can", "could", "should", "would", "me", "tell", "please",
+}
+
+
+def query_keywords(text: str) -> set:
+    """Lower-cased word set minus stopwords (the raw set if only stopwords remain)."""
+    raw = set(re.findall(r"\w+", (text or "").lower()))
+    return {w for w in raw if w not in _STOPWORDS} or raw
+
+
+def normalize_chat_history(history: Optional[List[Any]]) -> List[Dict[str, str]]:
+    """Keep the last MAX_CHAT_HISTORY_TURNS valid user/assistant turns, each truncated to MAX_CHAT_TURN_CHARS."""
+    turns: List[Dict[str, str]] = []
+    for item in history or []:
+        role = item.get("role") if isinstance(item, dict) else getattr(item, "role", None)
+        content = item.get("content") if isinstance(item, dict) else getattr(item, "content", None)
+        if role not in ("user", "assistant") or not isinstance(content, str) or not content.strip():
+            continue
+        turns.append({"role": role, "content": content.strip()[:MAX_CHAT_TURN_CHARS]})
+    return turns[-MAX_CHAT_HISTORY_TURNS:]
+
+
+def build_raw_record_chunks(records: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Turn a meeting's raw records into chronological chunk-shaped dicts for retrieval."""
+    chunks: List[Dict[str, Any]] = []
+    for t in records.get("transcript_turns", []):
+        text = (t.get("transcript_text") or "").strip()
+        if text:
+            chunks.append({
+                "chunk_type": "TRANSCRIPT",
+                "timestamp_ms": t.get("timestamp_ms") or 0,
+                "content": f"{t.get('speaker_label') or 'Speaker'}: {text}",
+            })
+    snapshots = records.get("diagram_snapshots", [])
+    for snap in snapshots:
+        parts = [p for p in (snap.get("diff_summary"), snap.get("decision_rationale")) if p]
+        if parts:
+            chunks.append({
+                "chunk_type": "DECISION",
+                "timestamp_ms": snap.get("timestamp_ms") or 0,
+                "content": " Rationale: ".join(parts),
+            })
+    for i in records.get("agent_interventions", []):
+        title = i.get("short_title") or ""
+        body = i.get("detailed_body") or ""
+        if title or body:
+            chunks.append({
+                "chunk_type": "AGENT_INSIGHT",
+                "timestamp_ms": i.get("timestamp_ms") or 0,
+                "content": f"AI agent flagged ({i.get('category') or 'NOTE'}) {title}: {body}".strip(),
+            })
+    chunks.sort(key=lambda c: c["timestamp_ms"])
+
+    latest_xml = (records.get("meeting") or {}).get("latest_drawio_xml") or (
+        snapshots[-1].get("drawio_xml") if snapshots else ""
+    )
+    nodes = extract_drawio_nodes(latest_xml or "")
+    if nodes:
+        last_ts = (snapshots[-1].get("timestamp_ms") or 0) if snapshots else 0
+        components = ", ".join(f"{label} ({node_type})" for label, node_type in nodes)
+        chunks.append({
+            "chunk_type": "DIAGRAM",
+            "timestamp_ms": last_ts,
+            "content": f"Final architecture diagram components: {components}",
+        })
+    return chunks
+
+
+def select_raw_record_context(query: str, chunks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Keyword-matched records first (best overlap first), then the remaining records in
+    chronological order, within RAW_CONTEXT_MAX_RECORDS / RAW_CONTEXT_MAX_CHARS. Broad questions
+    ("summarize the meeting") therefore still see the whole of a typical meeting.
+    """
+    q_keywords = query_keywords(query)
+    scored = []
+    for idx, c in enumerate(chunks):
+        overlap = len(q_keywords.intersection(query_keywords(c["content"])))
+        scored.append((overlap, idx, c))
+    matched = sorted((x for x in scored if x[0] > 0), key=lambda x: (-x[0], x[1]))
+    rest = [x for x in scored if x[0] == 0]
+
+    selected: List[Dict[str, Any]] = []
+    used_chars = 0
+    for _, _, c in matched + rest:
+        if len(selected) >= RAW_CONTEXT_MAX_RECORDS or used_chars + len(c["content"]) > RAW_CONTEXT_MAX_CHARS:
+            break
+        selected.append(c)
+        used_chars += len(c["content"])
+    return selected
+
+
 class CitationItem(BaseModel):
     timestamp_ms: int
     label: str
@@ -442,20 +546,8 @@ class SpecGeneratorAgent:
         )
         return persisted_chunks
 
-    async def finalize_meeting(
-        self,
-        meeting_id: str,
-        drawio_xml: str,
-        title: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """
-        Executes complete T-09 pipeline:
-        1. Gathers all meeting data.
-        2. Compiles final Markdown Technical Specification asynchronously (non-blocking).
-        3. Updates meetings table with latest_drawio_xml and generated_spec_md.
-        4. Chunks and embeds all artifacts into 1536-dim knowledge_chunks in batch.
-        """
-        # 1. Fetch all records from memory store / Supabase
+    async def _load_meeting_records(self, meeting_id: str) -> Dict[str, Any]:
+        """Gather a meeting's raw records: in-memory first, replaced by non-empty Supabase results."""
         transcript_turns: List[Dict[str, Any]] = []
         diagram_snapshots: List[Dict[str, Any]] = []
         agent_interventions: List[Dict[str, Any]] = []
@@ -490,7 +582,34 @@ class SpecGeneratorAgent:
                 if i_res.data:
                     agent_interventions = i_res.data
             except Exception as e:
-                logger.warning("Supabase finalize fetch fallback: %s", e)
+                logger.warning("Supabase meeting records fetch fallback: %s", e)
+
+        return {
+            "meeting": meeting_meta,
+            "transcript_turns": transcript_turns,
+            "diagram_snapshots": diagram_snapshots,
+            "agent_interventions": agent_interventions,
+        }
+
+    async def finalize_meeting(
+        self,
+        meeting_id: str,
+        drawio_xml: str,
+        title: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Executes complete T-09 pipeline:
+        1. Gathers all meeting data.
+        2. Compiles final Markdown Technical Specification asynchronously (non-blocking).
+        3. Updates meetings table with latest_drawio_xml and generated_spec_md.
+        4. Chunks and embeds all artifacts into 1536-dim knowledge_chunks in batch.
+        """
+        # 1. Fetch all records from memory store / Supabase
+        records = await self._load_meeting_records(meeting_id)
+        transcript_turns = records["transcript_turns"]
+        diagram_snapshots = records["diagram_snapshots"]
+        agent_interventions = records["agent_interventions"]
+        meeting_meta = records["meeting"]
 
         m_title = title or meeting_meta.get("title") or f"Architecture Review {meeting_id[:8]}"
 
@@ -550,14 +669,21 @@ class SpecGeneratorAgent:
         question: str,
         match_count: int = 5,
         match_threshold: float = 0.25,
+        history: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
-        Post-meeting RAG Q&A:
-        1. Embeds question into 1536-dim vector.
-        2. Retrieves top matching knowledge chunks (via Supabase match_knowledge_chunks RPC or in-memory cosine similarity).
-        3. Synthesizes a grounded answer with clickable [MM:SS] timestamp citations.
+        Post-meeting RAG chat:
+        1. Embeds the question (plus the previous user turn, so follow-ups retrieve the right context).
+        2. Retrieves matching knowledge chunks (Supabase match_knowledge_chunks RPC or in-memory cosine similarity).
+        3. If none exist (e.g. the meeting was never finalized), looks the answer up in the meeting's raw
+           records: transcript turns, diagram snapshots, agent interventions and final diagram components.
+        4. Synthesizes a grounded answer with clickable [MM:SS] timestamp citations, aware of the prior conversation.
         """
-        query_vec = await generate_text_embedding_async(question, api_key=self.api_key, target_dim=1536)
+        chat_history = normalize_chat_history(history)
+        previous_user_turns = [t["content"] for t in chat_history if t["role"] == "user"]
+        retrieval_query = f"{previous_user_turns[-1]}\n{question}" if previous_user_turns else question
+
+        query_vec = await generate_text_embedding_async(retrieval_query, api_key=self.api_key, target_dim=1536)
         matched_chunks: List[Dict[str, Any]] = []
         if query_vec is None:
             logger.warning("Question embedding failed; skipping vector retrieval")
@@ -586,14 +712,7 @@ class SpecGeneratorAgent:
             meeting_chunks = self.memory_store.get("knowledge_chunks", {}).get(meeting_id, [])
             scored: List[Tuple[float, Dict[str, Any]]] = []
             is_mock = not self.api_key
-
-            stopwords = {
-                "what", "is", "the", "of", "a", "an", "to", "in", "for", "and", "or",
-                "on", "with", "at", "by", "from", "was", "were", "be", "been", "how",
-                "why", "when", "where", "who", "which", "are", "do", "does", "did"
-            }
-            raw_q_words = set(re.findall(r"\w+", question.lower()))
-            q_keywords = {w for w in raw_q_words if w not in stopwords} or raw_q_words
+            q_keywords = query_keywords(retrieval_query)
 
             for c in meeting_chunks:
                 emb = c.get("embedding")
@@ -601,9 +720,7 @@ class SpecGeneratorAgent:
                 if emb and len(emb) == len(query_vec):
                     sim = cosine_similarity(query_vec, emb)
                     if is_mock:
-                        raw_c_words = set(re.findall(r"\w+", content.lower()))
-                        c_keywords = {w for w in raw_c_words if w not in stopwords} or raw_c_words
-                        overlap = len(q_keywords.intersection(c_keywords))
+                        overlap = len(q_keywords.intersection(query_keywords(content)))
                         # Keyword overlap gives direct signal in offline mode
                         if overlap > 0:
                             sim = max(sim, (overlap / max(1, len(q_keywords))) * 0.7 + 0.3)
@@ -637,10 +754,15 @@ class SpecGeneratorAgent:
                 for sim, item in scored[:match_count]
             ]
 
-        # 3. Grounded Answer Synthesis
+        # 3. Raw meeting-record lookup when no knowledge chunks exist (meeting not finalized yet)
+        if not matched_chunks:
+            records = await self._load_meeting_records(meeting_id)
+            matched_chunks = select_raw_record_context(retrieval_query, build_raw_record_chunks(records))
+
+        # 4. Grounded Answer Synthesis
         citations: List[Dict[str, Any]] = []
-        for c in matched_chunks:
-            ts = c.get("timestamp_ms", 0)
+        for c in matched_chunks[:match_count]:
+            ts = c.get("timestamp_ms") or 0
             citations.append({
                 "timestamp_ms": ts,
                 "label": format_timestamp_ms(ts),
@@ -652,19 +774,28 @@ class SpecGeneratorAgent:
         if self.api_key and matched_chunks:
             try:
                 chunks_context = "\n---\n".join([
-                    f"[{format_timestamp_ms(c.get('timestamp_ms', 0))}] (Type: {c.get('chunk_type')}): {c.get('content')}"
+                    f"[{format_timestamp_ms(c.get('timestamp_ms') or 0)}] (Type: {c.get('chunk_type')}): {c.get('content')}"
                     for c in matched_chunks
                 ])
+                conversation = "\n".join(
+                    f"{'User' if t['role'] == 'user' else 'Assistant'}: {t['content']}" for t in chat_history
+                )
+                conversation_block = (
+                    f"Conversation so far (use it only to understand what the latest question refers to):\n{conversation}\n\n"
+                    if conversation
+                    else ""
+                )
 
                 prompt = (
-                    "You are SpecScribe's Post-Meeting RAG Q&A Assistant.\n"
-                    "Answer the user's question about the architectural meeting based STRICTLY on the retrieved knowledge chunks below.\n"
+                    "You are SpecScribe's post-meeting assistant, chatting with a user about a recorded architecture meeting.\n"
+                    "Answer the user's latest question based STRICTLY on the retrieved meeting data below.\n"
                     "RULES:\n"
                     "1. For every claim, architectural change, or decision, cite the exact timestamp in brackets like [MM:SS] (e.g., [00:36]).\n"
-                    "2. If the answer cannot be determined from the chunks, state that clearly.\n"
+                    "2. If the answer cannot be determined from the meeting data, state that clearly.\n"
                     "3. Keep the tone concise, authoritative, and grounded.\n\n"
-                    f"Question: {question}\n\n"
-                    f"Retrieved Meeting Knowledge Chunks:\n{chunks_context}\n"
+                    f"{conversation_block}"
+                    f"Latest question: {question}\n\n"
+                    f"Retrieved Meeting Data:\n{chunks_context}\n"
                 )
 
                 text = await llm.generate_structured(prompt, api_key=self.api_key)
@@ -679,7 +810,7 @@ class SpecGeneratorAgent:
                             seen_labels.add(f_ts)
                             ms = parse_timestamp_label(f_ts)
                             # Find excerpt
-                            matched_c = next((c for c in matched_chunks if format_timestamp_ms(c.get("timestamp_ms", 0)) == f_ts), None)
+                            matched_c = next((c for c in matched_chunks if format_timestamp_ms(c.get("timestamp_ms") or 0) == f_ts), None)
                             excerpt = matched_c.get("content", "")[:120] if matched_c else f"Meeting discussion at {f_ts}"
                             refined_citations.append({
                                 "timestamp_ms": ms,
@@ -699,17 +830,14 @@ class SpecGeneratorAgent:
             except Exception as e:
                 logger.warning("Gemini RAG synthesis error: %s; using grounded template", e)
 
-        # Deterministic / Heuristic Grounded Answer Fallback
+        # Deterministic grounded fallback: quote the most relevant meeting records verbatim.
         if matched_chunks:
-            top_chunk = matched_chunks[0]
-            top_ts = top_chunk.get("timestamp_ms", 0)
-            top_label = format_timestamp_ms(top_ts)
-            content_clean = top_chunk.get("content", "").replace("\n", " ")
-
-            answer = (
-                f"Based on meeting records at [{top_label}], the decision was made: {content_clean}. "
-                f"This decision addressed architectural requirements and system performance goals."
-            )
+            lines = []
+            for c in matched_chunks[:3]:
+                label = format_timestamp_ms(c.get("timestamp_ms") or 0)
+                content_clean = c.get("content", "").replace("\n", " ").strip()
+                lines.append(f"- [{label}] {content_clean}")
+            answer = "The most relevant meeting records are:\n" + "\n".join(lines)
             return {
                 "meeting_id": meeting_id,
                 "question": question,

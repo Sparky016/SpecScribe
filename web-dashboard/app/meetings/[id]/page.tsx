@@ -8,6 +8,7 @@ import { TemporalScrubber } from "../../../components/TemporalScrubber";
 import { RAGDrawer } from "../../../components/RAGDrawer";
 import { fetchMeetingTimeline } from "../../../lib/api";
 import { DiagramSnapshot, TimelineData } from "../../../lib/types";
+import { DEMO_MEETING_ID } from "../../../lib/demoData";
 
 interface MeetingPageProps {
   params: Promise<{ id: string }>;
@@ -36,10 +37,17 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
         const data = await fetchMeetingTimeline(meetingId);
         if (isMounted) {
           setTimeline(data);
-          // Set initial time to first snapshot if available
-          if (data.diagram_snapshots && data.diagram_snapshots.length > 0) {
-            setCurrentTimeMs(data.diagram_snapshots[1]?.timestamp_ms || data.diagram_snapshots[0].timestamp_ms);
+          const snaps = data.diagram_snapshots || [];
+          if (snaps.length > 0) {
+            // The demo opens on its first milestone; captured meetings open on the final diagram.
+            setCurrentTimeMs(
+              meetingId === DEMO_MEETING_ID
+                ? snaps[1]?.timestamp_ms || snaps[0].timestamp_ms
+                : snaps[snaps.length - 1].timestamp_ms
+            );
           }
+          // Chat is the main post-meeting action: open it by default on wide screens.
+          if (window.innerWidth >= 1280) setIsRAGOpen(true);
         }
       } catch (err) {
         console.warn("Error loading timeline:", err);
@@ -183,6 +191,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
             currentSnapshot={activeSnapshot}
             allSnapshots={timeline.diagram_snapshots}
             onSelectSnapshot={handleSelectSnapshot}
+            fallbackXml={timeline.meeting.latest_drawio_xml}
           />
         </section>
 

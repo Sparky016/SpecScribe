@@ -13,7 +13,7 @@ import uuid
 from collections import defaultdict
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 backend_dir = os.path.dirname(os.path.abspath(__file__))
 if backend_dir not in sys.path:
@@ -163,8 +163,15 @@ class CreateMeetingRequest(BaseModel):
     title: Optional[str] = "Spatial Architecture Review"
 
 
+class ChatTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(max_length=20000)
+
+
 class AskQuestionRequest(BaseModel):
-    question: str
+    question: str = Field(min_length=1, max_length=2000)
+    # Prior chat turns, oldest first; the agent keeps only the most recent ones.
+    history: List[ChatTurn] = Field(default_factory=list, max_length=50)
 
 
 # REST Endpoints
@@ -212,6 +219,55 @@ async def create_meeting(
             logger.warning("Supabase create meeting error: %s", e)
 
     return record
+
+
+def _meeting_summary(record: Dict[str, Any], session_mgr: SessionManager) -> Dict[str, Any]:
+    meeting_id = record.get("id")
+    return {
+        "id": meeting_id,
+        "title": record.get("title") or f"Meeting {str(meeting_id)[:8]}",
+        "created_at": record.get("created_at"),
+        "finalized": bool(record.get("generated_spec_md")),
+        "is_live": bool(session_mgr.active_connections.get(meeting_id)),
+    }
+
+
+@app.get("/api/meetings", dependencies=[Depends(require_api_token)])
+async def list_meetings(
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    session_mgr: SessionManager = Depends(get_session_manager),
+):
+    """Captured meetings, newest first. Supabase rows are merged with in-memory (live) meetings."""
+    records: Dict[str, Dict[str, Any]] = {}
+    if session_mgr.supabase_client:
+        try:
+            res = await asyncio.to_thread(
+                lambda: session_mgr.supabase_client.table("meetings")
+                .select("id, title, created_at, generated_spec_md")
+                .order("created_at", desc=True)
+                .range(0, offset + limit)  # one extra row tells us has_more
+                .execute()
+            )
+            for row in res.data or []:
+                records[row["id"]] = row
+        except Exception as e:
+            logger.warning("Supabase meetings list fallback: %s", e)
+
+    for meeting_id, row in session_mgr.memory_store["meetings"].items():
+        if meeting_id in records:
+            # In-memory state is fresher for meetings finalized during this process lifetime.
+            if row.get("generated_spec_md") and not records[meeting_id].get("generated_spec_md"):
+                records[meeting_id] = {**records[meeting_id], "generated_spec_md": row["generated_spec_md"]}
+            continue
+        records[meeting_id] = row
+
+    ordered = sorted(records.values(), key=lambda r: str(r.get("created_at") or ""), reverse=True)
+    page = ordered[offset : offset + limit]
+    return {
+        "meetings": [_meeting_summary(r, session_mgr) for r in page],
+        "pagination": {"limit": limit, "offset": offset, "has_more": len(ordered) > offset + limit},
+    }
 
 
 def filter_by_window(items: List[Dict[str, Any]], from_t: Optional[int], to_t: Optional[int]) -> List[Dict[str, Any]]:
@@ -433,6 +489,7 @@ async def ask_meeting_rag(
     return await session_mgr.spec_generator.answer_question(
         meeting_id=meeting_id,
         question=body.question,
+        history=[turn.model_dump() for turn in body.history],
     )
 
 

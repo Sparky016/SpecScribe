@@ -38,10 +38,10 @@ export default function Home() {
 
         <div className="flex items-center gap-3">
           <Link
-            href="/meetings/demo-session-01"
+            href="/meetings"
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#00FF66] hover:bg-[#00e55c] text-black font-semibold text-xs sm:text-sm transition-all shadow-lg shadow-[#00FF66]/20"
           >
-            <span>Launch Temporal Scrubber</span>
+            <span>Sign in to your meetings</span>
             <ArrowRight className="w-4 h-4" />
           </Link>
         </div>
@@ -69,11 +69,17 @@ export default function Home() {
 
         <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
           <Link
-            href="/meetings/demo-session-01"
+            href="/meetings"
             className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-[#00FF66] hover:bg-[#00e55c] text-black font-bold text-sm sm:text-base transition-all shadow-xl shadow-[#00FF66]/25 hover:scale-105"
           >
-            <span>Explore Demo Meeting (02:30 Timeline)</span>
+            <span>Review your meetings</span>
             <ArrowRight className="w-4 h-4" />
+          </Link>
+          <Link
+            href="/meetings/demo-session-01"
+            className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-[#00FF66]/40 text-gray-100 text-sm sm:text-base font-semibold transition-all"
+          >
+            <span>Explore Demo Meeting (02:30 Timeline)</span>
           </Link>
           <a
             href="https://github.com/ruanp/SpecScribe"
