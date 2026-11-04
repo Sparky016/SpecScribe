@@ -14,8 +14,25 @@ import {
   ShieldCheck,
   ChevronRight,
 } from "lucide-react";
-import { CitationItem, RAGResponse, TimelineData } from "../lib/types";
-import { askMeetingRAG, formatTimestamp } from "../lib/api";
+import { ChatTurn, CitationItem, RAGResponse, TimelineData } from "../lib/types";
+import { askMeetingRAG } from "../lib/api";
+import { DEMO_MEETING_ID } from "../lib/demoData";
+
+const WELCOME_ID = "initial-welcome";
+
+const DEMO_SUGGESTIONS = [
+  "Why did we place Redis between API Gateway and Postgres?",
+  "What security vulnerabilities were flagged by the AI?",
+  "How does the Kafka event pipeline handle sensor telemetry?",
+  "Summarize all architectural decisions and failure boundaries",
+];
+
+const GENERIC_SUGGESTIONS = [
+  "Summarize the key decisions",
+  "What risks did the AI flag?",
+  "What components are in the final diagram?",
+  "What open questions or action items remain?",
+];
 
 interface RAGDrawerProps {
   isOpen: boolean;
@@ -30,6 +47,7 @@ interface Message {
   text: string;
   citations?: CitationItem[];
   timestamp: string;
+  isError?: boolean;
 }
 
 export const RAGDrawer: React.FC<RAGDrawerProps> = ({
@@ -40,21 +58,16 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
 }) => {
   const [messages, setMessages] = useState<Message[]>([
     {
-      id: "initial-welcome",
+      id: WELCOME_ID,
       sender: "assistant",
-      text: "👋 Hello! I am the **SpecScribe Grounded RAG Agent**. Ask me anything about *why* architectural decisions were made, security vulnerabilities flagged by the AI, or specific component choices. Every explanation is grounded with clickable [MM:SS] timestamp citations that synchronize your timeline.",
+      text: "Ask me anything about this meeting: why decisions were made, what the AI flagged, or which components were chosen. I look answers up in the meeting's transcript, diagram history and agent notes, and cite clickable timestamps that move the timeline.",
       timestamp: "Just now",
     },
   ]);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const suggestedQuestions = [
-    "Why did we place Redis between API Gateway and Postgres?",
-    "What security vulnerabilities were flagged by the AI?",
-    "How does the Kafka event pipeline handle sensor telemetry?",
-    "Summarize all architectural decisions and failure boundaries",
-  ];
+  const suggestedQuestions = timeline.meeting.id === DEMO_MEETING_ID ? DEMO_SUGGESTIONS : GENERIC_SUGGESTIONS;
 
   const handleSend = async (questionText: string) => {
     const trimmed = questionText.trim();
@@ -67,6 +80,11 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
+    // Prior turns (excluding the welcome text and error notices) give follow-up questions their context.
+    const history: ChatTurn[] = messages
+      .filter((m) => m.id !== WELCOME_ID && !m.isError)
+      .map((m) => ({ role: m.sender, content: m.text }));
+
     setMessages((prev) => [...prev, userMsg]);
     setQuery("");
     setIsLoading(true);
@@ -75,7 +93,8 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
       const response: RAGResponse = await askMeetingRAG(
         timeline.meeting.id,
         trimmed,
-        timeline
+        timeline,
+        history
       );
 
       const aiMsg: Message = {
@@ -91,7 +110,8 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
       const errorMsg: Message = {
         id: `err-${Date.now()}`,
         sender: "assistant",
-        text: "Apologies, an error occurred while searching knowledge chunks. Please check your query or try again.",
+        text: "Sorry, I couldn't answer that. The backend may be unavailable; please try again.",
+        isError: true,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -113,14 +133,11 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-bold text-white tracking-wide">
-                Ask the Meeting RAG
+                Chat about this meeting
               </h2>
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30">
-                pgvector (1536-dim)
-              </span>
             </div>
             <p className="text-[11px] text-gray-400">
-              Grounded architectural retrieval with clickable timestamp citations
+              Answers come from this meeting&apos;s data, with clickable timestamp citations
             </p>
           </div>
         </div>
@@ -128,7 +145,7 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
         <button
           onClick={onClose}
           className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          title="Close RAG Drawer (Esc)"
+          title="Close chat (Esc)"
         >
           <X className="w-5 h-5" />
         </button>
@@ -170,7 +187,7 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
               ) : (
                 <>
                   <Bot className="w-3 h-3 text-[#00FF66]" />
-                  <span className="text-[#00FF66] font-semibold">SpecScribe RAG</span>
+                  <span className="text-[#00FF66] font-semibold">SpecScribe</span>
                   <span>•</span>
                   <span>{msg.timestamp}</span>
                 </>
@@ -195,7 +212,7 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
                 <div className="mt-3 pt-2.5 border-t border-white/10 flex flex-col gap-1.5">
                   <span className="text-[10px] font-mono uppercase tracking-wider text-gray-400 flex items-center gap-1">
                     <Database className="w-3 h-3 text-[#00E5FF]" />
-                    Grounded Citations (Click to Jump Scrubber):
+                    Sources (click to jump the timeline):
                   </span>
                   <div className="flex flex-col gap-1">
                     {msg.citations.map((c, cIdx) => (
@@ -222,7 +239,7 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
         {isLoading && (
           <div className="flex items-center gap-2 p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-gray-400 animate-pulse">
             <Bot className="w-4 h-4 text-[#00FF66]" />
-            <span>Embedding query & querying match_knowledge_chunks RPC...</span>
+            <span>Looking through the meeting…</span>
           </div>
         )}
       </div>
@@ -240,7 +257,8 @@ export const RAGDrawer: React.FC<RAGDrawerProps> = ({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Ask about architectural decisions, caches, vulnerabilities..."
+            placeholder="Ask about decisions, risks, components…"
+            maxLength={2000}
             className="flex-1 bg-[#080c14] border border-white/15 focus:border-[#00FF66] rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none transition-colors"
             disabled={isLoading}
           />

@@ -1,6 +1,6 @@
 import { DEMO_TIMELINE, DEMO_MEETING_ID } from "./demoData";
 import { backendFetch } from "./backend";
-import { RAGResponse, TimelineData, TranscriptTurn } from "./types";
+import { ChatTurn, MeetingListResponse, RAGResponse, TimelineData, TranscriptTurn } from "./types";
 
 // Browser calls go to the same-origin /api route handlers, which attach the backend token.
 // Server-side calls go straight to the backend through backendFetch.
@@ -82,16 +82,43 @@ export async function getMeetingTimeline(
 export const fetchMeetingTimeline = getMeetingTimeline;
 
 
-export async function askMeetingRAG(meetingId: string, question: string, timeline: TimelineData): Promise<RAGResponse> {
+export async function listMeetings(): Promise<MeetingListResponse> {
+  const res = await apiFetch("api/meetings", { cache: "no-store" });
+  if (!res.ok) {
+    throw new Error(`Meeting list request failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export async function finalizeMeeting(meetingId: string): Promise<void> {
+  const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/finalize`, { method: "POST" });
+  if (!res.ok) {
+    throw new Error(`Finalize request failed with status ${res.status}`);
+  }
+}
+
+// Chat turns sent with each question, so follow-ups ("why was that added?") keep their context.
+export const MAX_CHAT_HISTORY_TURNS = 10;
+export const MAX_CHAT_TURN_CHARS = 4000;
+
+export async function askMeetingRAG(
+  meetingId: string,
+  question: string,
+  timeline: TimelineData,
+  history: ChatTurn[] = []
+): Promise<RAGResponse> {
   // Canned grounded answers exist only for the offline demo meeting.
   if (meetingId === DEMO_MEETING_ID) {
     return demoRAGAnswer(meetingId, question, timeline);
   }
 
+  const trimmedHistory = history
+    .slice(-MAX_CHAT_HISTORY_TURNS)
+    .map((t) => ({ role: t.role, content: t.content.slice(0, MAX_CHAT_TURN_CHARS) }));
   const res = await apiFetch(`api/meetings/${encodeURIComponent(meetingId)}/ask`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ question, history: trimmedHistory }),
   });
   if (!res.ok) {
     throw new Error(`Ask request failed with status ${res.status}`);
