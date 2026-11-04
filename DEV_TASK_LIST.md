@@ -2,7 +2,7 @@
 
 source: docs/reviews/2026-10-25-repo-prd-audit.md (findings #1–#47, judged against PRD.md v1.1.0 + docs/prd.md)
 generated: 2026-10-25 16:37
-updated: 2026-10-27 08:36
+updated: 2026-10-30 10:58
 
 Status values: PENDING | IN_PROGRESS | EVAL | REWORK | DONE | BLOCKED
 
@@ -70,7 +70,15 @@ Phases: **1** Stop the bleeding — security & trustworthy tests; **2** Backend 
 | 50 | 4 | [Split runtime/dev dependencies and pin versions](DEV_TASK_50.yml) | low | low | low | 39 | DONE | f28186c, 2493cac |
 | 51 | 4 | 🧑 STEP [Repo hygiene: ignore previews, drop duplicate texture, triage scripts](DEV_TASK_51.yml) | low | low | low | 08 | BLOCKED | a2fdad3 |
 | 52 | 4 | [Lazy-follow the agent orb instead of head-locking](DEV_TASK_52.yml) | future | low | low | 28 | DONE | 0b0d94b |
-| 53 | 4 | 🧑 STEP [Add HNSW index on knowledge_chunks.embedding](DEV_TASK_53.yml) | future | trivial | low | 15 | PENDING | — |
+| 53 | 4 | 🧑 STEP [Add HNSW index on knowledge_chunks.embedding](DEV_TASK_53.yml) | future | trivial | low | 15 | BLOCKED | 787b0c0 |
+| 54 | 2 | 🧑 STEP [Wire 3D Capture & Mode-Toggle SIK Buttons in Scene and SpatialInterfaceManager](DEV_TASK_54.yml) | critical | medium | medium | 48 | DONE | bc2c512 |
+| 55 | 2 | 🧑 STEP [Gate simulatedTexture & Video Auto-Bind Behind demoMode in PeriodicCameraCapturer](DEV_TASK_55.yml) | high | low | low | 34 | DONE | 6c7b09d |
+| 56 | 2 | [Fix Backend Vision Cooldown Gate (_last_vision_time) & Support Immediate Manual Capture](DEV_TASK_56.yml) | high | low | low | 54 | DONE | 7acf7a1 |
+| 57 | 3 | [Implement Multi-Speaker Diarization Pipeline (deepgram-sdk / Speaker Attribution)](DEV_TASK_57.yml) | high | medium | medium | 39 | DONE | 93b90d3 |
+| 58 | 3 | [Continuous Real-Time Requirement Reasoning on Transcript Turns (AsrHandler -> DecisionLinker)](DEV_TASK_58.yml) | critical | medium | medium | 57 | DONE | 83b8bba |
+| 59 | 3 | [Full Graph Delta Mutations (Node/Edge Deletion, Rename & Rewiring) in Vision Pipeline](DEV_TASK_59.yml) | high | medium | medium | 56 | DONE | 1f315e8 |
+| 60 | 3 | [Spoken Audio / TTS Readout for Raising-Hand AI Assistant Orb & Unicode Regex Fallback](DEV_TASK_60.yml) | medium | medium | low | — | DONE | 878f9e0 |
+| 61 | 2 | [Physical Whiteboard 6-DOF Alignment (Depth & Yaw Calibration) and Hardware Passthrough Mode Toggle](DEV_TASK_61.yml) | medium | medium | medium | 48 | DONE | 4fb860e |
 
 ## Human-required tasks
 
@@ -86,6 +94,8 @@ Phases: **1** Stop the bleeding — security & trustworthy tests; **2** Backend 
 - **48** (🧑 STEP) Split SpatialInterfaceManager into focused components — Wire new components in Scene.scene and verify in Preview
 - **51** (🧑 STEP) Repo hygiene: ignore previews, drop duplicate texture, triage scripts — Pick which editor-automation scripts to keep
 - **53** (🧑 STEP) Add HNSW index on knowledge_chunks.embedding — Apply migration 006 remotely
+- **54** (🧑 STEP) Wire 3D Capture & Mode-Toggle SIK Buttons in Scene and SpatialInterfaceManager — Add BtnCaptureWhiteboard and BtnToggleCaptureMode with SIK Interactable under SpatialActionPalette in Scene.scene
+- **55** (🧑 STEP) Gate simulatedTexture & Video Auto-Bind Behind demoMode in PeriodicCameraCapturer — Clear serialized simulatedSpeechPhrase and verify demoMode=false in Inspector
 
 ## Execution notes
 
@@ -305,3 +315,31 @@ Phases: **1** Stop the bleeding — security & trustworthy tests; **2** Backend 
 2026-10-27 08:34 | 49 | evaluator PASS (removed LayoutEngine alias unread — installed drawio_mcp has no such symbol; zero callers for removed wrappers; 123 passed) → DONE acf8f08
 2026-10-27 08:34 | — | Phase 4 agent tasks terminal (53 waits on HUMAN 15). Final verification gate dispatched (haiku / low) at acf8f08
 2026-10-27 08:36 | — | FINAL GATE PASS at acf8f08: backend 123 passed/1 deselected; Lens 81 pass/0 fail; dashboard tsc+build ok; codegen drift clean. Phases 3–4 complete; remaining work is human-only
+2026-10-30 08:34 | — | orchestrator resume for MVP_READY.md tasks 53–61 (one-by-one execution; Flash for low/trivial complexity, inherit/Argon for medium+)
+2026-10-30 08:34 | 55 | worker dispatched (flash / low)
+2026-10-30 09:00 | 55 | worker complete 6c7b09d; evaluator dispatched (flash / low)
+2026-10-30 09:02 | 55 | evaluator PASS (110/110 Lens tests pass; simulatedSpeechPhrase cleared) → DONE 6c7b09d (human Inspector verify noted)
+2026-10-30 09:02 | 54 | worker dispatched (inherit / medium)
+2026-10-30 09:15 | 54 | worker complete bc2c512; evaluator dispatched (flash / low)
+2026-10-30 09:19 | 54 | evaluator PASS (117/117 Lens tests pass; Scene.scene + .virtual-scene.json verified) → DONE bc2c512; unlocks 56
+2026-10-30 09:19 | 56 | worker dispatched (flash / low)
+2026-10-30 09:44 | 56 | worker complete 7acf7a1; evaluator dispatched (flash / low)
+2026-10-30 09:46 | 56 | evaluator PASS (3s AUTO + manual bypass + static frame cooldown tests pass) → DONE 7acf7a1; unlocks 59
+2026-10-30 09:46 | 61 | worker dispatched (inherit / medium)
+2026-10-30 09:58 | 61 | worker complete 4fb860e; evaluator dispatched (flash / low)
+2026-10-30 10:01 | 61 | evaluator PASS (127/127 Lens tests pass; Z clamped to -115cm; passthrough alpha verified) → DONE 4fb860e
+2026-10-30 10:01 | 57 | worker dispatched (inherit / medium)
+2026-10-30 10:06 | 53 | worker complete 787b0c0; evaluator PASS (AC1+AC2 pass; AC3 pending-human remote apply alongside 15) → BLOCKED 787b0c0 awaiting 🧑 STEP
+2026-10-30 10:13 | 57 | worker complete 93b90d3; evaluator dispatched (flash / medium)
+2026-10-30 10:15 | 57 | evaluator PASS (test_diarization + 130/130 Lens tests pass) → DONE 93b90d3; unlocks 58
+2026-10-30 10:15 | 58 | worker dispatched (inherit / medium)
+2026-10-30 10:32 | 58 | worker complete 83b8bba; evaluator dispatched (flash / medium)
+2026-10-30 10:33 | 59 | worker dispatched (inherit / medium) — disjoint files from 58 (graph_engine.py)
+2026-10-30 10:37 | 58 | evaluator PASS (5/5 test_decision_linker + 2/2 test_raising_hand + 132/132 Lens tests pass) → DONE 83b8bba
+2026-10-30 10:40 | 59 | worker complete 1f315e8; evaluator dispatched (flash / medium)
+2026-10-30 10:43 | 59 | evaluator PASS (14/14 test_graph_engine tests pass; vertex/edge removal, rename, occlusion guard verified) → DONE 1f315e8
+2026-10-30 10:43 | 60 | worker dispatched (inherit / low)
+2026-10-30 10:55 | 60 | worker complete 878f9e0; evaluator dispatched (flash / low)
+2026-10-30 10:58 | 60 | evaluator PASS (137/137 Lens tests + test_raising_hand pass) → DONE 878f9e0
+2026-10-30 10:58 | — | All eligible agent tasks complete. Final verification gate dispatched (flash / low)
+2026-10-30 11:00 | — | FINAL GATE PASS at 878f9e0: backend 147 passed/0 failed/1 deselected; Lens 137 pass/0 fail; dashboard tsc+build ok. All engineering tasks 53–61 complete.

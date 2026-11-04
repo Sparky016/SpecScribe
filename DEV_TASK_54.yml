@@ -1,0 +1,94 @@
+id: '54'
+title: 'Wire 3D Capture & Mode-Toggle SIK Buttons (BtnCaptureWhiteboard, BtnToggleCaptureMode) in Scene and SpatialInterfaceManager'
+phase: 2
+severity: critical
+complexity: medium
+effort: medium
+eval_effort: low
+depends_on: ['48']
+status: PENDING
+source: 'MVP_READY.md #GAP-5'
+human_action: HUMAN-STEP
+decision_log:
+  outcome: pending
+  rework_cycles: 0
+  escalated: false
+  history: []
+  decisions: []
+  sticking_points: []
+  repeated_work: []
+  iterative_mistakes: []
+  human_required:
+    - 'Open spectacles-lens/SpecScribe AR.esproj in Lens Studio 5.15+ to instantiate or verify the 3D SceneObjects BtnCaptureWhiteboard and BtnToggleCaptureMode under SpatialActionPalette with SIK Interactable + BoxCollider components.'
+  escalate: []
+  evaluator_verdicts: []
+objective: |
+  Fulfill the MVP requirement that the user can toggle between Frequency mode
+  (AUTO, 3-second snapshots) and Manual mode (MANUAL), and pinch a dedicated
+  Capture button to look at and process the whiteboard diagram on demand.
+  Currently, PaletteController.ts looks up 'BtnCaptureWhiteboard' and
+  'BtnToggleCaptureMode' in the scene hierarchy, but neither SceneObject exists
+  in spectacles-lens/Assets/Scene.scene or spectacles-lens/.virtual-scene.json,
+  and SpatialInterfaceManager.ts omits legacy @input fallbacks for both buttons.
+scope:
+  in:
+    - spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts
+    - spectacles-lens/Assets/Scripts/PaletteController.ts
+    - spectacles-lens/Assets/Scripts/WhiteboardCaptureSwitch.ts
+    - spectacles-lens/Assets/Scene.scene
+    - spectacles-lens/.virtual-scene.json
+    - spectacles-lens/test/palette_controller.test.ts
+    - spectacles-lens/test/spatial_interface_manager.test.ts
+  out:
+    - Backend WebSocket handlers (covered in DEV_TASK_56.yml)
+files:
+  spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts: 'Add @input btnCaptureWhiteboard?: Interactable, @input btnToggleCaptureMode?: Interactable, and @input captureModeStatusText?: Component.Text; pass them into PaletteController.attach() LegacyPaletteInputs and update HUD mode badge when mode changes.'
+  spectacles-lens/Assets/Scripts/PaletteController.ts: 'Extend LegacyPaletteInputs with btnCaptureWhiteboard and btnToggleCaptureMode; invoke onModeChanged callback or update HUD toast when toggling between AUTO (3s) and MANUAL mode.'
+  spectacles-lens/Assets/Scripts/WhiteboardCaptureSwitch.ts: 'Add optional onModeChanged callback and formatModeBadge() helper returning "CAPTURE: AUTO (3s)" or "CAPTURE: MANUAL".'
+  spectacles-lens/Assets/Scene.scene: 'Add BtnCaptureWhiteboard and BtnToggleCaptureMode SceneObjects under SpatialActionPalette with RenderMeshVisual, Physics.ColliderComponent, and SIK Interactable.'
+  spectacles-lens/.virtual-scene.json: 'Keep VirtualScene hierarchy synchronized with Scene.scene for BtnCaptureWhiteboard and BtnToggleCaptureMode.'
+  spectacles-lens/test/palette_controller.test.ts: 'Add unit tests verifying legacy @input fallback wiring for btnCaptureWhiteboard and btnToggleCaptureMode and HUD toast feedback on mode switch.'
+implementation_notes: |
+  1. In SpatialInterfaceManager.ts:
+     - Add legacy Inspector inputs:
+       @input btnCaptureWhiteboard?: Interactable;
+       @input btnToggleCaptureMode?: Interactable;
+     - Pass both inputs in the LegacyPaletteInputs object passed to
+       this.paletteController.attach(this.sceneObject, { ... }, ...).
+     - When BtnToggleCaptureMode is pinched, update DiffToastText (or a dedicated
+       mode badge) via showToast("Capture Mode: MANUAL (Pinch to Capture)") or
+       showToast("Capture Mode: AUTO (Every 3s)") so the wearer has clear optical
+       confirmation of the active mode.
+     - When BtnCaptureWhiteboard is pinched in MANUAL or AUTO mode, invoke
+       showToast("Capturing whiteboard snapshot...") before triggering captureNow().
+  2. In PaletteController.ts:
+     - Add btnCaptureWhiteboard?: Interactable and btnToggleCaptureMode?: Interactable
+       to the LegacyPaletteInputs interface.
+     - In attach(), resolve:
+       const captureWb = this.btnCaptureWhiteboard || legacy.btnCaptureWhiteboard || this.findInteractable(root, 'BtnCaptureWhiteboard');
+       const toggleMode = this.btnToggleCaptureMode || legacy.btnToggleCaptureMode || this.findInteractable(root, 'BtnToggleCaptureMode');
+  3. In Scene.scene and .virtual-scene.json:
+     - Add two child SceneObjects under SpatialActionPalette:
+       a. BtnCaptureWhiteboard (positioned in the palette row/grid with label
+          "Capture Board", SIK Interactable + ColliderComponent).
+       b. BtnToggleCaptureMode (positioned adjacent with label "Mode: Auto/Manual",
+          SIK Interactable + ColliderComponent).
+     - Ensure both SceneObjects are active when SpatialInterfaceManager transitions
+       into DRAWING_ACTIVE state.
+acceptance_criteria:
+  - id: AC1
+    behavior: 'BtnCaptureWhiteboard and BtnToggleCaptureMode exist in Scene.scene and .virtual-scene.json under SpatialActionPalette with SIK Interactable components.'
+    verify: 'Search Scene.scene and .virtual-scene.json for BtnCaptureWhiteboard and BtnToggleCaptureMode; both resolve without "Object not found in scene hierarchy" warnings.'
+  - id: AC2
+    behavior: 'Pinching BtnToggleCaptureMode switches WhiteboardCaptureSwitch between CaptureMode.AUTO (3.0s interval) and CaptureMode.MANUAL and displays a HUD toast.'
+    verify: 'cd spectacles-lens && npm test'
+  - id: AC3
+    behavior: 'Pinching BtnCaptureWhiteboard immediately triggers WhiteboardCaptureSwitch.captureNow() -> PeriodicCameraCapturer.triggerManualCapture() and emits a cameraFrame WebSocket message.'
+    verify: 'cd spectacles-lens && npm test'
+risks_vulnerabilities:
+  - risk: 'Hand-editing Scene.scene YAML UUIDs can corrupt component references in Lens Studio.'
+    mitigation: 'Create the two button SceneObjects via Lens Studio Editor / VirtualScene MCP tool and save the project so Lens Studio generates canonical UUIDs.'
+knowledge_gaps: []
+commit_message: |
+  feat(lens): wire BtnCaptureWhiteboard and BtnToggleCaptureMode in scene and palette controller (Task 54)
+

@@ -369,6 +369,7 @@ async def test_finalize_meeting_is_idempotent(sample_meeting_id):
 # FastAPI REST Endpoints Integration Tests
 # ============================================================================
 
+@pytest.mark.integration
 def test_rest_api_finalize_and_ask_flow():
     """Verify end-to-end REST lifecycle for /api/meetings/{id}/finalize and /api/meetings/{id}/ask."""
     client = TestClient(app)

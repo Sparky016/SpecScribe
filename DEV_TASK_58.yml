@@ -1,0 +1,93 @@
+id: '58'
+title: 'Continuous Real-Time Requirement Reasoning on Transcript Turns (AsrHandler -> Requirement & Decision Synthesis)'
+phase: 3
+severity: critical
+complexity: medium
+effort: medium
+eval_effort: medium
+depends_on: ['57']
+status: PENDING
+source: 'MVP_READY.md #GAP-2'
+human_action: none
+decision_log:
+  outcome: pending
+  rework_cycles: 0
+  escalated: false
+  history: []
+  decisions: []
+  sticking_points: []
+  repeated_work: []
+  iterative_mistakes: []
+  human_required: []
+  escalate: []
+  evaluator_verdicts: []
+objective: |
+  Deliver on the core MVP requirement: "The app should listen to each person's
+  conversation, transcribe it, and as they speak it should reason through what
+  is being said to try and make sense of the requirements."
+  Currently, AsrHandler.handle() (backend/envelope_router.py:98-133) ONLY saves
+  raw transcript strings to memory/Supabase and broadcasts TRANSCRIPT_LOGGED.
+  Zero reasoning or requirement extraction runs as participants speak unless a
+  whiteboard frame diff happens to fire at the same time. Additionally,
+  RaisingHandAgent._get_recent_context() only reads from in-memory transcript_turns
+  and never falls back to Supabase if the backend restarted.
+scope:
+  in:
+    - backend/envelope_router.py
+    - backend/agents/decision_linker.py
+    - backend/agents/raising_hand_agent.py
+    - backend/session_manager.py
+    - spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts
+    - spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts
+    - backend/tests/test_decision_linker.py
+    - backend/tests/test_raising_hand.py
+  out:
+    - Post-meeting final export (already handled by SpecGeneratorAgent)
+files:
+  backend/agents/decision_linker.py: 'Add process_transcript_window(meeting_id, recent_turns, current_xml) method that reasons over rolling spoken turns (even without a diagram snapshot change) to extract structured REQUIREMENT and DECISION chunks with speaker attribution and optional graph node suggestions.'
+  backend/envelope_router.py: 'In AsrHandler.handle(), schedule a debounced/sliding-window background task (e.g., every 3 turns or after 8s of speech activity) that invokes DecisionLinkerAgent.process_transcript_window() and broadcasts REQUIREMENT_SYNTHESIZED / DECISION_LOGGED to both Dashboard and Glasses.'
+  backend/agents/raising_hand_agent.py: 'Update _get_recent_context() to fall back to Supabase transcript_turns when memory_store["transcript_turns"] is empty (matching DecisionLinkerAgent).'
+  spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts: 'Handle REQUIREMENT_SYNTHESIZED / DECISION_LOGGED inbound WebSocket messages and route them to SpatialInterfaceManager.showToast() so the wearer sees live requirement synthesis on the AR HUD.'
+  backend/tests/test_decision_linker.py: 'Add unit tests verifying continuous speech-driven requirement reasoning and REQUIREMENT_SYNTHESIZED broadcast when no whiteboard snapshot has occurred.'
+implementation_notes: |
+  1. In `backend/agents/decision_linker.py`:
+     - Add `async def process_transcript_window(self, meeting_id: str, turns: List[ Dict[str, Any] ], current_xml: str = "") -> Optional[Dict[str, Any]]`:
+       a. Prompt Gemini (`gemini-3.5-flash` / `gemini-2.5-flash`) with the rolling window
+          of recent transcript turns and current architecture XML to extract any newly
+          articulated functional/non-functional requirement or architectural decision.
+       b. If no substantive requirement/decision is present in casual chatter, allow the
+          model to return `has_requirement: false` so noise is not logged.
+       c. When `has_requirement: true`, persist to `knowledge_chunks` with
+          `source_type='DECISION'` (or `'REQUIREMENT'`), generate the 768-dim embedding,
+          and return `{ "chunk_type": ..., "summary": ..., "speaker": ..., "rationale": ... }`.
+  2. In `backend/envelope_router.py` (`AsrHandler.handle`):
+     - Track per-session `unreasoned_turn_count` and `last_speech_reasoning_time`.
+     - When `unreasoned_turn_count >= 2` (or a turn contains architectural/requirement
+       intent and `now - last_speech_reasoning_time >= 8.0`), spawn an async task calling
+       `ctx.decision_linker.process_transcript_window(...)` and broadcast the synthesized
+       requirement to the dashboard (`DECISION_LOGGED`) and glasses (`REQUIREMENT_SYNTHESIZED`).
+  3. In `backend/agents/raising_hand_agent.py`:
+     - Make `_get_recent_context` async (or add async Supabase fallback) so that after a
+       backend restart, `RaisingHandAgent` still retrieves the last 60s of `transcript_turns`
+       from Supabase just like `DecisionLinkerAgent._get_recent_transcripts()` does.
+  4. In `spectacles-lens/Assets/Scripts/PersistentStreamSocketClient.ts`:
+     - Add handling for `message.type === 'REQUIREMENT_SYNTHESIZED'` and `'DECISION_LOGGED'`
+       in `handleIncomingMessage()` and invoke an `onRequirementSynthesized` callback wired
+       to `SpatialInterfaceManager.showToast("Req: " + summary)`.
+acceptance_criteria:
+  - id: AC1
+    behavior: 'Speaking requirement statements into ASR (without taking a whiteboard snapshot) triggers DecisionLinkerAgent.process_transcript_window, stores the synthesized requirement in knowledge_chunks, and broadcasts DECISION_LOGGED / REQUIREMENT_SYNTHESIZED.'
+    verify: 'cd backend && pytest tests/test_decision_linker.py -q'
+  - id: AC2
+    behavior: 'PersistentStreamSocketClient routes REQUIREMENT_SYNTHESIZED / DECISION_LOGGED messages to the AR HUD toast callback.'
+    verify: 'cd spectacles-lens && npm test'
+  - id: AC3
+    behavior: 'RaisingHandAgent falls back to Supabase transcript_turns when in-memory transcript_turns is empty.'
+    verify: 'cd backend && pytest tests/test_raising_hand.py -q'
+risks_vulnerabilities:
+  - risk: 'Calling Gemini on every single short utterance ("uh-huh", "yeah") would waste quota.'
+    mitigation: 'Filter out utterances shorter than 5 words and debounce reasoning to at most once every 8 seconds or every 2+ substantive turns.'
+knowledge_gaps: []
+commit_message: |
+  feat(reasoning): add continuous speech-driven requirement extraction in AsrHandler and HUD feedback (Task 58)
+

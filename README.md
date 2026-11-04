@@ -10,7 +10,7 @@
 [![Supabase](https://img.shields.io/badge/Database-Supabase%20pgvector-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)](https://supabase.com/)
 [![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/Tests-37%2F37%20Passing-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](#testing--verification)
+[![Tests](https://img.shields.io/badge/Tests-137%20Lens%20%7C%20146%20Backend%20Passing-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](#testing--verification)
 
 <p align="center">
   <b>A real-time, multimodal spatial engineering companion for whiteboarding sessions.</b><br/>
@@ -66,14 +66,15 @@ Technical system design sessions live and die on physical whiteboards. Engineers
 
 | Feature | Description | Technology Stack |
 | :--- | :--- | :--- |
-| **Whiteboard Vision Sync** | Non-blocking $480\text{p}$ camera capture every $3\text{s}$, perceptual hash gate (`imagehash.phash`), and incremental graph delta extraction. | `CameraModule`, `imagehash`, Gemini 2.5 Flash Vision |
-| **Sub-140ms Draw.io Overlay** | In-process Sugiyama hierarchical DAG layout with pre-warmed headless Chromium transparent overlay rendering. | `drawio-mcp`, Playwright Chromium, CDP |
-| **SIK Pinch Palette** | Spatial component palette anchored at $1.15\text{m}$ forward $Z$-axis. Pinch to spawn nodes with localized speech-to-text labels. | `SpectaclesInteractionKit`, `AsrModule` |
-| **"Raising-Hand" AI Critic** | Non-intrusive floating AI orb that audits architectural changes in real-time, raising a hand badge ($\le 28$ chars) upon detecting anti-patterns. | Fast heuristic rule engine + Gemini 2.5 Flash |
-| **On-Demand AR Research** | Pinch the idle orb, speak a technical query, watch the orb enter a glowing `RESEARCHING` state, and receive synthesized bullet cards. | WebSockets, Gemini 2.5 Flash, 3D AR tweening |
+| **Dual-Mode Whiteboard Vision** | Dual-mode capture: Frequency Mode ($3.0\text{s}$ periodic snapshots) or Manual Mode (pinch `BtnCaptureWhiteboard`). Supports node additions, erasures, and renames. | `CameraModule`, `imagehash.phash`, Gemini 2.5/3.8 Flash |
+| **Continuous Speech Reasoning** | In-flight speech listening and multi-speaker diarization with sliding-window requirement synthesis broadcasting instant AR HUD toasts. | `AsrModule`, `deepgram-sdk`, `DecisionLinkerAgent` |
+| **Sub-140ms Draw.io Overlay** | In-process Sugiyama hierarchical DAG auto-layout with pre-warmed headless Chromium transparent RGBA overlay rendering. | `drawio-mcp`, Playwright Chromium, CDP |
+| **6-DOF Calibration & Passthrough** | Z-depth translation (clamped to $-115\text{cm}$ optical minimum) and world Y-axis yaw rotation with automatic 100% see-through optical passthrough. | `WhiteboardCalibrator`, `SpectaclesInteractionKit` |
+| **SIK Pinch Palette** | Spatial 6-button palette (`[Capture]`, `[Mode]`, `[◇ Decision]`, `[▭ Service]`, `[🛢 Database]`, `[○ Terminal]`) anchored at $1.15\text{m}$ depth. | `SpectaclesInteractionKit`, `PaletteController` |
+| **"Raising-Hand" AI Teammate** | Ambient 3D orb that audits architecture deltas, raises a hand with an alert badge, and plays spoken voice critique via `AgentVoicePlayer`. | `RaisingHandAgent`, Deepgram Aura / TTS, AudioComponent |
+| **On-Demand AR Research** | Pinch the idle orb, speak a technical query, watch the orb enter a glowing `RESEARCHING` state, and receive synthesized bullet cards. | WebSockets, Gemini Flash, 3D AR tweening |
 | **Temporal Decision Scrubber** | Replay meeting history from `00:00` to `End`, watching the Draw.io diagram mutate in sync with speaker-diarized audio transcripts. | Next.js 15, React 19, Tailwind CSS, Supabase |
 | **Spec Generator & RAG Hub** | 1-click Markdown Technical Spec compiler and semantic Q&A drawer querying $1536$-dimensional `pgvector` embeddings. | PostgreSQL 16, `pgvector`, Gemini Embeddings |
-
 ---
 
 ## 👓 Waveguide Optical Ergonomics

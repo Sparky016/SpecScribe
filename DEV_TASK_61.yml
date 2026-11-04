@@ -1,0 +1,76 @@
+id: '61'
+title: 'Physical Whiteboard 6-DOF Alignment (Depth & Yaw Calibration) and Hardware Passthrough Mode Toggle'
+phase: 2
+severity: medium
+complexity: medium
+effort: medium
+eval_effort: low
+depends_on: ['48']
+status: PENDING
+source: 'MVP_READY.md #GAP-9'
+human_action: none
+decision_log:
+  outcome: pending
+  rework_cycles: 0
+  escalated: false
+  history: []
+  decisions: []
+  sticking_points: []
+  repeated_work: []
+  iterative_mistakes: []
+  human_required: []
+  escalate: []
+  evaluator_verdicts: []
+objective: |
+  Ensure the rendered Draw.io diagram overlay registers accurately onto a physical
+  real-world meeting room whiteboard without being occluded by the virtual
+  backdrop texture or misaligned in depth/angle. Currently:
+  (1) Scene.scene serializes `isPhysicalHardware: false` on SpecScribeControllers,
+      which leaves the opaque virtual whiteboard texture visible on see-through
+      waveguides unless edited in Lens Studio before build.
+  (2) WhiteboardCalibrator.ts only supports 2D X/Y drag (`drag(deltaY, deltaX)`)
+      and fixed width/height presets at `Z = -230cm` and `Rotation = (90, 0, 0)`
+      with `enableRotation = false`, preventing the wearer from aligning the
+      overlay with a physical whiteboard at a different distance or wall angle.
+scope:
+  in:
+    - spectacles-lens/Assets/Scripts/WhiteboardCalibrator.ts
+    - spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts
+    - spectacles-lens/Assets/Scripts/DiagramOverlayView.ts
+    - spectacles-lens/test/whiteboard_calibrator.test.ts
+    - spectacles-lens/test/spatial_interface_manager.test.ts
+  out:
+    - Backend rendering pipeline
+files:
+  spectacles-lens/Assets/Scripts/WhiteboardCalibrator.ts: 'Add adjustDepth(deltaZ) and adjustYaw(deltaYawDeg) methods, and enable yaw rotation / Z-depth translation on the SIK ManipulateComponent during SELECT_AREA calibration.'
+  spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts: 'Auto-detect physical Spectacles device runtime (or provide a runtime passthrough toggle) so WhiteboardBackplate mesh is transparent (alpha = 0.0) on physical waveguides even if isPhysicalHardware was left false in Scene.scene.'
+  spectacles-lens/test/whiteboard_calibrator.test.ts: 'Add unit tests for adjustDepth(deltaZ), adjustYaw(deltaYawDeg), and passthrough alpha configuration.'
+implementation_notes: |
+  1. In `spectacles-lens/Assets/Scripts/WhiteboardCalibrator.ts`:
+     - Extend `drag(deltaY: number, deltaX: number = 0, deltaZ: number = 0)` so callers
+       and 3D manipulation handles can move the whiteboard anchor in X, Y, and Z depth
+       (clamped to safe optical bounds `-400cm <= Z <= -115cm`, never closer than the
+       1.15m optical comfort minimum).
+     - Add `rotateYaw(deltaDegrees: number)` to rotate `whiteboardObject.getTransform()`
+       around the world Y-axis so the overlay plane sits flush against angled room walls.
+     - In `setManipulationEnabled(enabled: boolean)`, enable translation across all 3 axes
+       and Y-axis rotation when supported by the SIK `ManipulateComponent`.
+  2. In `spectacles-lens/Assets/Scripts/SpatialInterfaceManager.ts`:
+     - Add a runtime check or helper `setHardwarePassthrough(enabled: boolean)` that hides
+       the opaque `WhiteboardBackplate` texture (`baseColor.w = 0.0`) while keeping
+       `WhiteboardOverlayAnchor` at `alpha = 0.92` (`#00FF66` / `#00E5FF` waveguide palette)
+       so the AR diagram overlays directly onto the physical whiteboard.
+acceptance_criteria:
+  - id: AC1
+    behavior: 'WhiteboardCalibrator supports X, Y, and Z translation (clamped to Z <= -115cm) and yaw rotation to align with real-world walls.'
+    verify: 'cd spectacles-lens && npm test'
+  - id: AC2
+    behavior: 'Hardware passthrough mode makes WhiteboardBackplate fully transparent (alpha = 0.0) while preserving ColliderComponent hit-testing and WhiteboardOverlayAnchor visibility (alpha = 0.92).'
+    verify: 'cd spectacles-lens && npm test'
+risks_vulnerabilities:
+  - risk: 'Allowing Z-depth closer than 1.15m violates Spectacles optical waveguide vergence-accommodation comfort rules.'
+    mitigation: 'Clamp Z position in WhiteboardCalibrator.drag() to a maximum of -115.0 (i.e. at least 1.15m in front of the user).'
+knowledge_gaps: []
+commit_message: |
+  feat(calibration): add Z-depth and yaw alignment to WhiteboardCalibrator and runtime passthrough toggle (Task 61)
+
