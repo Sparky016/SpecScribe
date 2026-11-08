@@ -34,7 +34,9 @@ TIMED_CUES = [
     (8.0, "SPEAK 1", '"We need a public client connecting to an API Gateway, and every request has to carry HMAC verification."', "A01.mp3"),
     (18.0, "WATCH", "Presenter stepped aside. Green 2-node overlay (Client -> API Gateway) within ~3 s.", None),
     (23.0, "SPEAK 2", "\"Let's route traffic from the Gateway to a Core Service and persist everything in PostgreSQL.\"", "A02.mp3"),
-    (29.0, "SPEAK 1", '"Do we need auth between the Core Service and the database, or is the network enough?"', "A03.mp3"),
+    # 31 s, not 29: A02 ends at ~28.9 s and the Lens ASR closes a turn after 1 s of silence, so a shorter gap
+    # merges Speaker 2's and Speaker 1's lines into one turn.
+    (31.0, "SPEAK 1", '"Do we need auth between the Core Service and the database, or is the network enough?"', "A03.mp3"),
     (34.0, "WATCH", "Full 4-node overlay (+ Core Service, + Postgres DB).", None),
     (40.0, "PINCH", "BtnToggleCaptureMode -> toast 'Capture Mode: MANUAL (Pinch to Capture)'.", None),
     (44.0, "PINCH", "BtnCaptureWhiteboard -> immediate snapshot.", None),
@@ -151,7 +153,7 @@ def audio_check(player: CuePlayer) -> None:
         if filename:
             say(kind, f"{filename}: {text}")
             player.play(filename)
-            time.sleep(7.5)  # longest clip is ~6.8 s
+            time.sleep(9.0)  # longest clip is ~6.8 s; >1 s of silence after each so the ASR ends the turn
     player.close()
     print("Did Lens Studio's ASR pick up all three lines? (Check the Lens logs / dashboard transcript.)")
 
