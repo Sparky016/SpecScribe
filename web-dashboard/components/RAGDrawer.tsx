@@ -21,10 +21,10 @@ import { DEMO_MEETING_ID } from "../lib/demoData";
 const WELCOME_ID = "initial-welcome";
 
 const DEMO_SUGGESTIONS = [
-  "Why did we place Redis between API Gateway and Postgres?",
-  "What security vulnerabilities were flagged by the AI?",
-  "How does the Kafka event pipeline handle sensor telemetry?",
-  "Summarize all architectural decisions and failure boundaries",
+  "Why does the Core Service need HMAC verification to reach Postgres?",
+  "What security risk did the AI flag?",
+  "How do client requests get into the system?",
+  "Summarize all architectural decisions",
 ];
 
 const GENERIC_SUGGESTIONS = [

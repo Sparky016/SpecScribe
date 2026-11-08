@@ -61,6 +61,8 @@ export const DrawioCanvas: React.FC<DrawioCanvasProps> = ({
     const host = document.createElement("div");
     // Not the "mxgraph" class: the viewer script auto-processes those, which would render twice.
     host.className = "specscribe-drawio-viewer";
+    // The viewer sizes itself from the host's width; an unsized flex child is 0px wide and renders nothing.
+    host.style.width = "100%";
     host.setAttribute(
       "data-mxgraph",
       JSON.stringify({
