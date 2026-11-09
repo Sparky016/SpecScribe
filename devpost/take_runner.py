@@ -32,20 +32,18 @@ FOOTAGE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "footage"
 TIMED_CUES = [
     (0.0, "INFO", "Clean board baseline. Nobody speaks.", None),
     (8.0, "SPEAK 1", '"We need a public client connecting to an API Gateway, and every request has to carry HMAC verification."', "A01.mp3"),
-    (18.0, "WATCH", "Presenter stepped aside. Green 2-node overlay (Client -> API Gateway) within ~3 s.", None),
+    # Capture mode is MANUAL: the overlay only updates on a Capture pinch, so pinch right after each drawing step.
+    (19.0, "PINCH", "[camera] Capture -> green 2-node overlay (Client -> API Gateway) within ~5 s.", None),
     (23.0, "SPEAK 2", "\"Let's route traffic from the Gateway to a Core Service and persist everything in PostgreSQL.\"", "A02.mp3"),
     # 31 s, not 29: A02 ends at ~28.9 s and the Lens ASR closes a turn after 1 s of silence, so a shorter gap
     # merges Speaker 2's and Speaker 1's lines into one turn.
     (31.0, "SPEAK 1", '"Do we need auth between the Core Service and the database, or is the network enough?"', "A03.mp3"),
-    (34.0, "WATCH", "Full 4-node overlay (+ Core Service, + Postgres DB).", None),
-    (40.0, "PINCH", "BtnToggleCaptureMode -> toast 'Capture Mode: MANUAL (Pinch to Capture)'.", None),
-    (44.0, "PINCH", "BtnCaptureWhiteboard -> immediate snapshot.", None),
-    (49.0, "PINCH", "[◇ Decision] -> diamond inserted, edges re-route.", None),
+    (36.0, "PINCH", "[camera] Capture -> full 4-node overlay (+ Core Service, + Postgres DB).", None),
 ]
 MANUAL_CUES = [
-    ("WAIT", "Orb raises hand: cyan pulse, badge 'Auth Token Leak Risk', chime."),
-    ("PINCH", "The Orb -> 3-bullet critique card + spoken critique. Let the voice finish."),
-    ("PINCH", "BtnConcludeMeeting -> dashboard shows spec, timeline, RAG drawer. Hold ~5 s."),
+    ("WAIT", "Orb raises hand (backend agent reacting to the auth question): pulse, badge, chime."),
+    ("PINCH", "The Orb -> critique card + spoken critique. Let the voice finish."),
+    ("PINCH", "[check] Conclude -> 'Meeting Concluded: Technical Spec Generated'. Hold ~5 s."),
 ]
 
 

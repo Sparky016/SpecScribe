@@ -6,10 +6,10 @@ export function formatModeBadge(mode: CaptureModeName, intervalSec: number = 3):
 }
 
 /**
- * Selects which whiteboard ingestion path is live: AUTO (PeriodicCameraCapturer samples every few seconds while the
- * user draws) or MANUAL (a pinch on the whiteboard or the capture button ingests one frame). Only one path runs at a
- * time. Kept out of SpatialInterfaceManager so the composition root stays small; the capturer is found on the host
- * SceneObject unless assigned.
+ * Whiteboard ingestion: a pinch on the whiteboard or the capture button always ingests one frame. The mode only
+ * decides what happens between pinches: AUTO (PeriodicCameraCapturer also samples every few seconds) or MANUAL
+ * (pinches only). Kept out of SpatialInterfaceManager so the composition root stays small; the capturer is found on
+ * the host SceneObject unless assigned.
  */
 export class WhiteboardCaptureSwitch {
   public capturer?: PeriodicCameraCapturer;
@@ -45,7 +45,7 @@ export class WhiteboardCaptureSwitch {
     const next = c.setCaptureMode(mode);
     this.toast(next === CaptureMode.AUTO
       ? `Capture: AUTO • every ${c.getSampleInterval().toFixed(0)}s`
-      : 'Capture: MANUAL • Pinch capture to ingest the whiteboard');
+      : 'Capture: MANUAL • Pinch to capture the whiteboard');
     this.onModeChanged?.(next);
     return next;
   }
@@ -54,7 +54,7 @@ export class WhiteboardCaptureSwitch {
     return this.setMode(this.getMode() === CaptureMode.AUTO ? CaptureMode.MANUAL : CaptureMode.AUTO);
   }
 
-  /** Manual capture pinch: ingests one whiteboard frame in MANUAL mode. Returns true when a capture started. */
+  /** Capture pinch: ingests one whiteboard frame, in either mode. Returns true when a capture started. */
   public captureNow(): boolean {
     if (this.isLocked()) {
       print('[WhiteboardCaptureSwitch] Meeting is concluded; ignoring whiteboard capture.');
@@ -63,11 +63,6 @@ export class WhiteboardCaptureSwitch {
     const c = this.resolve();
     if (!c) {
       print('[WhiteboardCaptureSwitch] No camera capturer attached; whiteboard capture unavailable.');
-      return false;
-    }
-    if (c.getCaptureMode() !== CaptureMode.MANUAL) {
-      print('[WhiteboardCaptureSwitch] Pinch capture ignored: capture mode is AUTO.');
-      this.toast('Auto capture is on • Switch to MANUAL to pinch-capture');
       return false;
     }
     const started = c.triggerManualCapture();

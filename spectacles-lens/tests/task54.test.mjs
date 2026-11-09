@@ -230,7 +230,7 @@ describe('Task 54: Wire 3D Capture & Mode-Toggle SIK Buttons in Scene and Spatia
   });
 
   describe('AC3: Pinching BtnCaptureWhiteboard triggers captureNow() -> triggerManualCapture() -> cameraFrame WebSocket message', () => {
-    test('end-to-end: pinching legacy btnCaptureWhiteboard in MANUAL mode emits cameraFrame over WebSocket', () => {
+    test('end-to-end: pinching legacy btnCaptureWhiteboard emits a manual cameraFrame over WebSocket in AUTO and MANUAL', () => {
       const ws = new MockWebSocket('ws://localhost:8000/ws/meeting/task54');
       global._mockSocket = ws;
       global._mockAsrHandler = () => {};
@@ -259,10 +259,12 @@ describe('Task 54: Wire 3D Capture & Mode-Toggle SIK Buttons in Scene and Spatia
       const cameraFrames = () =>
         ws.sentMessages.map((s) => JSON.parse(s)).filter((p) => p.eventType === 'cameraFrame');
 
-      // In AUTO mode, pinching BtnCaptureWhiteboard does not emit a manual frame
+      // In AUTO mode, pinching BtnCaptureWhiteboard still captures, flagged as manual for the backend
       btnCapture.simulatePinch();
-      assert.equal(cameraFrames().length, 0);
-      assert.match(m.getToastText(), /Auto capture is on/);
+      assert.equal(cameraFrames().length, 1);
+      assert.equal(cameraFrames()[0].isManual, true);
+      assert.equal(cameraFrames()[0].captureMode, 'AUTO');
+      assert.match(m.getToastText(), /Whiteboard captured/);
 
       // Toggle to MANUAL mode via BtnToggleCaptureMode, then pinch BtnCaptureWhiteboard
       btnToggle.simulatePinch();
@@ -270,8 +272,9 @@ describe('Task 54: Wire 3D Capture & Mode-Toggle SIK Buttons in Scene and Spatia
 
       btnCapture.simulatePinch();
       const emitted = cameraFrames();
-      assert.equal(emitted.length, 1);
-      assert.equal(emitted[0].image_b64, 'encoded-frame-1');
+      assert.equal(emitted.length, 2);
+      assert.equal(emitted[1].image_b64, 'encoded-frame-2');
+      assert.equal(emitted[1].captureMode, 'MANUAL');
       assert.match(m.getToastText(), /Whiteboard captured/);
     });
   });

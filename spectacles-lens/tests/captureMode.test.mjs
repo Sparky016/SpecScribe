@@ -64,7 +64,7 @@ function socketStub() {
 
 const tick = (component, seconds) => component._testEvents.UpdateEvent.trigger({ getDeltaTime: () => seconds });
 
-describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
+describe('Whiteboard capture: every pinch captures; AUTO adds periodic frames, MANUAL is pinch-only', () => {
   let PeriodicCameraCapturer, CaptureMode, normalizeCaptureMode;
   let SpatialInterfaceManager, WhiteboardState, PaletteController, PersistentStreamSocketClient;
 
@@ -100,16 +100,25 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       assert.equal(startedCapturer('Manual').capturer.getCaptureMode(), CaptureMode.MANUAL, 'Inspector value is honoured');
     });
 
-    test('AUTO: captures every 3s and ignores the manual pinch trigger', () => {
+    test('AUTO: captures every 3s without pinches', () => {
       const { capturer, frames } = startedCapturer();
-      assert.equal(capturer.triggerManualCapture(), false);
-      assert.equal(enc.count, 0, 'pinch must not encode in AUTO');
       tick(capturer, 2.9);
       assert.equal(frames.length, 0);
       tick(capturer, 0.2);
       assert.equal(frames.length, 1);
       for (let i = 0; i < 6; i++) tick(capturer, 1.0);
       assert.equal(frames.length, 3, 'one frame per 3s interval');
+    });
+
+    test('AUTO: a pinch captures immediately and restarts the 3s timer', () => {
+      const { capturer, frames } = startedCapturer();
+      tick(capturer, 2.5);
+      assert.equal(capturer.triggerManualCapture(), true);
+      assert.equal(frames.length, 1, 'pinch encodes in AUTO too');
+      tick(capturer, 1.0);
+      assert.equal(frames.length, 1, 'the stale 2.5s must not fire a periodic frame right behind the pinch');
+      tick(capturer, 2.0);
+      assert.equal(frames.length, 2);
     });
 
     test('MANUAL: periodic cadence is idle; each pinch captures exactly one frame', () => {
@@ -153,11 +162,12 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       assert.equal(frames.length, 1);
 
       assert.equal(capturer.toggleCaptureMode(), CaptureMode.AUTO);
-      assert.equal(capturer.triggerManualCapture(), false, 'pinch disabled again in AUTO');
-      tick(capturer, 1.0);
-      assert.equal(frames.length, 1, 'stale 2.5s from before the switch must not fire early');
       tick(capturer, 2.0);
+      assert.equal(frames.length, 1, 'switching back to AUTO restarts the timer');
+      tick(capturer, 1.0);
       assert.equal(frames.length, 2);
+      assert.equal(capturer.triggerManualCapture(), true, 'pinch still captures in AUTO');
+      assert.equal(frames.length, 3);
     });
 
     test('onCaptureModeChanged fires only on an actual change', () => {
@@ -171,7 +181,7 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       assert.deepEqual(changes, ['manual', 'auto']);
     });
 
-    test('exclusivity: across a mixed timeline, frames only ever come from the active path', () => {
+    test('mixed timeline: pinches capture in both modes; the timer only in AUTO', () => {
       const { capturer, frames } = startedCapturer();
       const sources = [];
       const pinch = () => { const before = frames.length; capturer.triggerManualCapture(); if (frames.length > before) sources.push(`pinch:${capturer.getCaptureMode()}`); };
@@ -181,7 +191,7 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       advance(3); advance(3); pinch(); advance(3); pinch();
       capturer.setCaptureMode('auto');
       pinch(); advance(3);
-      assert.deepEqual(sources, ['timer:auto', 'pinch:manual', 'pinch:manual', 'timer:auto']);
+      assert.deepEqual(sources, ['timer:auto', 'pinch:auto', 'pinch:auto', 'pinch:manual', 'pinch:manual', 'pinch:auto', 'timer:auto']);
     });
   });
 
@@ -225,16 +235,16 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       assert.equal(enc.count, 0);
     });
 
-    test('AUTO: whiteboard pinch while drawing does not ingest; periodic capture keeps running', () => {
+    test('AUTO: whiteboard pinch while drawing ingests one frame; periodic capture keeps running', () => {
       const { m, capturer, frames, board, socket } = setup();
       board.simulatePinch();
       board.simulatePinch();
       board.simulatePinch();
-      assert.equal(frames.length, 0);
-      assert.match(m.getToastText(), /Auto capture is on/);
+      assert.equal(frames.length, 1);
+      assert.match(m.getToastText(), /Whiteboard captured/);
       assert.equal(socket.sent.filter((s) => s.action === 'ADD_NODE').length, 0, 'pinch no longer injects a node');
       tick(capturer, 3.0);
-      assert.equal(frames.length, 1);
+      assert.equal(frames.length, 2);
     });
 
     test('MANUAL: whiteboard pinch while drawing ingests one frame; periodic capture stays idle', () => {
@@ -249,27 +259,27 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
       assert.equal(frames.length, 1);
     });
 
-    test('capture button works only in MANUAL; mode button toggles AUTO <-> MANUAL with a toast', () => {
+    test('capture button captures in both modes; mode button toggles AUTO <-> MANUAL with a toast', () => {
       const { m, capturer, frames, captureBtn, modeBtn } = setup();
       captureBtn.simulatePinch();
-      assert.equal(frames.length, 0, 'capture button is inert in AUTO');
+      assert.equal(frames.length, 1, 'capture button captures in AUTO');
 
       modeBtn.simulatePinch();
       assert.equal(m.capture.getMode(), CaptureMode.MANUAL);
       assert.equal(capturer.getCaptureMode(), CaptureMode.MANUAL);
       assert.match(m.getToastText(), /Capture: MANUAL/);
       captureBtn.simulatePinch();
-      assert.equal(frames.length, 1);
+      assert.equal(frames.length, 2);
       tick(capturer, 6);
-      assert.equal(frames.length, 1);
+      assert.equal(frames.length, 2, 'no periodic frames in MANUAL');
 
       modeBtn.simulatePinch();
       assert.equal(m.capture.getMode(), CaptureMode.AUTO);
       assert.match(m.getToastText(), /Capture: AUTO • every 3s/);
       captureBtn.simulatePinch();
-      assert.equal(frames.length, 1);
+      assert.equal(frames.length, 3);
       tick(capturer, 3);
-      assert.equal(frames.length, 2);
+      assert.equal(frames.length, 4);
     });
 
     test('capture is ignored once the meeting is concluded', () => {
@@ -290,7 +300,7 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
     });
   });
 
-  test('end to end: a MANUAL pinch reaches the backend socket as a cameraFrame; AUTO pinch sends nothing', () => {
+  test('end to end: a pinch reaches the backend socket as a manual cameraFrame in both modes', () => {
     installEncoder();
     const ws = new MockWebSocket('ws://localhost:8000/ws/meeting/x');
     global._mockSocket = ws;
@@ -303,11 +313,14 @@ describe('Whiteboard capture mode: AUTO (periodic) xor MANUAL (pinch)', () => {
     const frames = () => ws.sentMessages.map((s) => JSON.parse(s)).filter((p) => p.eventType === 'cameraFrame');
 
     capturer.triggerManualCapture();
-    assert.equal(frames().length, 0);
-    capturer.setCaptureMode('manual');
-    capturer.triggerManualCapture();
     assert.equal(frames().length, 1);
     assert.equal(frames()[0].image_b64, 'frame-1');
+    assert.equal(frames()[0].isManual, true);
+    assert.equal(frames()[0].captureMode, 'AUTO');
+    capturer.setCaptureMode('manual');
+    capturer.triggerManualCapture();
+    assert.equal(frames().length, 2);
+    assert.equal(frames()[1].captureMode, 'MANUAL');
     global._mockSocket = undefined;
   });
 });

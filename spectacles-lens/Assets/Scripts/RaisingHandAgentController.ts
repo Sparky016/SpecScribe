@@ -485,11 +485,12 @@ export class RaisingHandAgentController extends BaseScriptComponent {
     const up = cam.up;
     const forward = cam.forward;
     const o = this.cameraAnchorOffset;
-    // Offset z is negative in front of the camera, so forward distance is -o.z
+    // The offset is in camera-local space. Transform.forward is the camera's local +Z axis, and the camera
+    // looks down -Z, so the negative o.z already places the orb in front of the view.
     const pos = new vec3(
-      camPos.x + right.x * o.x + up.x * o.y + forward.x * -o.z,
-      camPos.y + right.y * o.x + up.y * o.y + forward.y * -o.z,
-      camPos.z + right.z * o.x + up.z * o.y + forward.z * -o.z
+      camPos.x + right.x * o.x + up.x * o.y + forward.x * o.z,
+      camPos.y + right.y * o.x + up.y * o.y + forward.y * o.z,
+      camPos.z + right.z * o.x + up.z * o.y + forward.z * o.z
     );
     const rot = cam.getWorldRotation().multiply(this.cameraAnchorRotation);
     return { pos, rot };

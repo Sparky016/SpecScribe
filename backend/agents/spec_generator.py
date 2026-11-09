@@ -32,6 +32,9 @@ except ImportError:
 
 logger = logging.getLogger("specscribe.spec_generator")
 
+# Per-model timeout for the full Markdown spec (one long generation); the 30 s default is sized for short calls.
+SPEC_LLM_TIMEOUT_SECONDS = 90.0
+
 
 def format_timestamp_ms(ms: int) -> str:
     """Internal helper: Formats millisecond offset into [MM:SS] exclusively for static Markdown tech-spec compilation and LLM citation prompts. All wire network payloads use raw integer milliseconds."""
@@ -394,7 +397,9 @@ class SpecGeneratorAgent:
                     f"```xml\n{drawio_xml}\n```\n"
                 )
 
-                text = await llm.generate_structured(prompt, api_key=self.api_key)
+                # A full Markdown spec takes longer than the default per-model timeout; a timeout there cascaded through
+                # every fallback model and the Lens gave up before any answer arrived.
+                text = await llm.generate_structured(prompt, api_key=self.api_key, timeout_s=SPEC_LLM_TIMEOUT_SECONDS)
                 if text and len(text.strip()) > 100:
                     return text.strip()
                 if text:

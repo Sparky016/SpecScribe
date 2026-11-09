@@ -14,6 +14,7 @@ import {
   Filter,
   CheckCircle2,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import {
   AgentIntervention,
@@ -23,11 +24,13 @@ import {
   TranscriptTurn,
 } from "../lib/types";
 import { formatTimestamp } from "../lib/api";
+import { MeetingNotesView } from "./MeetingNotesView";
 
 interface TranscriptPanelProps {
   timeline: TimelineData;
   currentTimeMs: number;
   onSeek: (timestampMs: number) => void;
+  onFinalize?: () => Promise<void>;
 }
 
 type StreamItem =
@@ -39,7 +42,9 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
   timeline,
   currentTimeMs,
   onSeek,
+  onFinalize,
 }) => {
+  const [viewMode, setViewMode] = useState<"STREAM" | "NOTES">("STREAM");
   const [filter, setFilter] = useState<"ALL" | "TURNS" | "AI" | "DECISIONS">("ALL");
   const activeItemRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -102,113 +107,154 @@ export const TranscriptPanel: React.FC<TranscriptPanelProps> = ({
 
   return (
     <div className="w-full h-full bg-[#0a0e14] flex flex-col overflow-hidden">
-      {/* Header and Filter Tabs */}
+      {/* Header and Mode Tabs */}
       <div className="p-3.5 border-b border-white/10 bg-[#0d121b]/80 backdrop-blur-md flex flex-col gap-2.5 z-10">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-4 h-4 text-[#00FF66]" />
-            <h2 className="text-xs sm:text-sm font-bold text-white tracking-wide">
-              SYNCHRONIZED AUDIT LOG
-            </h2>
+        <div className="flex items-center justify-between gap-2">
+          {/* View Mode Toggle: Audit Log vs Meeting Notes */}
+          <div className="flex items-center gap-1 p-0.5 bg-black/40 rounded-xl border border-white/10">
+            <button
+              onClick={() => setViewMode("STREAM")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === "STREAM"
+                  ? "bg-[#00FF66]/20 text-[#00FF66] border border-[#00FF66]/40 shadow-sm"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Audit Log</span>
+            </button>
+            <button
+              onClick={() => setViewMode("NOTES")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                viewMode === "NOTES"
+                  ? "bg-[#00E5FF]/20 text-[#00E5FF] border border-[#00E5FF]/40 shadow-sm"
+                  : "text-gray-400 hover:text-white"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Meeting Notes</span>
+              {timeline.meeting.generated_spec_md && (
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00E5FF] animate-pulse" />
+              )}
+            </button>
           </div>
-          <span className="text-[11px] font-mono text-gray-400">
-            {filteredItems.length} items
-          </span>
+
+          {viewMode === "STREAM" ? (
+            <span className="text-[11px] font-mono text-gray-400">
+              {filteredItems.length} items
+            </span>
+          ) : (
+            <span className="text-[11px] font-mono text-gray-400">
+              Gemini Spec
+            </span>
+          )}
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
-          <button
-            onClick={() => setFilter("ALL")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-              filter === "ALL"
-                ? "bg-white/15 text-white font-semibold"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            All Stream
-          </button>
-          <button
-            onClick={() => setFilter("TURNS")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-              filter === "TURNS"
-                ? "bg-[#00FF66]/20 text-[#00FF66] font-semibold border border-[#00FF66]/30"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            Diarized Dialogue
-          </button>
-          <button
-            onClick={() => setFilter("AI")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 ${
-              filter === "AI"
-                ? "bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            <Bot className="w-3 h-3 text-amber-400" />
-            <span>AI Critiques</span>
-          </button>
-          <button
-            onClick={() => setFilter("DECISIONS")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
-              filter === "DECISIONS"
-                ? "bg-[#00E5FF]/20 text-[#00E5FF] font-semibold border border-[#00E5FF]/30"
-                : "text-gray-400 hover:text-white hover:bg-white/5"
-            }`}
-          >
-            Decisions
-          </button>
+        {/* Filter Pills (visible in Stream mode) */}
+        {viewMode === "STREAM" && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+            <button
+              onClick={() => setFilter("ALL")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                filter === "ALL"
+                  ? "bg-white/15 text-white font-semibold"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              All Stream
+            </button>
+            <button
+              onClick={() => setFilter("TURNS")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                filter === "TURNS"
+                  ? "bg-[#00FF66]/20 text-[#00FF66] font-semibold border border-[#00FF66]/30"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Diarized Dialogue
+            </button>
+            <button
+              onClick={() => setFilter("AI")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1 ${
+                filter === "AI"
+                  ? "bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              <Bot className="w-3 h-3 text-amber-400" />
+              <span>AI Critiques</span>
+            </button>
+            <button
+              onClick={() => setFilter("DECISIONS")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors whitespace-nowrap ${
+                filter === "DECISIONS"
+                  ? "bg-[#00E5FF]/20 text-[#00E5FF] font-semibold border border-[#00E5FF]/30"
+                  : "text-gray-400 hover:text-white hover:bg-white/5"
+              }`}
+            >
+              Decisions
+            </button>
+          </div>
+        )}
+      </div>
+
+      {viewMode === "NOTES" ? (
+        <MeetingNotesView
+          specMd={timeline.meeting.generated_spec_md}
+          meetingId={timeline.meeting.id}
+          meetingTitle={timeline.meeting.title}
+          onSeek={onSeek}
+          onFinalize={onFinalize}
+        />
+      ) : (
+        /* Chronological Event Stream */
+        <div
+          ref={containerRef}
+          className="flex-1 overflow-y-auto p-4 space-y-3.5 scroll-smooth"
+        >
+          {filteredItems.map((item, idx) => {
+            const isActive = idx === activeIndex;
+
+            if (item.type === "TURN") {
+              return (
+                <TurnCard
+                  key={item.data.id}
+                  turn={item.data}
+                  isActive={isActive}
+                  onSeek={() => onSeek(item.timestamp_ms)}
+                  ref={isActive ? activeItemRef : undefined}
+                />
+              );
+            }
+
+            if (item.type === "INTERVENTION") {
+              return (
+                <InterventionCard
+                  key={item.data.id}
+                  intervention={item.data}
+                  isActive={isActive}
+                  onSeek={() => onSeek(item.timestamp_ms)}
+                  ref={isActive ? activeItemRef : undefined}
+                />
+              );
+            }
+
+            if (item.type === "SNAPSHOT") {
+              return (
+                <SnapshotCard
+                  key={item.data.id}
+                  snapshot={item.data}
+                  isActive={isActive}
+                  onSeek={() => onSeek(item.timestamp_ms)}
+                  ref={isActive ? activeItemRef : undefined}
+                />
+              );
+            }
+
+            return null;
+          })}
         </div>
-      </div>
-
-      {/* Chronological Event Stream */}
-      <div
-        ref={containerRef}
-        className="flex-1 overflow-y-auto p-4 space-y-3.5 scroll-smooth"
-      >
-        {filteredItems.map((item, idx) => {
-          const isActive = idx === activeIndex;
-
-          if (item.type === "TURN") {
-            return (
-              <TurnCard
-                key={item.data.id}
-                turn={item.data}
-                isActive={isActive}
-                onSeek={() => onSeek(item.timestamp_ms)}
-                ref={isActive ? activeItemRef : undefined}
-              />
-            );
-          }
-
-          if (item.type === "INTERVENTION") {
-            return (
-              <InterventionCard
-                key={item.data.id}
-                intervention={item.data}
-                isActive={isActive}
-                onSeek={() => onSeek(item.timestamp_ms)}
-                ref={isActive ? activeItemRef : undefined}
-              />
-            );
-          }
-
-          if (item.type === "SNAPSHOT") {
-            return (
-              <SnapshotCard
-                key={item.data.id}
-                snapshot={item.data}
-                isActive={isActive}
-                onSeek={() => onSeek(item.timestamp_ms)}
-                ref={isActive ? activeItemRef : undefined}
-              />
-            );
-          }
-
-          return null;
-        })}
-      </div>
+      )}
     </div>
   );
 };

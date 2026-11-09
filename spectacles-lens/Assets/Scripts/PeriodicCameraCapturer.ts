@@ -1,8 +1,8 @@
 import { findSceneObject } from './SceneUtils';
 
 /**
- * How whiteboard frames are ingested. Exactly one path is live at a time:
- * AUTO samples every `sampleIntervalSeconds`; MANUAL captures only on an explicit pinch.
+ * How whiteboard frames are ingested between pinches. A pinch always captures one frame, in either mode;
+ * AUTO additionally samples every `sampleIntervalSeconds`, MANUAL captures only on pinches.
  */
 export const CaptureMode = {
   AUTO: 'auto',
@@ -175,16 +175,18 @@ export class PeriodicCameraCapturer extends BaseScriptComponent {
     }
   }
 
-  /** Pinch-driven capture. Ignored in AUTO mode so periodic and manual capture never both run; returns true when encoding started. */
+  /**
+   * Pinch-driven capture: every pinch ingests one frame, in either mode. In AUTO the periodic timer restarts so the
+   * next automatic frame comes a full interval after the pinch instead of right behind it. Returns true when
+   * encoding started (false while an encode is in flight or the camera texture is not ready).
+   */
   public triggerManualCapture(): boolean {
-    if (this.getCaptureMode() !== CaptureMode.MANUAL) {
-      print('[PeriodicCameraCapturer] Manual capture ignored: capture mode is AUTO.');
-      return false;
-    }
     if (this.isEncodingActive || !this.cameraTexture) {
       return false;
     }
-    return this.captureAndEncodeFrame(true);
+    const started = this.captureAndEncodeFrame(true);
+    if (started) this.timeAccumulator = 0;
+    return started;
   }
 
   public getCaptureMode(): CaptureModeName {

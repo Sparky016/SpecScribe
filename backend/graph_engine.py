@@ -47,6 +47,11 @@ DEFAULT_DIMENSIONS: Dict[str, Tuple[float, float]] = {
     k: v.default_dimensions for k, v in NODE_REGISTRY.items()
 }
 
+# Overlay page: same aspect as the whiteboard quad in the Lens (~105.6 x 63.4 cm), so the PNG maps onto it 1:1.
+BOARD_W, BOARD_H = 1000.0, 600.0
+BOARD_ANCHOR_PREFIX = "board_anchor_"
+BOARD_ANCHOR_STYLE = "text;html=1;strokeColor=none;fillColor=none;opacity=0;"
+
 EDGE_STYLE = (
     "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00E5FF;"
     "strokeWidth=3;fontColor=#00E5FF;"
@@ -76,6 +81,20 @@ class RemovedEdgeSchema(BaseModel):
     target_label: str
 
 
+class VisibleVertex(BaseModel):
+    label: str = Field(description="Full text written inside the shape, exactly as on the board (not abbreviated, not cut off)")
+    node_type: NodeTypeLiteral
+    box_2d: List[int] = Field(
+        default_factory=list,
+        description="Bounding box of the shape in the image as [ymin, xmin, ymax, xmax], each normalized to 0-1000",
+    )
+    # Filled in code from box_2d and the board box (fractions of the writable board surface); not asked of the model.
+    x: float = 0.0
+    y: float = 0.0
+    width: float = 0.0
+    height: float = 0.0
+
+
 class GraphDeltaSchema(BaseModel):
     person_occluding_board: bool = Field(description="True if a person's body blocks the diagram")
     has_meaningful_change: bool
@@ -94,6 +113,72 @@ class GraphDeltaSchema(BaseModel):
         description="Existing edges whose arrow was erased from the whiteboard",
     )
     diff_summary: str = Field(default="", description="Max 60 chars summary of the visual update")
+    visible_vertices: List[VisibleVertex] = Field(
+        default_factory=list,
+        description="The COMPLETE set of shapes currently drawn on the whiteboard, with positions",
+    )
+    visible_edges: List[EdgeAddition] = Field(
+        default_factory=list,
+        description="The COMPLETE set of arrows currently drawn on the whiteboard, using visible_vertices labels",
+    )
+    board_is_empty: bool = Field(
+        default=False,
+        description="True only when the whiteboard has no shapes or arrows drawn on it at all",
+    )
+    board_box_2d: List[int] = Field(
+        default_factory=list,
+        description="Bounding box of the whiteboard's writable surface (inside the frame) as [ymin, xmin, ymax, xmax], 0-1000",
+    )
+
+
+class VisionVertexResponse(BaseModel):
+    """One shape as Gemini reports it; every field is required so the model cannot drop the box."""
+
+    label: str = Field(description="Full text written inside the shape, exactly as on the board (not abbreviated, not cut off)")
+    node_type: NodeTypeLiteral
+    box_2d: List[int] = Field(description="Bounding box of the shape in the image as [ymin, xmin, ymax, xmax], each normalized to 0-1000")
+
+
+class VisionSnapshotResponse(BaseModel):
+    """
+    The response schema sent to Gemini for whiteboard vision. Snapshot fields are required and come first so the
+    model fills the shape list before the summary fields (an optional, late `visible_vertices` was often omitted).
+    The answer is parsed into GraphDeltaSchema, which keeps defaults for older callers and tests.
+    """
+
+    board_box_2d: List[int] = Field(
+        description="Bounding box of the whiteboard's writable surface (inside the frame) as [ymin, xmin, ymax, xmax], 0-1000",
+    )
+    visible_vertices: List[VisionVertexResponse] = Field(
+        description="The COMPLETE set of shapes currently drawn on the whiteboard; empty only when the board is empty",
+    )
+    visible_edges: List[EdgeAddition] = Field(
+        description="The COMPLETE set of arrows currently drawn on the whiteboard, using visible_vertices labels",
+    )
+    board_is_empty: bool = Field(description="True only when the whiteboard has no shapes or arrows drawn on it at all")
+    person_occluding_board: bool = Field(description="True if a person's body blocks the diagram")
+    has_meaningful_change: bool
+    diff_summary: str = Field(description="Max 60 chars summary of the visual update")
+
+
+VISION_EMPTY_SNAPSHOT_RETRIES = 2
+
+
+def place_on_board(delta: "GraphDeltaSchema") -> None:
+    """Converts each shape's image box_2d into fractions of the board surface (x, y centre; width, height)."""
+    def valid(b):
+        return isinstance(b, list) and len(b) == 4 and b[2] > b[0] and b[3] > b[1]
+
+    by0, bx0, by1, bx1 = delta.board_box_2d if valid(delta.board_box_2d) else (0, 0, 1000, 1000)
+    bw, bh = float(bx1 - bx0), float(by1 - by0)
+    for v in delta.visible_vertices:
+        if not valid(v.box_2d):
+            continue
+        y0, x0, y1, x1 = v.box_2d
+        v.x = ((x0 + x1) / 2 - bx0) / bw
+        v.y = ((y0 + y1) / 2 - by0) / bh
+        v.width = (x1 - x0) / bw
+        v.height = (y1 - y0) / bh
 
 
 class LayoutEngine:
@@ -142,6 +227,8 @@ class LiveGraphSession:
         self.edge_set: Set[Tuple[str, str]] = set()  # (source_cell_id, target_cell_id)
         self.last_node_reused: bool = False  # True when the last add_node call reused an existing node
         self.last_phash: Optional[imagehash.ImageHash] = None
+        # cell_id -> (x, y, width, height) as fractions of the whiteboard surface, from vision
+        self.node_positions: Dict[str, Tuple[float, float, float, float]] = {}
 
     def _generate_node_label(self, clean_type: str) -> str:
         """Auto-label for nodes without a label: '<registry prefix> <n>', unique per type."""
@@ -372,6 +459,7 @@ class LiveGraphSession:
         ]
 
         meta = self.node_metadata.pop(cell_id, None)
+        self.node_positions.pop(cell_id, None)
         old_label_lower = meta["label"].strip().lower() if meta and "label" in meta else label_or_id.strip().lower()
 
         for k in [k for k, v in self.node_by_label.items() if v == cell_id or k == old_label_lower]:
@@ -422,17 +510,128 @@ class LiveGraphSession:
             if edge_id:
                 mutations += 1
 
-        if mutations > 0:
-            self.layout_engine.apply_sugiyama(self.diagram, layer_distance=70.0, node_distance=50.0)
-
         return mutations
+
+    def apply_vision(self, delta: GraphDeltaSchema) -> int:
+        """
+        Applies one vision result. A full snapshot (visible_vertices / visible_edges) is reconciled so the diagram
+        becomes exactly what is drawn: this self-corrects earlier misreads (e.g. a label cut off by a cropped frame).
+        An empty snapshot only clears the diagram when vision reports a meaningful change (an erased board), so a
+        failed or empty vision call never wipes it. Results without a snapshot fall back to the incremental delta.
+        """
+        if delta.person_occluding_board:
+            logger.info("Person occluding whiteboard; leaving the diagram unchanged.")
+            return 0
+        if delta.visible_vertices or delta.board_is_empty:
+            return self.reconcile_snapshot(delta)
+        if (delta.added_vertices or delta.added_edges or delta.removed_vertices
+                or delta.removed_edges or delta.updated_vertices):
+            return self.apply_delta(delta)
+        # Neither shapes nor an explicitly empty board: an incomplete vision answer, never a reason to clear.
+        if delta.has_meaningful_change:
+            logger.warning("Vision reported a change but listed no shapes and no empty board; diagram left unchanged.")
+        return 0
+
+    @staticmethod
+    def _key(label: Optional[str]) -> str:
+        return " ".join((label or "").split()).lower()
+
+    def reconcile_snapshot(self, delta: GraphDeltaSchema) -> int:
+        """Makes the diagram match the board snapshot exactly; returns the number of changes (incl. moved shapes)."""
+        key = self._key
+        wanted = {key(v.label): v for v in delta.visible_vertices if key(v.label)}
+        mutations = 0
+
+        for cell_id, meta in list(self.node_metadata.items()):
+            if key(meta.get("label", "")) not in wanted and self.remove_node(cell_id):
+                mutations += 1
+
+        for k, v in wanted.items():
+            cell_id = self._resolve_node_id(k)
+            want_type = self._normalize_node_type(v.node_type)
+            if not cell_id:
+                self.add_node(want_type, " ".join(v.label.split()))
+                mutations += 1
+            elif self.node_metadata.get(cell_id, {}).get("type") != want_type:
+                self.update_node(cell_id, " ".join(v.label.split()), want_type)
+                mutations += 1
+
+        wanted_edges = {
+            (key(e.source_label), key(e.target_label)): (e.edge_label or "").strip()
+            for e in delta.visible_edges
+            if key(e.source_label) in wanted and key(e.target_label) in wanted
+            and key(e.source_label) != key(e.target_label)
+        }
+        by_id = {cid: key(m.get("label", "")) for cid, m in self.node_metadata.items()}
+        for s_id, t_id in list(self.edge_set):
+            if (by_id.get(s_id), by_id.get(t_id)) not in wanted_edges:
+                mutations += self.remove_edge(s_id, t_id)
+        current = self._edge_values()
+        for (src, dst), edge_label in wanted_edges.items():
+            if (src, dst) not in current or (edge_label and current[(src, dst)] != edge_label):
+                if self.add_edge(src, dst, edge_label):
+                    mutations += 1
+
+        mutations += self.record_positions(delta.visible_vertices)
+        return mutations
+
+    def _edge_values(self) -> Dict[Tuple[str, str], str]:
+        """(source label, target label) -> edge text, for edges between known nodes."""
+        by_id = {cid: self._key(m.get("label", "")) for cid, m in self.node_metadata.items()}
+        return {
+            (by_id[c.source], by_id[c.target]): (c.value or "")
+            for c in self.diagram.cells
+            if c.edge and getattr(c, "source", None) in by_id and getattr(c, "target", None) in by_id
+        }
+
+    def record_positions(self, vertices: List[VisibleVertex]) -> int:
+        """Stores where each shape sits on the whiteboard (fractions of the board surface); returns how many moved."""
+        clamp = lambda v: min(1.0, max(0.0, float(v)))
+        moved = 0
+        for v in vertices or []:
+            cell_id = self._resolve_node_id(" ".join((v.label or "").split()))
+            if not cell_id:
+                continue
+            new = (clamp(v.x), clamp(v.y), clamp(v.width), clamp(v.height))
+            old = self.node_positions.get(cell_id)
+            if old is None or max(abs(a - b) for a, b in zip(old, new)) > 0.02:
+                moved += 1
+            self.node_positions[cell_id] = new
+        return moved
 
     def compile_layout_xml(self) -> str:
         """
-        Applies Sugiyama hierarchical layout and compiles the Draw.io XML string.
+        Lays the diagram out and compiles the Draw.io XML string.
+
+        When vision has placed every node, each node sits where it is drawn on a BOARD_W x BOARD_H page (the
+        whiteboard's aspect), with invisible corner anchors so the rendered overlay PNG spans the whole board and
+        maps 1:1 onto the Lens's board quad. Otherwise (e.g. a pinch-added node with no drawn position) it falls
+        back to a left-to-right hierarchical layout.
         """
-        self.layout_engine.apply_sugiyama(self.diagram, layer_distance=70.0, node_distance=50.0)
+        self.diagram.cells = [c for c in self.diagram.cells if not str(c.id).startswith(BOARD_ANCHOR_PREFIX)]
+        vertices = [c for c in self.diagram.cells if c.vertex and c.id in self.node_metadata]
+        if vertices and all(c.id in self.node_positions for c in vertices):
+            self._place_on_board(vertices)
+        else:
+            self.layout_engine.apply_sugiyama(self.diagram, layer_distance=70.0, node_distance=50.0, direction="LR")
         return self.file.to_xml()
+
+    def _place_on_board(self, vertices: List[Any]) -> None:
+        for c in vertices:
+            x, y, w, h = self.node_positions[c.id]
+            g = c.geometry
+            if w >= 0.03 and h >= 0.03:  # use the drawn size when vision reported a plausible one
+                g.width, g.height = w * BOARD_W, h * BOARD_H
+            g.x = min(max(0.0, x * BOARD_W - g.width / 2), BOARD_W - g.width)
+            g.y = min(max(0.0, y * BOARD_H - g.height / 2), BOARD_H - g.height)
+        for c in self.diagram.cells:
+            if c.edge:  # drop routing from any earlier automatic layout; draw.io routes between the fixed boxes
+                c.exit_x = c.exit_y = c.entry_x = c.entry_y = None
+                if c.geometry:
+                    c.geometry.points = []
+        for suffix, (ax, ay) in (("tl", (0.0, 0.0)), ("br", (BOARD_W - 1.0, BOARD_H - 1.0))):
+            self.diagram.add_vertex(value="", x=ax, y=ay, width=1.0, height=1.0, style=BOARD_ANCHOR_STYLE)
+            self.diagram.cells[-1].id = f"{BOARD_ANCHOR_PREFIX}{suffix}"
 
     def get_xml(self) -> str:
         return self.file.to_xml()
@@ -674,6 +873,7 @@ async def extract_graph_delta_from_gemini(
     existing_nodes: List[Any],
     existing_edges: Optional[List[str]] = None,
     api_key: Optional[str] = None,
+    _retries: int = VISION_EMPTY_SNAPSHOT_RETRIES,
 ) -> GraphDeltaSchema:
     """
     Asynchronously calls Gemini with structured JSON output schema to detect whiteboard diagram changes.
@@ -711,23 +911,43 @@ async def extract_graph_delta_from_gemini(
         from google.genai import types
 
         prompt = (
-            "Analyze this whiteboard frame from a software architecture brainstorming session.\n"
-            f"Already recognized nodes: {node_labels}\n"
-            f"Already recognized edges: {edge_summaries}\n"
-            "Identify any newly drawn, modified/renamed (`updated_vertices`), or erased (`removed_vertices`, `removed_edges`) shapes (service, decision, database, terminal) and arrows.\n"
-            "CRITICAL OCCLUSION & DELETION RULE: If a person is standing in front of or blocking the diagram view, set `person_occluding_board=True` and leave `removed_vertices` and `removed_edges` completely empty. "
-            "Only populate `removed_vertices` or `removed_edges` when `person_occluding_board` is `False` AND the whiteboard surface where the shape or arrow previously sat is clearly visible and blank (visibly erased). Never remove nodes or edges simply because a person is occluding them."
+            "Read the COMPLETE software-architecture diagram currently drawn on this whiteboard frame.\n"
+            "- `visible_vertices`: EVERY shape on the board, typed as service, database, decision or terminal (a client, user or device is a "
+            "terminal). `label` is the "
+            "full text written inside the shape exactly as on the board - never abbreviated, never cut off. `box_2d` is "
+            "the shape's tight bounding box in the image as [ymin, xmin, ymax, xmax] normalized to 0-1000. A cylinder is "
+            "a database.\n"
+            "- `board_box_2d`: the bounding box of the whiteboard's writable surface (inside its frame), same format.\n"
+            "- `board_is_empty`: true ONLY when nothing at all is drawn on the board. Whenever anything is drawn, "
+            "`visible_vertices` must list every shape - even when nothing changed.\n"
+            "- `visible_edges`: EVERY arrow, as source -> target using the `visible_vertices` labels, with any text "
+            "written on or next to the arrow as `edge_label`.\n"
+            "Previously recognized nodes (reference only - the board is the truth; if a label below is wrong or "
+            f"truncated, report what is actually written): {node_labels}\n"
+            f"Previously recognized edges (reference only): {edge_summaries}\n"
+            "Set `has_meaningful_change` to true when the drawn diagram differs from the previously recognized one, and "
+            "describe the difference in `diff_summary` (max 60 chars). Leave the added/removed/updated lists empty.\n"
+            "OCCLUSION RULE: if a person is standing in front of or blocking the diagram, set `person_occluding_board` "
+            "to true; the diagram is then left unchanged."
         )
 
         text = await llm.generate_structured(
             prompt,
-            schema=GraphDeltaSchema,
+            schema=VisionSnapshotResponse,
             contents=[types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")],
             api_key=key,
         )
         if text:
             data = json.loads(text)
             delta = GraphDeltaSchema.model_validate(data)
+            if _retries > 0 and not (delta.visible_vertices or delta.board_is_empty or delta.person_occluding_board
+                                     or delta.added_vertices or delta.added_edges or delta.removed_vertices
+                                     or delta.removed_edges or delta.updated_vertices):
+                logger.warning("Vision listed no shapes and no empty board; asking again (%d retries left).", _retries)
+                return await extract_graph_delta_from_gemini(
+                    image_bytes, existing_nodes, existing_edges, api_key, _retries=_retries - 1
+                )
+            place_on_board(delta)
             if delta.person_occluding_board:
                 delta.removed_vertices = []
                 delta.removed_edges = []

@@ -6,7 +6,7 @@ import { DrawioCanvas } from "../../../components/DrawioCanvas";
 import { TranscriptPanel } from "../../../components/TranscriptPanel";
 import { TemporalScrubber } from "../../../components/TemporalScrubber";
 import { RAGDrawer } from "../../../components/RAGDrawer";
-import { fetchMeetingTimeline } from "../../../lib/api";
+import { fetchMeetingTimeline, finalizeMeeting } from "../../../lib/api";
 import { DiagramSnapshot, TimelineData } from "../../../lib/types";
 import { DEMO_MEETING_ID } from "../../../lib/demoData";
 
@@ -147,6 +147,11 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
     setCurrentTimeMs(snapshot.timestamp_ms);
   };
 
+  const handleFinalize = async () => {
+    await finalizeMeeting(meetingId);
+    setReloadKey((k) => k + 1);
+  };
+
   if (!timeline) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#070a0f] text-gray-100 gap-4">
@@ -206,6 +211,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
             timeline={timeline}
             currentTimeMs={currentTimeMs}
             onSeek={handleSeek}
+            onFinalize={handleFinalize}
           />
         </section>
 

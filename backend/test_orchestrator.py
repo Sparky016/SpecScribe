@@ -728,26 +728,28 @@ def test_idle_session_evicted_after_last_disconnect_with_zero_ttl(monkeypatch):
 
 
 def test_session_kept_within_ttl_and_swept_after(monkeypatch):
+    from session_manager import SessionManager
+
     mid = "00000000-0000-4000-8000-000000000233"
-    monkeypatch.setattr(session_manager, "supabase_client", None)
     monkeypatch.setenv("SPECSCRIBE_SESSION_TTL_SECONDS", "100")
+    mgr = SessionManager(supabase_client=None)
     now = [1000.0]
-    monkeypatch.setattr(session_manager, "_clock", lambda: now[0])
+    monkeypatch.setattr(mgr, "_clock", lambda: now[0])
     try:
-        session_manager.get_or_create_session(mid)
-        assert session_manager.sweep_idle_sessions() == 0
-        assert mid in session_manager.live_sessions
-        session_manager.active_connections[mid].add(object())  # a live socket blocks eviction
+        mgr.get_or_create_session(mid)
+        assert mgr.sweep_idle_sessions() == 0
+        assert mid in mgr.live_sessions
+        mgr.active_connections[mid].add(object())  # a live socket blocks eviction
         now[0] += 500
-        assert session_manager.sweep_idle_sessions() == 0
-        assert mid in session_manager.live_sessions
-        session_manager.active_connections.pop(mid)
-        assert session_manager.sweep_idle_sessions() == 1
-        assert mid not in session_manager.live_sessions
+        assert mgr.sweep_idle_sessions() == 0
+        assert mid in mgr.live_sessions
+        mgr.active_connections.pop(mid)
+        assert mgr.sweep_idle_sessions() == 1
+        assert mid not in mgr.live_sessions
     finally:
-        session_manager.active_connections.pop(mid, None)
-        session_manager.live_sessions.pop(mid, None)
-        session_manager.memory_store["meetings"].pop(mid, None)
+        mgr.active_connections.pop(mid, None)
+        mgr.live_sessions.pop(mid, None)
+        mgr.memory_store["meetings"].pop(mid, None)
 
 
 def test_session_cap_rejects_new_websocket_with_4429(monkeypatch):

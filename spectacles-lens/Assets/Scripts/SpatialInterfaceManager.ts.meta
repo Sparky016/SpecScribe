@@ -32,8 +32,11 @@
     btnAddDecision: false
     btnAddService: false
     btnAddTerminal: false
+    btnCaptureWhiteboard: false
     btnConcludeMeeting: false
+    btnToggleCaptureMode: false
     btnUpdateSnapshot: false
+    captureModeStatusText: false
     demoMode: false
     diagramOverlayMesh: false
     diagramOverlayView: false
@@ -43,6 +46,7 @@
     previewInputAdapter: false
     raisingHandAgent: false
     socketClient: false
+    useAuthoredBoardPose: false
     whiteboardBoardMesh: false
     whiteboardCalibrator: false
     whiteboardInteractable: false
@@ -57,6 +61,7 @@
   DefaultScriptInputs:
     - isPhysicalHardware: false
       demoMode: false
+      useAuthoredBoardPose: false
       socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
       raisingHandAgent: !<MappingBased.AssignableType_2> 00000000-0000-0000-0000-000000000000
       whiteboardCalibrator: !<MappingBased.AssignableType_3> 00000000-0000-0000-0000-000000000000
@@ -70,15 +75,19 @@
       btnUpdateSnapshot: !<MappingBased.AssignableType_11> 00000000-0000-0000-0000-000000000000
       btnConcludeMeeting: !<MappingBased.AssignableType_12> 00000000-0000-0000-0000-000000000000
       whiteboardInteractable: !<MappingBased.AssignableType_13> 00000000-0000-0000-0000-000000000000
+      btnCaptureWhiteboard: !<MappingBased.AssignableType_14> 00000000-0000-0000-0000-000000000000
+      btnToggleCaptureMode: !<MappingBased.AssignableType_15> 00000000-0000-0000-0000-000000000000
       diagramOverlayMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       whiteboardBoardMesh: !<reference.RenderMeshVisual> 00000000-0000-0000-0000-000000000000
       diffToastText: !<reference.Text> 00000000-0000-0000-0000-000000000000
+      captureModeStatusText: !<reference.Text> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
     -
       {}
   InputLines:
     - // @input bool isPhysicalHardware
     - // @input bool demoMode
+    - // @input bool useAuthoredBoardPose
     - // @input AssignableType_1 socketClient
     - // @input AssignableType_2 raisingHandAgent
     - // @input AssignableType_3 whiteboardCalibrator
@@ -92,6 +101,9 @@
     - // @input AssignableType_11 btnUpdateSnapshot
     - // @input AssignableType_12 btnConcludeMeeting
     - // @input AssignableType_13 whiteboardInteractable
+    - // @input AssignableType_14 btnCaptureWhiteboard
+    - // @input AssignableType_15 btnToggleCaptureMode
     - // @input Component.RenderMeshVisual diagramOverlayMesh
     - // @input Component.RenderMeshVisual whiteboardBoardMesh
     - // @input Component.Text diffToastText
+    - // @input Component.Text captureModeStatusText
