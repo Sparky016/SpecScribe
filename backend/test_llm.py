@@ -89,7 +89,7 @@ async def test_configured_model_is_tried_first(monkeypatch):
 
 
 def test_configured_model_already_listed_is_not_duplicated(monkeypatch):
-    monkeypatch.setenv("GEMINI_MODEL", "gemini-2.5-flash")
+    monkeypatch.setenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
     assert llm.get_candidate_models() == list(llm.DEFAULT_CANDIDATE_MODELS)
 
@@ -114,7 +114,7 @@ async def test_all_models_failing_returns_none(monkeypatch, caplog):
     calls, _ = _install_client(monkeypatch, {
         "gemini-3.5-flash": RuntimeError("a"),
         "gemini-3.8-flash": "",
-        "gemini-2.5-flash": RuntimeError("c"),
+        "gemini-3.5-flash-lite": RuntimeError("c"),
     })
 
     with caplog.at_level(logging.WARNING, logger="specscribe.llm"):
@@ -172,3 +172,36 @@ def test_invalid_timeout_uses_default(monkeypatch, raw):
     monkeypatch.setenv(llm.TIMEOUT_ENV_VAR, raw)
 
     assert llm.get_timeout_seconds() == llm.DEFAULT_TIMEOUT_SECONDS
+
+
+def test_generate_structured_timeout_override(monkeypatch):
+    """timeout_s overrides the default per-attempt timeout; omitted or non-positive keeps the default."""
+    import asyncio as _asyncio
+    import llm as _llm
+
+    seen = []
+
+    async def fake_wait_for(coro, timeout):
+        seen.append(timeout)
+        coro.close()
+        raise _asyncio.TimeoutError()
+
+    class _Models:
+        def generate_content(self, **kwargs):
+            async def _never():
+                return None
+            return _never()
+
+    class _Client:
+        class aio:
+            models = _Models()
+
+    monkeypatch.setattr(_llm, "_get_client", lambda key: _Client())
+    monkeypatch.setattr(_llm, "get_candidate_models", lambda: ["m1"])
+    monkeypatch.setattr(_llm.asyncio, "wait_for", fake_wait_for)
+    monkeypatch.delenv(_llm.TIMEOUT_ENV_VAR, raising=False)
+
+    _asyncio.run(_llm.generate_structured("p", api_key="k", timeout_s=90.0))
+    _asyncio.run(_llm.generate_structured("p", api_key="k"))
+    _asyncio.run(_llm.generate_structured("p", api_key="k", timeout_s=0))
+    assert seen == [90.0, _llm.DEFAULT_TIMEOUT_SECONDS, _llm.DEFAULT_TIMEOUT_SECONDS]

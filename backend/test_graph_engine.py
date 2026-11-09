@@ -8,7 +8,7 @@ import json
 import pytest
 
 import llm
-from graph_engine import extract_graph_delta_from_gemini, GraphDeltaSchema
+from graph_engine import extract_graph_delta_from_gemini, GraphDeltaSchema, VisionSnapshotResponse
 
 
 @pytest.fixture(autouse=True)
@@ -74,7 +74,7 @@ async def test_valid_change_response_is_returned(monkeypatch):
 
     assert delta.has_meaningful_change is True
     assert [v.label for v in delta.added_vertices] == ["API Gateway"]
-    assert calls[0]["schema"] is GraphDeltaSchema
+    assert calls[0]["schema"] is VisionSnapshotResponse
     assert calls[0]["api_key"] == "test-key"
     assert len(calls[0]["contents"]) == 1  # the image part, sent before the prompt
 
@@ -152,3 +152,56 @@ async def test_demo_mode_restores_ingress_on_gemini_failure(monkeypatch):
 
     assert delta.has_meaningful_change is True
     assert [v.label for v in delta.added_vertices] == ["Whiteboard Ingress"]
+
+
+@pytest.mark.asyncio
+async def test_empty_snapshot_is_retried_twice_then_returned(monkeypatch):
+    """A snapshot with no shapes and board_is_empty=false is asked again at most VISION_EMPTY_SNAPSHOT_RETRIES times."""
+    import graph_engine
+
+    empty = {"has_meaningful_change": True, "diff_summary": "x", "board_is_empty": False, "person_occluding_board": False}
+    calls = _install_fake_gemini(monkeypatch, text=json.dumps(empty))
+
+    delta = await extract_graph_delta_from_gemini(b"img", [], api_key="test-key")
+
+    assert len(calls) == 1 + graph_engine.VISION_EMPTY_SNAPSHOT_RETRIES
+    assert delta.visible_vertices == []
+    assert delta.board_is_empty is False
+
+
+@pytest.mark.asyncio
+async def test_retry_stops_once_shapes_are_listed(monkeypatch):
+    """The first answer that lists shapes is used; no further calls are made."""
+    answers = [
+        {"has_meaningful_change": True, "diff_summary": "", "board_is_empty": False, "person_occluding_board": False},
+        {
+            "has_meaningful_change": True, "diff_summary": "", "board_is_empty": False, "person_occluding_board": False,
+            "board_box_2d": [0, 0, 1000, 1000],
+            "visible_vertices": [{"label": "CLIENT", "node_type": "terminal", "box_2d": [100, 100, 200, 200]}],
+            "visible_edges": [],
+        },
+    ]
+    calls = []
+
+    async def fake(prompt, schema=None, contents=None, api_key=None):
+        calls.append(schema)
+        return json.dumps(answers[min(len(calls) - 1, len(answers) - 1)])
+
+    monkeypatch.setattr(llm, "generate_structured", fake)
+
+    delta = await extract_graph_delta_from_gemini(b"img", [], api_key="test-key")
+
+    assert len(calls) == 2
+    assert [v.label for v in delta.visible_vertices] == ["CLIENT"]
+
+
+def test_vision_response_schema_requires_snapshot_fields_first():
+    """Gemini is sent a schema where the snapshot fields are required and precede the summary fields."""
+    schema = VisionSnapshotResponse.model_json_schema()
+    required = set(schema["required"])
+    assert {"visible_vertices", "visible_edges", "board_is_empty", "board_box_2d"} <= required
+    order = list(schema["properties"])
+    assert order.index("visible_vertices") < order.index("has_meaningful_change")
+    assert order.index("visible_vertices") < order.index("diff_summary")
+    vertex = schema["$defs"]["VisionVertexResponse"]
+    assert set(vertex["required"]) == {"label", "node_type", "box_2d"}

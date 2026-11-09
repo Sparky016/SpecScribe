@@ -222,8 +222,9 @@ async def test_extract_graph_delta_from_gemini_prompt_and_removals_update():
         assert "Old Worker" in prompt_sent
         assert "Gateway -> Old Worker" in prompt_sent
         assert "person_occluding_board" in prompt_sent
-        assert "removed_vertices" in prompt_sent
-        assert "removed_edges" in prompt_sent
+        # The prompt asks for a full snapshot of the board (reconciled by the session), not hand-made removals.
+        assert "visible_vertices" in prompt_sent
+        assert "visible_edges" in prompt_sent
 
         assert delta.removed_vertices == ["Old Worker"]
         assert len(delta.updated_vertices) == 1

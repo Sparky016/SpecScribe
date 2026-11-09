@@ -79,7 +79,7 @@ export default function Home() {
             href="/meetings/demo-session-01"
             className="flex items-center gap-2 px-6 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 border border-[#00FF66]/40 text-gray-100 text-sm sm:text-base font-semibold transition-all"
           >
-            <span>Explore Demo Meeting (02:30 Timeline)</span>
+            <span>Explore Demo Meeting</span>
           </Link>
           <a
             href="https://github.com/ruanp/SpecScribe"

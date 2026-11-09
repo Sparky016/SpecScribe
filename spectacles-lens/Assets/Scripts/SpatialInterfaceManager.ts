@@ -31,6 +31,10 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   // When false (default), the overlay changes only on DIAGRAM_UPDATED and hand raises only on HAND_RAISED.
   @input public demoMode: boolean = false;
 
+  // When true, whiteboard calibration starts from the backplate's authored scene pose instead of the
+  // fixed room pose. Turn on for video-input preview, where the camera sits at the origin.
+  @input public useAuthoredBoardPose: boolean = false;
+
   @input @allowUndefined private socketClient?: PersistentStreamSocketClient;
   @input @allowUndefined private raisingHandAgent?: RaisingHandAgentController;
   @input @allowUndefined private whiteboardCalibrator?: WhiteboardCalibrator;
@@ -58,7 +62,8 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private nodeCount: number = 0;
   private meetingConcluded: boolean = false;
   private concludeTimeoutEvent: DelayedCallbackEvent | null = null;
-  private readonly concludeTimeoutSec: number = 30;
+  // Spec generation can take one 90 s model attempt plus a fallback on the backend; wait past both.
+  private readonly concludeTimeoutSec: number = 150;
   public readonly capture = new WhiteboardCaptureSwitch(() => this.getSceneObject(), (t: string) => this.setToastText(t), () => this.meetingConcluded, (m) => { if (this.captureModeStatusText) this.captureModeStatusText.text = this.capture.formatModeBadge(m); });
 
   // Textures now live on DiagramOverlayView; these keep the manager's former texture fields addressable.
@@ -95,6 +100,8 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
     this.cal().placeForCalibration(); // Whiteboard starts in selection/calibration mode up high on the wall
     this.view().presentCalibration();
     if (this.captureModeStatusText) this.captureModeStatusText.text = this.capture.formatModeBadge();
+    // Authored pose: board already placed, so lock it (no stray-pinch drags of board + overlay) and start drawing.
+    if (this.useAuthoredBoardPose) this.startDrawingAndIngestion();
   }
 
   public pinchCenterToSet(): void { this.selectWhiteboardArea(); }
@@ -238,6 +245,7 @@ export class SpatialInterfaceManager extends BaseScriptComponent {
   private cal(): WhiteboardCalibrator {
     const c = (this.whiteboardCalibrator = this.whiteboardCalibrator || this.attach<WhiteboardCalibrator>(WhiteboardCalibrator));
     c.adopt(this.whiteboardBoardMesh);
+    c.useAuthoredPose = this.useAuthoredBoardPose;
     c.onStatus = c.onStatus || ((msg: string) => this.setToastText(msg));
     return c;
   }

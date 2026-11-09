@@ -1,4 +1,5 @@
 import { Interactable } from 'SpectaclesInteractionKit.lspkg/Components/Interaction/Interactable/Interactable';
+import { applyButtonIcon } from './ButtonIcon';
 import { LENS_NODE_REGISTRY } from './NodeRegistry';
 import { findSceneObject } from './SceneUtils';
 import { WhiteboardCaptureSwitch } from './WhiteboardCaptureSwitch';
@@ -229,6 +230,17 @@ export class PaletteController extends BaseScriptComponent {
     if (this.whiteboardInteractable) {
       this.bindSingleButton(this.whiteboardInteractable, () => target.handleWhiteboardPinch());
       print('[PaletteController] Bound Interactable on WhiteboardBackplate');
+    }
+    // requireAsset needs literal paths (resolved at compile time), so the icons are loaded here.
+    applyButtonIcon(this.buttonObject(this.btnCaptureWhiteboard), () => requireAsset('../Icons/photo_camera.png') as Texture);
+    applyButtonIcon(this.buttonObject(this.btnConcludeMeeting), () => requireAsset('../Icons/check_circle.png') as Texture);
+  }
+
+  private buttonObject(button?: Interactable): SceneObject | undefined {
+    try {
+      return button && typeof (button as any).getSceneObject === 'function' ? button.getSceneObject() : undefined;
+    } catch (e) {
+      return undefined;
     }
   }
 

@@ -12,7 +12,7 @@ from typing import Any, List, Optional
 
 logger = logging.getLogger("specscribe.llm")
 
-DEFAULT_CANDIDATE_MODELS = ("gemini-3.5-flash", "gemini-3.8-flash", "gemini-2.5-flash")
+DEFAULT_CANDIDATE_MODELS = ("gemini-3.5-flash", "gemini-3.8-flash", "gemini-3.5-flash-lite")
 DEFAULT_TIMEOUT_SECONDS = 30.0
 TIMEOUT_ENV_VAR = "SPECSCRIBE_LLM_TIMEOUT_SECONDS"
 
@@ -68,6 +68,7 @@ async def generate_structured(
     schema: Any = None,
     contents: Optional[List[Any]] = None,
     api_key: Optional[str] = None,
+    timeout_s: Optional[float] = None,
 ) -> Optional[str]:
     """
     Generates content with Gemini, trying each candidate model in order.
@@ -75,6 +76,7 @@ async def generate_structured(
     - schema: optional response schema; when given the response is requested as JSON.
     - contents: optional extra parts (e.g. an image Part) sent before the prompt.
     - api_key: defaults to GEMINI_API_KEY; with no key, returns None without calling Gemini.
+    - timeout_s: per-attempt timeout override for long outputs (e.g. a full spec); defaults to get_timeout_seconds().
 
     Each attempt is bounded by asyncio.wait_for (SPECSCRIBE_LLM_TIMEOUT_SECONDS). Failed, timed-out
     or empty attempts are logged at WARNING and the next model is tried. Returns the first non-empty
@@ -102,7 +104,7 @@ async def generate_structured(
             return None
 
     request_contents = [*(contents or []), prompt]
-    timeout_s = get_timeout_seconds()
+    timeout_s = timeout_s if timeout_s and timeout_s > 0 else get_timeout_seconds()
 
     for model_name in get_candidate_models():
         kwargs = {"model": model_name, "contents": request_contents}

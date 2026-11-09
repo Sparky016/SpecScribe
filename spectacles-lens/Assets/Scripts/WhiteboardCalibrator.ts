@@ -17,6 +17,13 @@ export class WhiteboardCalibrator extends BaseScriptComponent {
   @allowUndefined
   public boardMesh?: RenderMeshVisual;
 
+  /**
+   * When true, calibration starts from the board's authored scene pose instead of the fixed room pose
+   * (50, 185, -230). Used for the video-input preview, where the camera is fixed at the origin.
+   * Set by SpatialInterfaceManager.useAuthoredBoardPose (this component is created at runtime).
+   */
+  public useAuthoredPose: boolean = false;
+
   /** Receives the "Moving/Resizing Whiteboard" feedback lines. */
   public onStatus?: (message: string) => void;
 
@@ -44,8 +51,10 @@ export class WhiteboardCalibrator extends BaseScriptComponent {
     this.yawDegrees = 0;
     if (this.boardMesh) {
       const obj = this.boardMesh.getSceneObject();
-      obj.getTransform().setWorldPosition(new vec3(50, 185, -230));
-      obj.getTransform().setWorldScale(new vec3(140, 1, 90));
+      if (!this.useAuthoredPose) {
+        obj.getTransform().setWorldPosition(new vec3(50, 185, -230));
+        obj.getTransform().setWorldScale(new vec3(140, 1, 90));
+      }
       this.enableManipulation();
     }
   }
@@ -269,11 +278,16 @@ export class WhiteboardCalibrator extends BaseScriptComponent {
         const obj = this.boardMesh.getSceneObject();
         const col = obj.getComponent('Physics.ColliderComponent') as any;
         if (col) {
+          // Shape size is in the board's local units and gets multiplied by its world scale. The board mesh is a
+          // unit plane scaled to its real size (e.g. 140x1x90), so the box is (1, thickness/scaleY, 1): exactly
+          // the board, 10 cm deep. A cm-sized box here would be scaled again into a ~150 m wall that swallows
+          // every pinch aimed past a button and grabs the board.
+          const scale = obj.getTransform().getWorldScale();
           const box = Shape.createBoxShape();
-          box.size = new vec3(140, 10, 90);
+          box.size = new vec3(1, 10 / Math.max(Math.abs(scale.y), 0.001), 1);
           col.shape = box;
           col.fitVisual = false;
-          print('[WhiteboardCalibrator] Configured 140x90cm BoxShape collider on WhiteboardBackplate');
+          print(`[WhiteboardCalibrator] Configured ${scale.x.toFixed(0)}x${scale.z.toFixed(0)}cm BoxShape collider on WhiteboardBackplate`);
         }
       }
     } catch (e) {

@@ -136,44 +136,94 @@ function demoRAGAnswer(meetingId: string, question: string, timeline: TimelineDa
   const chunks = timeline.knowledge_chunks || [];
 
   // Question matching heuristics
-  if (qLower.includes("redis") || qLower.includes("cache") || qLower.includes("stampede")) {
+  if (qLower.includes("hmac") || qLower.includes("jwt") || qLower.includes("database") || qLower.includes("network") || qLower.includes("postgres")) {
     return {
       meeting_id: meetingId,
       question,
       answer:
-        "Redis was placed between the API Gateway and PostgreSQL at [00:36] to prevent token validation storms during peak authentication spikes. However, at [00:55] the Raising-Hand AI Agent flagged a critical **Cache Stampede Risk**, noting that concurrent cache misses could overwhelm PostgreSQL. The team resolved this at [01:14] by adding request coalescing (singleflight) in the gateway and provisioning a read-replica database cluster.",
+        "At [00:29] Speaker 1 asked whether the Core Service needs auth to reach the database, or whether the network is enough. At [00:49] the team answered with a pinched **Enforce JWT HMAC Verification** decision between the Core Service and the Postgres DB: network position alone is not trusted. The AI teammate backed this at [00:53] with an **Auth Token Leak Risk** flag, since unsigned JWT tokens can be forged.",
       citations: [
-        { timestamp_ms: 36000, label: "00:36", excerpt: "Added Redis Cache to prevent token validation storms on auth endpoints." },
-        { timestamp_ms: 54000, label: "00:54", excerpt: "AI Intervention: Cache Stampede Risk flagged on Redis misses." },
-        { timestamp_ms: 74000, label: "01:14", excerpt: "Added Postgres Auth DB read-replica cluster with request coalescing." },
+        { timestamp_ms: 29000, label: "00:29", excerpt: "Do we need auth between the Core Service and the database, or is the network enough?" },
+        { timestamp_ms: 49000, label: "00:49", excerpt: "Added decision: Enforce JWT HMAC Verification (Core Service → Postgres DB)." },
+        { timestamp_ms: 53000, label: "00:53", excerpt: "AI Intervention: Auth Token Leak Risk — unsigned JWT tokens can be forged." },
       ],
     };
   }
 
-  if (qLower.includes("vulnerab") || qLower.includes("agent") || qLower.includes("risk") || qLower.includes("critique") || qLower.includes("flag")) {
+  if (qLower.includes("vulnerab") || qLower.includes("agent") || qLower.includes("risk") || qLower.includes("critique") || qLower.includes("flag") || qLower.includes("leak")) {
     return {
       meeting_id: meetingId,
       question,
       answer:
-        "The Raising-Hand AI Agent intervened three times during the session:\n\n1. **[00:55] Cache Stampede Risk (Vulnerability):** Warned that sudden spikes of invalid tokens would hammer PostgreSQL. Recommended request coalescing and jittered TTLs.\n2. **[01:38] Event Broker Decoupling (Alternative Idea):** Suggested routing high-rate binary sensor streams to Kafka rather than the HTTP REST gateway to avoid thread pool exhaustion.\n3. **[02:08] Backpressure & Dead Letter Queue (Logic Flaw):** Recommended setting up a Dead Letter Queue (DLQ) for unparseable camera frames.",
+        "The Raising-Hand AI teammate raised one concern:\n\n**[00:53] Auth Token Leak Risk (Vulnerability)**\n• Unsigned JWT tokens can be forged\n• Fix: require HMAC-SHA256 signature verification\n• Alternative: move session state to a Redis token cache\n\nIt was pinched open during the meeting, and the team's HMAC verification decision at [00:49] addresses it.",
       citations: [
-        { timestamp_ms: 54000, label: "00:54", excerpt: "Cache Stampede Risk: Request coalescing required for Redis misses." },
-        { timestamp_ms: 98000, label: "01:38", excerpt: "Event Broker Decoupling: Route high-throughput binary sensor streams directly to Kafka." },
-        { timestamp_ms: 128000, label: "02:08", excerpt: "Backpressure: Telemetry Worker DLQ and retry configuration." },
+        { timestamp_ms: 53000, label: "00:53", excerpt: "Auth Token Leak Risk: require HMAC-SHA256 signature verification." },
+        { timestamp_ms: 49000, label: "00:49", excerpt: "Enforce JWT HMAC Verification between Core Service and Postgres DB." },
       ],
     };
   }
 
-  if (qLower.includes("kafka") || qLower.includes("telemetry") || qLower.includes("sensor") || qLower.includes("event") || qLower.includes("stream")) {
+  if (qLower.includes("gateway") || qLower.includes("client") || qLower.includes("ingress") || qLower.includes("request")) {
     return {
       meeting_id: meetingId,
       question,
       answer:
-        "At [01:38], the team discussed handling real-time sensor streams from Snap Spectacles. Following the AI Agent's recommendation, at [02:00] they added a dedicated **Kafka Event Broker** and a **Telemetry Worker** service. This decouples asynchronous binary sensor ingestion from the main HTTP API Gateway, preventing connection pool exhaustion and allowing horizontal scaling for spatial frames.",
+        "At [00:08] Speaker 1 required a public **Client** to connect through an **API Gateway**, with every request carrying HMAC verification. The whiteboard sketch was captured at [00:18] as Client → API Gateway with an HMAC-labelled edge. At [00:23] Speaker 2 routed gateway traffic on to a **Core Service**, added to the diagram at [00:34].",
       citations: [
-        { timestamp_ms: 98000, label: "01:38", excerpt: "AI Intervention: Decouple binary sensor streams from HTTP gateway into Kafka." },
-        { timestamp_ms: 120000, label: "02:00", excerpt: "Added Kafka Event Broker and Telemetry Worker service." },
-        { timestamp_ms: 138000, label: "02:18", excerpt: "Connected Alert Dispatcher for anomalous sensor detections." },
+        { timestamp_ms: 8000, label: "00:08", excerpt: "Every request has to carry HMAC verification." },
+        { timestamp_ms: 18000, label: "00:18", excerpt: "Added Client and API Gateway with HMAC edge." },
+        { timestamp_ms: 34000, label: "00:34", excerpt: "Added Core Service and Postgres DB." },
+      ],
+    };
+  }
+
+  if (
+    qLower.includes("summar") ||
+    qLower.includes("decision") ||
+    qLower.includes("boundar") ||
+    qLower.includes("overview") ||
+    qLower.includes("notes") ||
+    qLower.includes("spec")
+  ) {
+    return {
+      meeting_id: meetingId,
+      question,
+      answer:
+        "Here is the summary of the decisions made in this session:\n\n" +
+        "1. **[00:18] HMAC-verified ingress:** A public Client connects through an API Gateway; every request carries HMAC verification.\n" +
+        "2. **[00:34] Core Service + Postgres DB:** Gateway traffic routes to a Core Service, which persists everything in PostgreSQL.\n" +
+        "3. **[00:49] Enforce JWT HMAC Verification:** Core Service → database calls must present a verified, signed token; the network alone is not trusted.\n" +
+        "4. **[00:53] AI flag — Auth Token Leak Risk:** Unsigned JWTs can be forged; addressed by decision 3.",
+      citations: [
+        { timestamp_ms: 18000, label: "00:18", excerpt: "Client → API Gateway with HMAC verification." },
+        { timestamp_ms: 34000, label: "00:34", excerpt: "Core Service and Postgres DB added." },
+        { timestamp_ms: 49000, label: "00:49", excerpt: "Enforce JWT HMAC Verification decision node." },
+        { timestamp_ms: 53000, label: "00:53", excerpt: "AI Intervention: Auth Token Leak Risk." },
+      ],
+    };
+  }
+
+  if (
+    qLower.includes("component") ||
+    qLower.includes("diagram") ||
+    qLower.includes("node") ||
+    qLower.includes("service") ||
+    qLower.includes("topology")
+  ) {
+    return {
+      meeting_id: meetingId,
+      question,
+      answer:
+        "The final diagram has 5 components on one request path:\n\n" +
+        "• **Client** (Terminal, **[00:18]**): Public client; signs every request with an HMAC.\n" +
+        "• **API Gateway** (Service, **[00:18]**): Single ingress; verifies request signatures.\n" +
+        "• **Core Service** (Service, **[00:34]**): Business logic behind the gateway.\n" +
+        "• **Enforce JWT HMAC Verification** (Decision, **[00:49]**): Guards the Core Service → database hop.\n" +
+        "• **Postgres DB** (Database, **[00:34]**): System of record.",
+      citations: [
+        { timestamp_ms: 18000, label: "00:18", excerpt: "Client and API Gateway added." },
+        { timestamp_ms: 34000, label: "00:34", excerpt: "Core Service and Postgres DB added." },
+        { timestamp_ms: 49000, label: "00:49", excerpt: "Enforce JWT HMAC Verification decision node added." },
       ],
     };
   }

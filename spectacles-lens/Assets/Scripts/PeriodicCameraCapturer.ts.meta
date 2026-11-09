@@ -29,9 +29,11 @@
   PackagePolicy: CanBeUnpacked
   ScriptInputsHidden:
     captureMode: false
+    demoMode: false
     frameSmallerDimension: false
     sampleIntervalSeconds: false
     simulatedTexture: false
+    socketClient: false
   ScriptTypesHidden:
     {}
   ReadMe: !<reference> 00000000-0000-0000-0000-000000000000
@@ -41,15 +43,19 @@
   Attachments:
     []
   DefaultScriptInputs:
-    - sampleIntervalSeconds: !<float> 3.000000
+    - demoMode: false
+      sampleIntervalSeconds: !<float> 3.000000
       captureMode: ""
       frameSmallerDimension: !<float> 480.000000
       simulatedTexture: !<reference.Texture> 00000000-0000-0000-0000-000000000000
+      socketClient: !<MappingBased.AssignableType_1> 00000000-0000-0000-0000-000000000000
   ScriptTypes:
     -
       {}
   InputLines:
+    - // @input bool demoMode
     - // @input float sampleIntervalSeconds = 3
     - // @input string captureMode
     - // @input float frameSmallerDimension = 480
     - // @input Asset.Texture simulatedTexture
+    - // @input AssignableType_1 socketClient

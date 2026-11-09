@@ -7,334 +7,232 @@ import {
   TranscriptTurn,
 } from "./types";
 
+// Offline demo meeting. Mirrors the devpost take (devpost/demo_video_script.md):
+// whiteboard Client -HMAC-> API Gateway -> Core Service -> Postgres DB, the three spoken lines
+// (devpost/footage/A01-A03.mp3), the pinched "Enforce JWT HMAC Verification" decision node and the
+// orb's "Auth Token Leak Risk" critique (same text as the Lens's demo palette).
 export const DEMO_MEETING_ID = "demo-session-01";
 
-export const FINAL_DRAWIO_XML = `<mxfile host="app.diagrams.net" modified="2026-10-17T15:00:00Z" agent="SpecScribe AR">
-  <diagram id="ARStream" name="Core Architecture">
-    <mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850">
-      <root>
-        <mxCell id="0"/>
-        <mxCell id="1" parent="0"/>
-        <mxCell id="v_client" value="Spectacles AR Client" vertex="1" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="60" y="160" width="150" height="70" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_api" value="API Gateway" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="270" y="100" width="140" height="60" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_redis" value="Redis Cache" vertex="1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="480" y="70" width="130" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_postgres" value="Postgres Auth DB" vertex="1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="680" y="70" width="140" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_kafka" value="Kafka Event Broker" vertex="1" parent="1" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="270" y="240" width="150" height="80" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_telemetry" value="Telemetry Worker" vertex="1" parent="1" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="480" y="250" width="140" height="60" as="geometry"/>
-        </mxCell>
-        <mxCell id="v_alert" value="Alert Dispatcher" vertex="1" parent="1" style="ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;">
-          <mxGeometry x="680" y="245" width="140" height="70" as="geometry"/>
-        </mxCell>
-        <!-- Edges -->
-        <mxCell id="e_client_api" edge="1" parent="1" source="v_client" target="v_api" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00FF66;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="e_client_kafka" edge="1" parent="1" source="v_client" target="v_kafka" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00E5FF;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="e_api_redis" edge="1" parent="1" source="v_api" target="v_redis" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00E5FF;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="e_redis_pg" edge="1" parent="1" source="v_redis" target="v_postgres" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00E5FF;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="e_kafka_worker" edge="1" parent="1" source="v_kafka" target="v_telemetry" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00E5FF;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-        <mxCell id="e_worker_alert" edge="1" parent="1" source="v_telemetry" target="v_alert" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00FF66;strokeWidth=2;">
-          <mxGeometry relative="1" as="geometry"/>
-        </mxCell>
-      </root>
-    </mxGraphModel>
-  </diagram>
-</mxfile>`;
+// ---- draw.io building blocks -------------------------------------------------------------
+const STYLE = {
+  terminal: "ellipse;whiteSpace=wrap;html=1;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
+  service: "rounded=1;whiteSpace=wrap;html=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;strokeWidth=2;",
+  database:
+    "shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;strokeWidth=2;",
+  decision: "rhombus;whiteSpace=wrap;html=1;fillColor=#4A148C;strokeColor=#FFB300;fontColor=#FFFFFF;strokeWidth=2;",
+  edge: "edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#00FF66;strokeWidth=2;fontColor=#FFFFFF;labelBackgroundColor=#0B0F14;",
+};
 
-export const DEMO_SPEC_MD = `# Technical Specification: Core Architecture Review
-**Meeting ID:** demo-session-01  
-**Topic:** Auth Shielding & Real-Time Ingestion Architecture  
-**Generated By:** SpecScribe AR Orchestrator & Gemini 2.5 Flash
+const NODES = {
+  client: `<mxCell id="v_client" value="Client" vertex="1" parent="1" style="${STYLE.terminal}"><mxGeometry x="40" y="110" width="140" height="70" as="geometry"/></mxCell>`,
+  gateway: `<mxCell id="v_gateway" value="API Gateway" vertex="1" parent="1" style="${STYLE.service}"><mxGeometry x="270" y="115" width="150" height="60" as="geometry"/></mxCell>`,
+  core: `<mxCell id="v_core" value="Core Service" vertex="1" parent="1" style="${STYLE.service}"><mxGeometry x="510" y="115" width="150" height="60" as="geometry"/></mxCell>`,
+  postgres: `<mxCell id="v_postgres" value="Postgres DB" vertex="1" parent="1" style="${STYLE.database}"><mxGeometry x="520" y="350" width="130" height="85" as="geometry"/></mxCell>`,
+  decision: `<mxCell id="v_hmac" value="Enforce JWT HMAC Verification" vertex="1" parent="1" style="${STYLE.decision}"><mxGeometry x="505" y="210" width="160" height="100" as="geometry"/></mxCell>`,
+};
+
+const edge = (id: string, source: string, target: string, label = "") =>
+  `<mxCell id="${id}" value="${label}" edge="1" parent="1" source="${source}" target="${target}" style="${STYLE.edge}"><mxGeometry relative="1" as="geometry"/></mxCell>`;
+
+const EDGES = {
+  clientGateway: edge("e_client_gateway", "v_client", "v_gateway", "HMAC"),
+  gatewayCore: edge("e_gateway_core", "v_gateway", "v_core"),
+  corePostgres: edge("e_core_postgres", "v_core", "v_postgres"),
+  coreDecision: edge("e_core_hmac", "v_core", "v_hmac"),
+  decisionPostgres: edge("e_hmac_postgres", "v_hmac", "v_postgres"),
+};
+
+const mxfile = (cells: string[]) =>
+  `<mxfile host="app.diagrams.net" agent="SpecScribe AR"><diagram id="ARStream" name="Core Architecture"><mxGraphModel dx="1000" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850"><root><mxCell id="0"/><mxCell id="1" parent="0"/>${cells.join("")}</root></mxGraphModel></diagram></mxfile>`;
+
+const XML_TWO_NODES = mxfile([NODES.client, NODES.gateway, EDGES.clientGateway]);
+const XML_FOUR_NODES = mxfile([
+  NODES.client,
+  NODES.gateway,
+  NODES.core,
+  NODES.postgres,
+  EDGES.clientGateway,
+  EDGES.gatewayCore,
+  EDGES.corePostgres,
+]);
+export const FINAL_DRAWIO_XML = mxfile([
+  NODES.client,
+  NODES.gateway,
+  NODES.core,
+  NODES.decision,
+  NODES.postgres,
+  EDGES.clientGateway,
+  EDGES.gatewayCore,
+  EDGES.coreDecision,
+  EDGES.decisionPostgres,
+]);
+
+// ---- Spec ---------------------------------------------------------------------------------
+export const DEMO_SPEC_MD = `# Technical Specification: Secure API Ingress
+**Meeting ID:** demo-session-01
+**Topic:** HMAC-verified client ingress and service-to-database trust
+**Generated By:** SpecScribe AR Orchestrator
 
 ---
 
 ## 1. Executive Summary
-This architectural specification records the consensus reached during the live spatial whiteboarding session. The architecture establishes a low-latency, resilient cloud backend for Snap Spectacles AR clients, featuring a dual ingress pattern: synchronous REST/GraphQL through an API Gateway with multi-tier Redis caching, and asynchronous binary telemetry ingestion through Apache Kafka.
+The team designed the request path for a public client: every request is HMAC-verified at an API Gateway, routed to a Core Service, and persisted in PostgreSQL. The open question on service-to-database authentication was settled with an explicit HMAC/JWT verification step after the AI teammate flagged an auth token leak risk.
 
 ---
 
 ## 2. Component Matrix & Topology
 
-| Node ID | Component Name | Classification | Primary Responsibility | SLA / Latency Target |
-| :--- | :--- | :--- | :--- | :--- |
-| \`v_client\` | Spectacles AR Client | Terminal / Client | Dual-stream sender: HTTP user actions + binary telemetry | Sub-15ms local loop |
-| \`v_api\` | API Gateway | Service | Rate limiting, authentication validation, TLS termination | < 25ms p99 |
-| \`v_redis\` | Redis Cache | Database (In-Memory) | Auth token validation & session state caching | < 2ms |
-| \`v_postgres\` | Postgres Auth DB | Database (RDBMS) | Source-of-truth credentials & role authorization | < 40ms |
-| \`v_kafka\` | Kafka Event Broker | Database (Log Stream) | Partitioned binary sensor ingestion from AR headsets | < 10ms ack |
-| \`v_telemetry\` | Telemetry Worker | Service | Spatial pose verification and anomaly detection | Streaming |
-| \`v_alert\` | Alert Dispatcher | Terminal / Sink | WebSocket push and incident notification dispatch | < 100ms |
+| Node ID | Component Name | Classification | Primary Responsibility |
+| :--- | :--- | :--- | :--- |
+| \`v_client\` | Client | Terminal / Client | Public client; signs every request with an HMAC |
+| \`v_gateway\` | API Gateway | Service | Single ingress; verifies request HMAC signatures, TLS termination |
+| \`v_core\` | Core Service | Service | Business logic behind the gateway |
+| \`v_hmac\` | Enforce JWT HMAC Verification | Decision | Core Service must present a verified, signed token to reach the database |
+| \`v_postgres\` | Postgres DB | Database (RDBMS) | System of record; persists all data |
 
 ---
 
-## 3. Decision Log & Rationale
+## 3. Requirements
 
-1. **[00:15] API Gateway Ingress**
-   - *Rationale:* Single point of entry for user requests to ensure unified TLS termination and header validation.
+- **R1** Every client request carries an HMAC signature; the API Gateway rejects unsigned or invalid requests. *(Speaker 1, 00:08)*
+- **R2** Gateway traffic routes to a Core Service; all data persists in PostgreSQL. *(Speaker 2, 00:23)*
+- **R3** Core Service → database calls are authenticated with HMAC-SHA256-signed JWTs; network position alone is not trusted. *(Decision, 00:49)*
+
+---
+
+## 4. Decision Log & Rationale
+
+1. **[00:18] Client → API Gateway with HMAC**
+   - *Rationale:* One ingress point verifies request integrity and origin before any service sees traffic.
    - *Trigger:* Computer Vision whiteboard recognition (\`VISION_DIFF\`).
 
-2. **[00:36] Redis Cache Auth Shield**
-   - *Rationale:* Positioned between API Gateway and PostgreSQL to protect primary database from token validation storms during mass login spikes.
-   - *Trigger:* Spatial pinch gesture (\`PINCH_PALETTE\`).
-
-3. **[01:14] Postgres Read-Replica Cluster**
-   - *Rationale:* Persistent credentials storage with read-replicas behind Redis, implementing singleflight request coalescing to eliminate stampede vulnerabilities.
+2. **[00:34] Core Service backed by Postgres DB**
+   - *Rationale:* Separate business logic from ingress; PostgreSQL as the single system of record.
    - *Trigger:* Computer Vision whiteboard recognition (\`VISION_DIFF\`).
 
-4. **[01:58] Asynchronous Kafka Event Pipeline**
-   - *Rationale:* Separated high-frequency binary sensor telemetry from HTTP gateway to prevent connection pool exhaustion.
-   - *Trigger:* Spatial pinch gesture (\`PINCH_PALETTE\`).
-
-5. **[02:18] Real-Time Alert Dispatcher Terminal**
-   - *Rationale:* Direct sink for anomalous spatial sensor events to trigger immediate notification.
+3. **[00:49] Enforce JWT HMAC Verification (Core Service → Postgres DB)**
+   - *Rationale:* Answers "is the network enough?" with no: unsigned tokens can be forged, so the database hop is verified too.
    - *Trigger:* Spatial pinch gesture (\`PINCH_PALETTE\`).
 
 ---
 
-## 4. Raising-Hand Proactive Agent Interventions
+## 5. Raising-Hand Agent Interventions
 
-* **🚩 [00:55] Cache Stampede Risk (\`VULNERABILITY\`):** High-concurrency misses on Redis will hammer PostgreSQL. Remediated via request coalescing (singleflight) and jittered TTLs.
-* **💡 [01:38] Event Broker Decoupling (\`ALTERNATIVE_IDEA\`):** Recommended direct partitioned broker over HTTP gateway, mitigating connection saturation.
-* **⚠️ [02:08] Backpressure & Dead Letter Queue (\`LOGIC_FLAW\`):** Mandated DLQ configuration on Telemetry Worker for unparseable payloads.
+* **⚠️ [00:53] Auth Token Leak Risk (\`VULNERABILITY\`):** Unsigned JWT tokens can be forged. Require HMAC-SHA256 signature verification; alternatively move session state to a Redis token cache.
 `;
 
 export const DEMO_MEETING: Meeting = {
   id: DEMO_MEETING_ID,
-  title: "Core Architecture Brainstorming: Auth & Real-Time Ingestion",
-  created_at: "2026-10-17T14:30:00Z",
+  title: "Secure API Ingress: HMAC Gateway & Core Service",
+  created_at: "2026-11-08T15:00:00Z",
   latest_drawio_xml: FINAL_DRAWIO_XML,
   generated_spec_md: DEMO_SPEC_MD,
 };
 
+// ---- Transcript (the three recorded lines: footage/A01, A02, A03) --------------------------
 export const DEMO_TRANSCRIPTS: TranscriptTurn[] = [
   {
     id: "turn-01",
     meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Let's review the API gateway flow. Mobile and AR clients hit our cloud ingress first.",
+    speaker_label: "Speaker 1",
+    transcript_text:
+      "We need a public client connecting to an API Gateway, and every request has to carry HMAC verification.",
     timestamp_ms: 8000,
   },
   {
     id: "turn-02",
     meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 1 (Architect)",
-    transcript_text: "We should place a Redis cache right after the API Gateway to protect against token validation storms during peak auth traffic.",
-    timestamp_ms: 22000,
+    speaker_label: "Speaker 2",
+    transcript_text: "Let's route traffic from the Gateway to a Core Service and persist everything in PostgreSQL.",
+    timestamp_ms: 23000,
   },
   {
     id: "turn-03",
     meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Agreed. Adding the Redis database node now.",
-    timestamp_ms: 34000,
-  },
-  {
-    id: "turn-04",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "What happens on cache misses? Does the gateway route directly to the Postgres Auth DB?",
-    timestamp_ms: 46000,
-  },
-  {
-    id: "turn-05",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 1 (Architect)",
-    transcript_text: "Good catch by the AI agent on that stampede risk! Let's add the Postgres Auth DB as a dedicated read-replica cluster behind the cache.",
-    timestamp_ms: 64000,
-  },
-  {
-    id: "turn-06",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Adding Postgres Auth DB cluster node with edge from Redis Cache.",
-    timestamp_ms: 74000,
-  },
-  {
-    id: "turn-07",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Now for live sensor telemetry from Snap Spectacles: we need an asynchronous event stream. Should we route it through HTTP or direct Kafka broker?",
-    timestamp_ms: 88000,
-  },
-  {
-    id: "turn-08",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 1 (Architect)",
-    transcript_text: "The agent's suggestion to decouple is spot on. Let's add a Kafka Event Broker and attach a Telemetry Worker service to process spatial camera frames.",
-    timestamp_ms: 108000,
-  },
-  {
-    id: "turn-09",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Connecting Kafka Event Broker to Telemetry Worker now.",
-    timestamp_ms: 120000,
-  },
-  {
-    id: "turn-10",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 0 (Ruan)",
-    transcript_text: "Finally, let's connect an Alert Dispatcher terminal to trigger real-time push alerts on anomalous sensor readings.",
-    timestamp_ms: 134000,
-  },
-  {
-    id: "turn-11",
-    meeting_id: DEMO_MEETING_ID,
-    speaker_label: "Speaker 1 (Architect)",
-    transcript_text: "Looks solid. All critical paths, caches, and telemetry failure boundaries are documented.",
-    timestamp_ms: 144000,
+    speaker_label: "Speaker 1",
+    transcript_text: "Do we need auth between the Core Service and the database, or is the network enough?",
+    timestamp_ms: 29000,
   },
 ];
 
+// ---- Diagram snapshots ---------------------------------------------------------------------
 export const DEMO_SNAPSHOTS: DiagramSnapshot[] = [
   {
     id: "snap-01",
     meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 15000,
-    drawio_xml: `<mxfile><diagram name="ARStream"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="v_client" value="Spectacles AR Client" vertex="1" parent="1" style="ellipse;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="60" y="160" width="150" height="70" as="geometry"/></mxCell><mxCell id="v_api" value="API Gateway" vertex="1" parent="1" style="rounded=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="270" y="100" width="140" height="60" as="geometry"/></mxCell><mxCell id="e_client_api" edge="1" parent="1" source="v_client" target="v_api" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00FF66;"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`,
-    diff_summary: "+ Added [service] API Gateway",
-    decision_rationale: "Initial entry point for user requests and client authentication.",
+    timestamp_ms: 18000,
+    drawio_xml: XML_TWO_NODES,
+    diff_summary: "+ Added [terminal] Client and [service] API Gateway with HMAC edge",
+    decision_rationale: "Speaker 1: every public client request enters through the API Gateway and carries HMAC verification.",
     triggered_by: "VISION_DIFF",
   },
   {
     id: "snap-02",
     meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 36000,
-    drawio_xml: `<mxfile><diagram name="ARStream"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="v_client" value="Spectacles AR Client" vertex="1" parent="1" style="ellipse;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="60" y="160" width="150" height="70" as="geometry"/></mxCell><mxCell id="v_api" value="API Gateway" vertex="1" parent="1" style="rounded=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="270" y="100" width="140" height="60" as="geometry"/></mxCell><mxCell id="v_redis" value="Redis Cache" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="480" y="70" width="130" height="80" as="geometry"/></mxCell><mxCell id="e_client_api" edge="1" parent="1" source="v_client" target="v_api" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00FF66;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_api_redis" edge="1" parent="1" source="v_api" target="v_redis" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`,
-    diff_summary: "+ Added [database] Redis Cache and edge from API Gateway",
-    decision_rationale: "Speaker 0 added Redis cache following Speaker 1's recommendation to prevent token validation storms on auth endpoints.",
-    triggered_by: "PINCH_PALETTE",
+    timestamp_ms: 34000,
+    drawio_xml: XML_FOUR_NODES,
+    diff_summary: "+ Added [service] Core Service and [database] Postgres DB",
+    decision_rationale: "Speaker 2: gateway traffic routes to a Core Service, which persists everything in PostgreSQL.",
+    triggered_by: "VISION_DIFF",
   },
   {
     id: "snap-03",
     meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 74000,
-    drawio_xml: `<mxfile><diagram name="ARStream"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="v_client" value="Spectacles AR Client" vertex="1" parent="1" style="ellipse;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="60" y="160" width="150" height="70" as="geometry"/></mxCell><mxCell id="v_api" value="API Gateway" vertex="1" parent="1" style="rounded=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="270" y="100" width="140" height="60" as="geometry"/></mxCell><mxCell id="v_redis" value="Redis Cache" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="480" y="70" width="130" height="80" as="geometry"/></mxCell><mxCell id="v_postgres" value="Postgres Auth DB" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="680" y="70" width="140" height="80" as="geometry"/></mxCell><mxCell id="e_client_api" edge="1" parent="1" source="v_client" target="v_api" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00FF66;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_api_redis" edge="1" parent="1" source="v_api" target="v_redis" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_redis_pg" edge="1" parent="1" source="v_redis" target="v_postgres" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`,
-    diff_summary: "+ Added [database] Postgres Auth DB and edge from Redis Cache",
-    decision_rationale: "Read-replica PostgreSQL cluster added to persist verified auth credentials with connection pooling to mitigate stampede risk.",
-    triggered_by: "VISION_DIFF",
-  },
-  {
-    id: "snap-04",
-    meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 120000,
-    drawio_xml: `<mxfile><diagram name="ARStream"><mxGraphModel><root><mxCell id="0"/><mxCell id="1" parent="0"/><mxCell id="v_client" value="Spectacles AR Client" vertex="1" parent="1" style="ellipse;fillColor=#311B92;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="60" y="160" width="150" height="70" as="geometry"/></mxCell><mxCell id="v_api" value="API Gateway" vertex="1" parent="1" style="rounded=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="270" y="100" width="140" height="60" as="geometry"/></mxCell><mxCell id="v_redis" value="Redis Cache" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="480" y="70" width="130" height="80" as="geometry"/></mxCell><mxCell id="v_postgres" value="Postgres Auth DB" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="680" y="70" width="140" height="80" as="geometry"/></mxCell><mxCell id="v_kafka" value="Kafka Event Broker" vertex="1" parent="1" style="shape=cylinder3;fillColor=#0D47A1;strokeColor=#00E5FF;fontColor=#FFFFFF;"><mxGeometry x="270" y="240" width="150" height="80" as="geometry"/></mxCell><mxCell id="v_telemetry" value="Telemetry Worker" vertex="1" parent="1" style="rounded=1;fillColor=#107C41;strokeColor=#00FF66;fontColor=#FFFFFF;"><mxGeometry x="480" y="250" width="140" height="60" as="geometry"/></mxCell><mxCell id="e_client_api" edge="1" parent="1" source="v_client" target="v_api" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00FF66;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_client_kafka" edge="1" parent="1" source="v_client" target="v_kafka" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_api_redis" edge="1" parent="1" source="v_api" target="v_redis" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_redis_pg" edge="1" parent="1" source="v_redis" target="v_postgres" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell><mxCell id="e_kafka_worker" edge="1" parent="1" source="v_kafka" target="v_telemetry" style="edgeStyle=orthogonalEdgeStyle;strokeColor=#00E5FF;"><mxGeometry relative="1" as="geometry"/></mxCell></root></mxGraphModel></diagram></mxfile>`,
-    diff_summary: "+ Added [database] Kafka Event Broker and [service] Telemetry Worker",
-    decision_rationale: "Decoupled asynchronous binary sensor stream from Snap Spectacles into partitioned Kafka cluster to prevent HTTP connection saturation.",
-    triggered_by: "PINCH_PALETTE",
-  },
-  {
-    id: "snap-05",
-    meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 138000,
+    timestamp_ms: 49000,
     drawio_xml: FINAL_DRAWIO_XML,
-    diff_summary: "+ Added [terminal] Alert Dispatcher with edge from Telemetry Worker",
-    decision_rationale: "Direct terminal sink for anomalous spatial sensor events and low-latency notification triggers.",
+    diff_summary: "+ Added [decision] Enforce JWT HMAC Verification between Core Service and Postgres DB",
+    decision_rationale:
+      "Answers Speaker 1's question: the network alone is not enough, so Core Service calls to the database require a verified, signed token.",
     triggered_by: "PINCH_PALETTE",
   },
 ];
 
+// ---- Agent interventions (same text as the Lens's demo critique) ---------------------------
 export const DEMO_INTERVENTIONS: AgentIntervention[] = [
   {
     id: "interv-01",
     meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 54000,
+    timestamp_ms: 53000,
     category: "VULNERABILITY",
-    short_title: "🚩 Cache Stampede Risk",
+    short_title: "⚠️ Auth Token Leak Risk",
     detailed_body:
-      "High-concurrency cache misses on Redis will hammer PostgreSQL auth table. Configure request coalescing (singleflight pattern) and jittered TTLs to prevent cascading outages during mass token refreshes.",
+      "• Vulnerability: Unsigned JWT tokens can be forged\n• Fix: Require HMAC-SHA256 signature verification\n• Alternative: Move session state to Redis Token Cache",
     was_pinched: true,
-  },
-  {
-    id: "interv-02",
-    meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 98000,
-    category: "ALTERNATIVE_IDEA",
-    short_title: "💡 Event Broker Decoupling",
-    detailed_body:
-      "Route high-throughput binary sensor streams directly to a partitioned Kafka/Redpanda broker rather than HTTP REST gateway to avoid thread pool exhaustion on the ingress controller.",
-    was_pinched: true,
-  },
-  {
-    id: "interv-03",
-    meeting_id: DEMO_MEETING_ID,
-    timestamp_ms: 128000,
-    category: "LOGIC_FLAW",
-    short_title: "⚠️ Backpressure & Dead Letter",
-    detailed_body:
-      "Ensure Telemetry Worker defines a Dead Letter Queue (DLQ) and exponential backoff retry for unparseable sensor payloads before propagating alert events.",
-    was_pinched: false,
   },
 ];
 
+// ---- RAG knowledge chunks ------------------------------------------------------------------
 export const DEMO_KNOWLEDGE_CHUNKS: KnowledgeChunk[] = [
   {
     id: "k-01",
     meeting_id: DEMO_MEETING_ID,
     chunk_type: "DECISION",
-    timestamp_ms: 15000,
-    content: "Decision at [00:15]: Placed API Gateway as primary ingress for mobile and AR clients to enforce TLS termination, request validation, and rate limiting.",
+    timestamp_ms: 18000,
+    content:
+      "Decision at [00:18]: A public Client connects through an API Gateway; every request carries HMAC verification, checked at the gateway.",
   },
   {
     id: "k-02",
     meeting_id: DEMO_MEETING_ID,
     chunk_type: "DECISION",
-    timestamp_ms: 36000,
-    content: "Decision at [00:36]: Placed Redis Cache between API Gateway and Postgres to prevent token validation storms during peak auth requests.",
+    timestamp_ms: 34000,
+    content: "Decision at [00:34]: Gateway traffic routes to a Core Service, which persists everything in a Postgres DB.",
   },
   {
     id: "k-03",
     meeting_id: DEMO_MEETING_ID,
-    chunk_type: "AGENT_INSIGHT",
-    timestamp_ms: 54000,
-    content: "AI Intervention at [00:54]: Flagged Cache Stampede Risk. Recommended request coalescing (singleflight) and jittered TTLs to prevent thundering herd on Postgres.",
+    chunk_type: "DECISION",
+    timestamp_ms: 49000,
+    content:
+      "Decision at [00:49]: Added 'Enforce JWT HMAC Verification' between Core Service and Postgres DB; the network alone is not trusted for service-to-database auth.",
   },
   {
     id: "k-04",
     meeting_id: DEMO_MEETING_ID,
-    chunk_type: "DECISION",
-    timestamp_ms: 74000,
-    content: "Decision at [01:14]: Added Postgres Auth DB as read-replica cluster behind Redis Cache, incorporating request coalescing in the API Gateway.",
-  },
-  {
-    id: "k-05",
-    meeting_id: DEMO_MEETING_ID,
     chunk_type: "AGENT_INSIGHT",
-    timestamp_ms: 98000,
-    content: "AI Intervention at [01:38]: Recommended decoupling real-time binary sensor streams from HTTP gateway into direct partitioned Kafka broker.",
-  },
-  {
-    id: "k-06",
-    meeting_id: DEMO_MEETING_ID,
-    chunk_type: "DECISION",
-    timestamp_ms: 120000,
-    content: "Decision at [02:00]: Added Kafka Event Broker and Telemetry Worker service for asynchronous high-throughput AR sensor telemetry ingestion.",
-  },
-  {
-    id: "k-07",
-    meeting_id: DEMO_MEETING_ID,
-    chunk_type: "DECISION",
-    timestamp_ms: 138000,
-    content: "Decision at [02:18]: Connected Alert Dispatcher terminal to trigger low-latency notification dispatches on anomalous sensor events.",
+    timestamp_ms: 53000,
+    content:
+      "AI Intervention at [00:53]: Auth Token Leak Risk. Unsigned JWT tokens can be forged; require HMAC-SHA256 signature verification, or move session state to a Redis token cache.",
   },
 ];
 

@@ -323,17 +323,25 @@ export class PersistentStreamSocketClient extends BaseScriptComponent {
       print('[PersistentStreamSocketClient] Camera capturer not attached; camera streaming disabled.');
       return;
     }
-    this.cameraCapturer.onEncodedFrameAvailable = (b64: string) => {
-      this.sendCameraFrame(b64);
+    this.cameraCapturer.onEncodedFrameAvailable = (b64: string, _ts?: number, isManual?: boolean, captureMode?: string) => {
+      this.sendCameraFrame(b64, !!isManual, captureMode);
     };
   }
 
-  public sendCameraFrame(b64: string): void {
-    this.sendJson({
+  /**
+   * Sends one whiteboard frame. `isManual` marks a pinch capture: the backend then skips its cooldown and
+   * unchanged-board filter (and queues the frame behind an analysis in flight), so every pinch is analysed.
+   */
+  public sendCameraFrame(b64: string, isManual: boolean = false, captureMode?: string): void {
+    const frame: any = {
       eventType: 'cameraFrame',
       timestamp_ms: this.getElapsedMs(),
-      image_b64: b64
-    });
+      image_b64: b64,
+      isManual: isManual,
+      isManualTrigger: isManual
+    };
+    if (captureMode) frame.captureMode = captureMode;
+    this.sendJson(frame);
   }
 
   public sendSimulatedVoiceNote(text: string, speaker?: string): void {

@@ -6,7 +6,7 @@ import { DrawioCanvas } from "../../../components/DrawioCanvas";
 import { TranscriptPanel } from "../../../components/TranscriptPanel";
 import { TemporalScrubber } from "../../../components/TemporalScrubber";
 import { RAGDrawer } from "../../../components/RAGDrawer";
-import { fetchMeetingTimeline } from "../../../lib/api";
+import { fetchMeetingTimeline, finalizeMeeting } from "../../../lib/api";
 import { DiagramSnapshot, TimelineData } from "../../../lib/types";
 import { DEMO_MEETING_ID } from "../../../lib/demoData";
 
@@ -65,18 +65,20 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
     };
   }, [meetingId, reloadKey]);
 
-  // Total duration calculation
+  // Meeting length: the latest event of any kind, plus a short tail so the last marker isn't pinned to the end
+  // of the scrubber. Rounded up to a whole second so the "Duration" label and scrubber end agree.
   const totalDurationMs = useMemo(() => {
-    if (!timeline) return 150000;
-    const lastTurn = timeline.transcript_turns[timeline.transcript_turns.length - 1];
-    const lastSnap = timeline.diagram_snapshots[timeline.diagram_snapshots.length - 1];
-    const lastInterv = timeline.agent_interventions[timeline.agent_interventions.length - 1];
-    return Math.max(
-      lastTurn?.timestamp_ms || 0,
-      lastSnap?.timestamp_ms || 0,
-      lastInterv?.timestamp_ms || 0,
-      150000 // default 150 seconds (2.5 mins)
-    );
+    const TAIL_MS = 7000;
+    const EMPTY_MEETING_MS = 60000;
+    if (!timeline) return EMPTY_MEETING_MS;
+    const events = [
+      ...(timeline.transcript_turns || []),
+      ...(timeline.diagram_snapshots || []),
+      ...(timeline.agent_interventions || []),
+    ];
+    if (events.length === 0) return EMPTY_MEETING_MS;
+    const lastEventMs = Math.max(...events.map((e) => e.timestamp_ms || 0));
+    return Math.ceil((lastEventMs + TAIL_MS) / 1000) * 1000;
   }, [timeline]);
 
   // Compute active diagram snapshot for currentTimeMs
@@ -145,6 +147,11 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
     setCurrentTimeMs(snapshot.timestamp_ms);
   };
 
+  const handleFinalize = async () => {
+    await finalizeMeeting(meetingId);
+    setReloadKey((k) => k + 1);
+  };
+
   if (!timeline) {
     return (
       <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#070a0f] text-gray-100 gap-4">
@@ -204,6 +211,7 @@ export default function MeetingReviewPage({ params }: MeetingPageProps) {
             timeline={timeline}
             currentTimeMs={currentTimeMs}
             onSeek={handleSeek}
+            onFinalize={handleFinalize}
           />
         </section>
 

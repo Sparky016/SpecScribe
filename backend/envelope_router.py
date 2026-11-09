@@ -439,11 +439,6 @@ class CameraFrameHandler(BaseEnvelopeHandler):
         timestamp_ms = msg.get("timestamp_ms", 0)
         session = session_mgr.get_or_create_session(meeting_id)
 
-        # Prevent concurrent vision extractions on the same session
-        if getattr(session, "_vision_in_flight", False):
-            logger.debug("Vision analysis already in-flight; skipping frame.")
-            return
-
         payload = msg.get("payload") if isinstance(msg.get("payload"), dict) else msg
         is_manual = bool(
             payload.get("isManual", False)
@@ -453,6 +448,16 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             or msg.get("isManualTrigger", False)
             or msg.get("captureMode") == "MANUAL"
         )
+
+        # Prevent concurrent vision extractions on the same session. A pinch (manual) frame is never dropped:
+        # it waits behind the analysis in flight (latest pinch wins) and runs as soon as that finishes.
+        if getattr(session, "_vision_in_flight", False):
+            if is_manual:
+                session._pending_manual_frame = msg
+                logger.info("Vision analysis in flight; queued pinch capture to run next.")
+            else:
+                logger.debug("Vision analysis already in-flight; skipping frame.")
+            return
 
         now = time.time()
         # Cooldown between vision calls to avoid Gemini 429 quota exhaustion
@@ -464,6 +469,11 @@ class CameraFrameHandler(BaseEnvelopeHandler):
         session._vision_in_flight = True
         try:
             img_bytes = base64.b64decode(img_b64)
+            debug_dir = os.environ.get("SPECSCRIBE_DEBUG_FRAME_DIR")
+            if debug_dir:  # opt-in: keep the exact frame the Lens sent, to check what the camera sees
+                os.makedirs(debug_dir, exist_ok=True)
+                with open(os.path.join(debug_dir, f"frame_{meeting_id[:8]}_{int(now * 1000)}_{'manual' if is_manual else 'auto'}.jpg"), "wb") as fh:
+                    fh.write(img_bytes)
             has_diff, hamming, current_hash = await asyncio.to_thread(
                 session.check_image_diff, img_bytes, threshold=6
             )
@@ -481,7 +491,9 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             logger.info("Frame diff accepted (hamming: %d, is_manual=%s). Analyzing whiteboard...", hamming, is_manual)
             session._last_vision_time = now
             existing_nodes = list(session.node_metadata.values())
-            delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes)
+            labels = {cid: meta.get("label", "") for cid, meta in session.node_metadata.items()}
+            existing_edges = [f"{labels[s]} -> {labels[t]}" for s, t in session.edge_set if s in labels and t in labels]
+            delta = await extract_graph_delta_from_gemini(img_bytes, existing_nodes, existing_edges)
 
             logger.info(
                 "Vision delta result: occluding=%s, meaningful=%s, summary=%s, nodes=%d",
@@ -496,11 +508,13 @@ class CameraFrameHandler(BaseEnvelopeHandler):
                 logger.info("Person occluding whiteboard; skipping diagram mutation.")
                 return
 
-            if delta.has_meaningful_change or delta.added_vertices or delta.added_edges:
+            # A full board snapshot is reconciled (self-correcting); a pinch capture always gets an answer so the
+            # user sees the current diagram even when nothing changed.
+            mutations = session.apply_vision(delta)
+            if mutations or (is_manual and session.node_metadata):
                 session._pending_speech_reasoning = False
                 session.unreasoned_turn_count = 0
                 session.last_speech_reasoning_time = now
-                session.apply_delta(delta)
                 drawio_xml = session.compile_layout_xml()
                 b64_png = await session_mgr.renderer_daemon.render_b64_png(drawio_xml)
 
@@ -548,6 +562,10 @@ class CameraFrameHandler(BaseEnvelopeHandler):
             logger.error("Error processing cameraFrame: %s", e)
         finally:
             session._vision_in_flight = False
+            pending = getattr(session, "_pending_manual_frame", None)
+            if isinstance(pending, dict):
+                session._pending_manual_frame = None
+                session_mgr.spawn(self.handle(pending, websocket, session_mgr, meeting_id))
 
 
 class PinchCommandHandler(BaseEnvelopeHandler):
