@@ -1,6 +1,7 @@
 {
   "name": "specscribe-spectacles-lens",
   "version": "1.1.0",
+  "license": "MIT",
   "private": true,
   "description": "Lens Studio 5.15+ TypeScript & SIK Spatial Client for SpecScribe AR",
   "scripts": {

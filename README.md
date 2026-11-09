@@ -341,7 +341,7 @@ Open [http://localhost:3000/meetings](http://localhost:3000/meetings) in your br
 
 1. Open **Snap Lens Studio 5.15+**.
 2. Open or import the project located in `spectacles-lens/`.
-3. Ensure the scene hierarchy matches the optical ergonomics detailed in [`spectacles-lens/SCENE_HIERARCHY_SETUP.md`](file:///c:/Users/ruanc/source/repos/SpecScribe/spectacles-lens/SCENE_HIERARCHY_SETUP.md).
+3. Ensure the scene hierarchy matches the optical ergonomics detailed in [`spectacles-lens/SCENE_HIERARCHY_SETUP.md`](spectacles-lens/SCENE_HIERARCHY_SETUP.md).
 4. In the Lens Studio **Inspector**, select the `PersistentStreamSocketClient` component:
    * Set `websocketUrl` to: `ws://localhost:8000/ws/meeting/demo-session-01`
 5. Switch the **Preview Panel** simulation target to **Spectacles (2024)** and enable **Interactive Preview** with Hand Tracking.
