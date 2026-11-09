@@ -81,3 +81,7 @@ spectacles-lens/scripts/*.jpg
 
 .mcp.json
 backend/node_registry.json
+
+# Machine-local tooling state
+.ai/
+spectacles-lens/ls-live-instance.json

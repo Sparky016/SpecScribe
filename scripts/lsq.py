@@ -1,7 +1,8 @@
 """Run a Lens Studio runtime-scene GraphQL query (arg 1) and print the JSON result."""
 import json, os, re, sys
-sys.path.insert(0, r"C:\Users\ruanc\source\repos\SpecScribe\scripts")
-cfg = json.load(open(r"C:\Users\ruanc\source\repos\SpecScribe\.mcp.json"))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+cfg = json.load(open(os.path.join(os.path.dirname(HERE), ".mcp.json")))
 os.environ["LS_MCP_TOKEN"] = re.sub(r"^Bearer\s+", "", cfg["mcpServers"]["lens-studio"]["headers"]["Authorization"])
 import lsmcp
 tool = sys.argv[2] if len(sys.argv) > 2 else "QueryRuntimeSceneTool"

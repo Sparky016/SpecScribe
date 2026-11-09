@@ -10,7 +10,7 @@ import sys
 import threading
 import time
 
-REPO = r"C:\Users\ruanc\source\repos\SpecScribe"
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(REPO, "devpost"))
 sys.path.insert(0, os.path.join(REPO, "scripts"))
 import lsmcp  # noqa: E402
@@ -89,7 +89,7 @@ def main():
     try:
         time.sleep(1.0)
         # Restart the preview's media clip with the Lens: re-applying the same source is a no-op, so bounce via an image.
-        clip = r"C:/Users/ruanc/source/repos/SpecScribe/devpost/footage/demo_whiteboard_drawing_50s.mp4"
+        clip = os.path.join(REPO, "devpost", "footage", "demo_whiteboard_drawing_50s.mp4").replace(os.sep, "/")
         idle = json.loads(mcp("PreviewPanelTool", {"action": "listSources"})[1])["images"][0]
         mcp("PreviewPanelTool", {"action": "setConfig", "inputType": "Multimedia", "sourcePath": idle})
         mcp("PreviewPanelTool", {"action": "setConfig", "inputType": "Multimedia", "sourcePath": clip})
